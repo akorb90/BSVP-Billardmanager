@@ -84,3 +84,35 @@ test('Login-Versuche sind begrenzt', async () => {
     }
   } finally { await new Promise(resolve=>server.close(resolve)); }
 });
+
+test('CORS erlaubt nur explizite Origins und behält CSRF-Schutz bei', async () => {
+  const config = { adminHash:`salt:${scryptSync('password','salt',64).toString('hex')}`, tables:Array(8).fill('x'.repeat(40)) };
+  const server = createApp({ dbPath:':memory:', config, origin:'https://localhost' });
+  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const preflight = origin => fetch(base+'/api/login', { method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type, x-csrf-token, authorization'} });
+  try {
+    for (const origin of ['https://localhost','https://127.0.0.1']) {
+      const response = await preflight(origin);
+      assert.equal(response.status,204);
+      assert.equal(response.headers.get('access-control-allow-origin'),origin);
+      assert.equal(response.headers.get('access-control-allow-credentials'),'true');
+      assert.equal(response.headers.get('vary'),'Origin');
+    }
+    for (const origin of ['https://evil.test','https://127.0.0.1.evil.test','https://127.0.0.1:444','http://127.0.0.1','null']) {
+      const response = await preflight(origin);
+      assert.equal(response.status,403);
+      assert.equal(response.headers.get('access-control-allow-origin'),null);
+    }
+    const login = await fetch(base+'/api/login',{method:'POST',headers:{Origin:'https://127.0.0.1','Content-Type':'application/json'},body:JSON.stringify({password:'password'})});
+    assert.equal(login.status,200);
+    assert.equal(login.headers.get('access-control-allow-origin'),'https://127.0.0.1');
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    const response = await fetch(base+'/api/events',{method:'POST',headers:{Origin:'https://127.0.0.1','Content-Type':'application/json',Cookie:cookie},body:JSON.stringify({name:'Test',kind:'Liga',date:'2026-10-26'})});
+    assert.equal(response.status,403);
+    const logo = await fetch(base+'/assets/bsv-logo.png');
+    assert.equal(logo.status,200);
+    assert.equal(logo.headers.get('content-type'),'image/png');
+    assert.deepEqual([...new Uint8Array(await logo.arrayBuffer()).slice(0,8)],[137,80,78,71,13,10,26,10]);
+  } finally { await new Promise(resolve=>server.close(resolve)); }
+});

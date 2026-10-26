@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { changeScore, breaker } from './domain.js';
 
 export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) {
+  const allowedOrigins = new Set([new URL(origin).origin]);
+  const localOrigin = new URL(origin);
+  for (const hostname of ['localhost', '127.0.0.1']) {
+    localOrigin.hostname = hostname;
+    allowedOrigins.add(localOrigin.origin);
+  }
   if (!config.adminHash || config.tables?.length !== 8 || config.tables.some(k => typeof k !== 'string' || k.length < 32)) throw new Error('Ungültige Sicherheitskonfiguration; npm run setup ausführen.');
   const db = new DatabaseSync(dbPath);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
@@ -32,6 +38,21 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     for (const [key, value] of attempts) if (value.until < now) attempts.delete(key);
     try {
       const url = new URL(req.url, origin);
+      const requestOrigin = req.headers.origin;
+      if (url.pathname.startsWith('/api/')) {
+        res.setHeader('Vary', 'Origin');
+        if (allowedOrigins.has(requestOrigin)) {
+          res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+          res.setHeader('Access-Control-Allow-Credentials', 'true');
+        }
+        if (req.method === 'OPTIONS') {
+          const requestedHeaders = (req.headers['access-control-request-headers'] || '').toLowerCase().split(',').map(h => h.trim()).filter(Boolean);
+          if (!allowedOrigins.has(requestOrigin) || !['GET', 'POST'].includes(req.headers['access-control-request-method']) || requestedHeaders.some(h => !['content-type', 'authorization', 'x-csrf-token'].includes(h))) throw fail(403, 'Ursprung, Methode oder Header nicht erlaubt.');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+          res.writeHead(204); return res.end();
+        }
+      }
       const sid = /(?:^|; )session=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1];
       const session = sid && sessions.get(hash(sid));
       let table = 0;
@@ -40,7 +61,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       const admin = () => { if (!session) throw fail(401, 'Bitte anmelden.'); };
       let body = {};
       if (req.method === 'POST') {
-        if (req.headers.origin !== origin) throw fail(403, 'Ungültiger Ursprung.');
+        if (!allowedOrigins.has(requestOrigin)) throw fail(403, 'Ungültiger Ursprung.');
         if (!req.headers['content-type']?.startsWith('application/json')) throw fail(415, 'JSON erforderlich.');
         let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 8192) throw fail(413, 'Anfrage zu groß.'); }
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
@@ -110,6 +131,10 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         const asset = url.pathname === '/app.js' ? 'app.js' : url.pathname === '/style.css' ? 'style.css' : 'index.html';
         res.setHeader('Content-Type', asset.endsWith('.js') ? 'text/javascript; charset=utf-8' : asset.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8');
         return res.end(readFileSync(new URL(`../public/${asset}`, import.meta.url)));
+      }
+      if (req.method === 'GET' && url.pathname === '/assets/bsv-logo.png') {
+        res.setHeader('Content-Type', 'image/png');
+        return res.end(readFileSync(new URL('../public/assets/bsv-logo.png', import.meta.url)));
       }
       throw fail(404, 'Nicht gefunden.');
     } catch (e) { if (!e.status) console.error('Request failed:', e.code || e.name); json(res, e.status || 500, { error: e.status ? e.message : 'Interner Fehler.' }); }

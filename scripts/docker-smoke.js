@@ -47,12 +47,12 @@ function docker(args, capture = false) {
 }
 const compose = (args, capture = false) => docker([...composeArgs, ...args], capture);
 let ca, cookie = '', csrf = '';
-function request(path, data, { admin = true, key, requestOrigin = origin, csrfValue = csrf } = {}) {
+function request(path, data, { admin = true, key, requestOrigin = origin, csrfValue = csrf, hostname = 'localhost' } = {}) {
   return new Promise((resolveRequest, reject) => {
     const headers = { Origin: requestOrigin, 'Content-Type': 'application/json', 'X-CSRF-Token': csrfValue };
     if (admin && cookie) headers.Cookie = cookie;
     if (key) headers.Authorization = `Bearer ${key}`;
-    const req = https.request({ hostname: '127.0.0.1', servername: 'localhost', port, path, ca, rejectUnauthorized: true, method: data ? 'POST' : 'GET', headers: { ...headers, Host: `localhost:${port}` } }, res => {
+    const req = https.request({ hostname: '127.0.0.1', servername: hostname === 'localhost' ? 'localhost' : '', port, path, ca, rejectUnauthorized: true, method: data ? 'POST' : 'GET', headers: { ...headers, Host: `${hostname}:${port}` } }, res => {
       let raw = '';
       res.on('data', chunk => raw += chunk);
       res.on('end', () => resolveRequest({ status: res.statusCode, headers: res.headers, body: res.headers['content-type']?.includes('application/json') ? JSON.parse(raw) : raw }));
@@ -82,6 +82,11 @@ try {
   await compose(['cp', 'proxy:/data/caddy/pki/authorities/local/root.crt', join(directory, 'root.crt')]);
   ca = readFileSync(join(directory, 'root.crt'));
   await ready();
+  assert.equal((await request('/health', undefined, {hostname:'127.0.0.1'})).status,200);
+  const ipLogin = await request('/api/login', {password}, {hostname:'127.0.0.1',requestOrigin:`https://127.0.0.1:${port}`});
+  assert.equal(ipLogin.status,200);
+  assert.equal(ipLogin.headers['access-control-allow-origin'],`https://127.0.0.1:${port}`);
+  console.log('PASS: 127.0.0.1 HTTPS certificate, login and CORS origin');
   const page = await request('/tisch/1');
   assert.equal(page.status, 200); assert.match(page.body, /Billardmanager/);
   assert.match(page.headers['strict-transport-security'], /max-age=/);

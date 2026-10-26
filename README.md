@@ -83,6 +83,12 @@ Der Stack wird mit `docker compose up -d --build --wait` gestartet und bleibt an
 
 Die lokale Standardeinstellung ist `https://localhost` (nur auf dem Laptop erreichbar). Die einmalig erzeugten Zugangsdaten liegen bei der betreuten Ersteinrichtung in der ignorierten Datei `secrets/admin-zugang.txt`; diese Datei vertraulich behandeln und das Passwort in einen Passwortmanager übernehmen. Die Datei gehört nicht in Git oder Backups ohne Verschlüsselung.
 
+Alternativ ist `https://127.0.0.1` erreichbar; Caddy stellt dafür ebenfalls ein lokales Zertifikat aus. Die API erlaubt den konfigurierten `APP_ORIGIN` sowie `localhost` und `127.0.0.1` mit demselben Protokoll und Port. CORS-Preflights erlauben ausschließlich GET/POST und die Header Content-Type, Authorization und X-CSRF-Token; fremde Origins erhalten keine Freigabe. Der CSRF-Schutz bleibt aktiv. Cookies und Kiosk-Schlüssel sind browserseitig an den jeweiligen Host gebunden: beim Wechsel zwischen den Adressen separat anmelden beziehungsweise die vollständige Kiosk-Adresse öffnen. Es gibt keine Freigabe beliebiger Ports oder fremder Websites.
+
+Bei Änderungen am eingebundenen `Caddyfile` zusätzlich `docker compose exec -T proxy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile` ausführen. Ein Image-Neubau allein lädt eine geänderte Proxy-Konfiguration nicht neu.
+
+Die blau-schwarze Oberfläche orientiert sich an der [Vereinswebsite](https://www.billard-pfaffenhofen.de/). Das Original-Vereinslogo wird lokal ausgeliefert; die Herkunft ist unter `public/assets/README.md` dokumentiert.
+
 - Admin-Passwort nur als scrypt-Hash mit zufälligem Salt. Zufällige Sitzungstoken, HttpOnly-/SameSite=Strict-Cookies und unter HTTPS Secure-Cookies; Sitzungen laufen nach acht Stunden ab und verschwinden bei Neustart.
 - Origin-Prüfung für alle Schreibzugriffe und zusätzlicher CSRF-Token für Admin-Sitzungen. Kein CORS. Parametrisierte SQL-Anweisungen, Eingabevalidierung, Request-Größenlimit, CSP und HTML-Escaping.
 - Nach zehn Anmeldeversuchen pro Quelladresse für 15 Minuten gesperrt. Hinter Caddy wird absichtlich dessen Adresse verwendet: damit gilt ein gemeinsames Login-Limit für das ganze Vereinsnetz. Ein Angreifer im Netz kann dadurch vorübergehend Admin-Anmeldungen blockieren. Tischbetrieb bleibt unabhängig davon. Nur ein App-Prozess; Sitzungen und Limits sind im Speicher.

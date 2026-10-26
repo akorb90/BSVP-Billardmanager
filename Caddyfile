@@ -1,4 +1,9 @@
-{$BILLARD_HOST:localhost} {
+{
+    # IP clients generally do not send SNI; serve the loopback certificate.
+    default_sni 127.0.0.1
+}
+
+{$BILLARD_HOST:localhost}, 127.0.0.1 {
     tls internal
     header Strict-Transport-Security "max-age=31536000"
     reverse_proxy app:3000
