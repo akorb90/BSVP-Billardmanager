@@ -99,7 +99,7 @@ try {
   assert.equal((await request('/api/events', event, { requestOrigin: 'https://example.invalid' })).status, 403);
   assert.equal((await request('/api/events', event)).status, 201);
   assert.equal((await request('/api/matches', { event_id: 1, player_a: 'Test A', player_b: 'Test B', discipline: '9-Ball', target: 2, first: 'a',pin:'012345' })).status, 201);
-  assert.equal((await request('/api/matches/1/start', { table_no: 1, version: 0 })).status, 200);
+  assert.equal((await request('/api/matches/1/start',{lag_winner:'a',first:'a', table_no: 1, version: 0 })).status, 200);
   const kiosk = { admin:false,key:(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token };
   assert.equal((await request('/api/tables/2', undefined, kiosk)).status, 200);
   const scored = await request('/api/matches/1/score', { side: 'a', delta: 1, version: 1 }, kiosk);

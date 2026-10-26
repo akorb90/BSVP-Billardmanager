@@ -23,8 +23,8 @@ test('PIN schützt Partien, widerruft Sitzungen und begrenzt Versuche persistent
     for(const pin of [undefined,123456,'12345','1234567','abcdef','１２３４５６']) assert.equal((await call('/api/matches',{...fields,pin})).status,400);
     assert.equal((await call('/api/matches',{...fields,pin:'012345'})).status,201);
     await call('/api/matches',{...fields,pin:'654321'});
-    await call('/api/matches/1/start',{table_no:1,version:0});
-    await call('/api/matches/2/start',{table_no:2,version:0});
+    await call('/api/matches/1/start',{lag_winner:'a',first:'a',table_no:1,version:0});
+    await call('/api/matches/2/start',{lag_winner:'a',first:'a',table_no:2,version:0});
     for(const token of ['',config.tables[0]]) {
       assert.equal((await call('/api/tables/1',undefined,token)).status,401);
       assert.equal((await call('/api/matches/1/score',{version:1,side:'a',delta:1},token)).status,403);

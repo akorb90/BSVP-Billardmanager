@@ -21,7 +21,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 3) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 4) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -36,6 +36,18 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     ALTER TABLE matches ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0;
     CREATE TABLE pin_attempts(table_no INTEGER PRIMARY KEY, count INTEGER NOT NULL, until INTEGER NOT NULL);
     PRAGMA user_version=3; COMMIT;`);
+  if (schema < 4) {
+    db.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE matches ADD COLUMN lag_winner TEXT CHECK(lag_winner IN ('a','b'));
+      ALTER TABLE matches ADD COLUMN setup_done INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE matches ADD COLUMN started_at INTEGER;
+      ALTER TABLE matches ADD COLUMN running_since INTEGER;
+      ALTER TABLE matches ADD COLUMN rack_since INTEGER;
+      ALTER TABLE matches ADD COLUMN elapsed_ms INTEGER NOT NULL DEFAULT 0;
+      UPDATE matches SET setup_done=1 WHERE status<>'planned';
+      UPDATE matches SET started_at=CAST(unixepoch('subsec')*1000 AS INTEGER),running_since=CAST(unixepoch('subsec')*1000 AS INTEGER),rack_since=CAST(unixepoch('subsec')*1000 AS INTEGER) WHERE status='live';
+      PRAGMA user_version=4; COMMIT;`);
+  }
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
   const equal = (a, b) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
@@ -58,7 +70,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
     return {name,kind,date};
   };
-  const publicMatch = m => { if (!m) return m; const {pin_hash,auth_version,...safe}=m; return {...safe,pin_set:!!pin_hash,breaker:breaker(m)}; };
+  const publicMatch = m => { if (!m) return m; const {pin_hash,auth_version,...safe}=m; return {...safe,pin_set:!!pin_hash,breaker:breaker(m),server_now:Date.now()}; };
   const encodePin = pin => {
     if (typeof pin !== 'string' || !/^[0-9]{6}$/.test(pin)) throw fail(400,'Die PIN muss genau sechs Ziffern enthalten.');
     const salt=randomBytes(16).toString('hex');
@@ -175,15 +187,15 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       }
       if (req.method === 'POST' && url.pathname === '/api/matches') {
         admin(); const event = integer(body.event_id, 1, 1e9), target = integer(body.target, 1, 99);
-        if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400, 'Ungültige Spielregel.');
+        if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || (body.first!==undefined && !['a','b'].includes(body.first))) throw fail(400, 'Ungültige Spielregel.');
         const id=transaction(() => {
           openEvent(event); const pinHash=encodePin(body.pin); const id=nextId('matches');
-          db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,pinHash);
+          db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first || 'a',pinHash);
           touchEvent(event); return id;
         });
         return json(res, 201, { id });
       }
-      const matchRoute = /^\/api\/matches\/(\d+)\/(start|score|finish|edit|delete)$/.exec(url.pathname);
+      const matchRoute = /^\/api\/matches\/(\d+)\/(start|begin|score|finish|edit|delete)$/.exec(url.pathname);
       if (req.method === 'POST' && matchRoute) {
         const id = Number(matchRoute[1]), action = matchRoute[2];
         const result = transaction(() => {
@@ -192,6 +204,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
           if (['start','edit','delete'].includes(action)) admin(); else if (!session && !authorizedTablet(tabletAuth,m)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
           openEvent(m.event_id);
           if (body.version !== m.version) throw fail(409, 'Der Spielstand wurde zwischenzeitlich geändert. Anzeige aktualisiert; bitte erneut prüfen.');
+          const tick=Date.now();
           if (action === 'delete') {
             db.prepare('DELETE FROM matches WHERE id=?').run(id);
           } else if (action === 'edit') {
@@ -204,18 +217,34 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
             if(body.pin !== undefined && body.pin !== '') db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
             db.prepare('UPDATE matches SET auth_version=auth_version+1 WHERE id=?').run(id);
+            const lag=body.lag_winner === undefined ? m.lag_winner : body.lag_winner;
+            if(lag!==null && !['a','b'].includes(lag)) throw fail(400,'Ungültiger Gewinner des Ausstoßens.');
+            db.prepare('UPDATE matches SET lag_winner=? WHERE id=?').run(lag,id);
+            if(status==='planned') db.prepare('UPDATE matches SET setup_done=0,lag_winner=NULL,started_at=NULL,running_since=NULL,rack_since=NULL,elapsed_ms=0 WHERE id=?').run(id);
+            else if(status==='finished' && m.running_since!==null) db.prepare('UPDATE matches SET elapsed_ms=?,running_since=NULL,rack_since=NULL WHERE id=?').run(m.elapsed_ms+Math.max(0,tick-m.running_since),id);
+            else if(status==='live' && m.status==='finished' && m.setup_done) db.prepare('UPDATE matches SET running_since=?,rack_since=?,started_at=COALESCE(started_at,?) WHERE id=?').run(tick,tick,tick,id);
+            else if(status==='live' && m.running_since!==null && (a!==m.a || b!==m.b)) db.prepare('UPDATE matches SET rack_since=? WHERE id=?').run(tick,id);
             if(event!==m.event_id) touchEvent(event);
           } else if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');
             const number = integer(body.table_no, 1, 8);
             if (db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409, 'Dieser Tisch ist belegt.');
             db.prepare("UPDATE matches SET table_no=?,status='live',version=version+1 WHERE id=?").run(number, id);
+            if(body.lag_winner!==undefined || body.first!==undefined) {
+              if(!['a','b'].includes(body.lag_winner) || !['a','b'].includes(body.first)) throw fail(400,'Ausstoßen und erstes Break auswählen.');
+              db.prepare('UPDATE matches SET lag_winner=?,first=?,setup_done=1,started_at=?,running_since=?,rack_since=? WHERE id=?').run(body.lag_winner,body.first,tick,tick,tick,id);
+            }
+          } else if (action === 'begin') {
+            if(m.status!=='live' || m.setup_done) throw fail(409,'Die Partie ist bereits gestartet oder keinem Tisch zugewiesen.');
+            if(!['a','b'].includes(body.lag_winner) || !['a','b'].includes(body.first)) throw fail(400,'Ausstoßen und erstes Break auswählen.');
+            db.prepare('UPDATE matches SET lag_winner=?,first=?,setup_done=1,started_at=?,running_since=?,rack_since=?,version=version+1 WHERE id=?').run(body.lag_winner,body.first,tick,tick,tick,id);
           } else if (action === 'score') {
+            if(!m.setup_done) throw fail(409,'Zuerst Ausstoßen und erstes Break bestätigen.');
             let next; try { next = changeScore(m, body.side, body.delta); } catch(e) { throw fail(400, e.message); }
-            db.prepare('UPDATE matches SET a=?,b=?,version=version+1 WHERE id=?').run(next.a,next.b,id);
+            db.prepare('UPDATE matches SET a=?,b=?,rack_since=?,running_since=COALESCE(running_since,?),started_at=COALESCE(started_at,?),version=version+1 WHERE id=?').run(next.a,next.b,Math.max(next.a,next.b)===m.target?null:tick,tick,tick,id);
           } else {
-            if (m.status !== 'live' || Math.max(m.a,m.b) !== m.target) throw fail(409, 'Das Spielziel muss erreicht sein.');
-            db.prepare("UPDATE matches SET status='finished',version=version+1 WHERE id=?").run(id);
+            if (!m.setup_done || m.status !== 'live' || Math.max(m.a,m.b) !== m.target) throw fail(409, 'Das Spielziel muss erreicht sein.');
+            db.prepare("UPDATE matches SET status='finished',elapsed_ms=?,running_since=NULL,rack_since=NULL,version=version+1 WHERE id=?").run(m.elapsed_ms+(m.running_since===null?0:Math.max(0,tick-m.running_since)),id);
           }
           touchEvent(m.event_id);
           log(session ? 'admin' : `table:${table}`, action, id, {before:m,request:body});

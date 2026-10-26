@@ -27,7 +27,7 @@ test('Veranstaltungen bleiben bis zum Gesamtabschluss editierbar und löschbar',
     assert.equal((await request(`/api/events/${eid}/edit`,{...e,name:'Umbenannt'},false)).status,401);
     assert.equal((await request(`/api/matches/${mid}/edit`,{...m},false)).status,401);
     assert.equal((await request(`/api/events/${eid}/edit`,{...e,name:'Umbenannt'})).status,200);
-    await request(`/api/matches/${mid}/start`,{version:m.version,table_no:1});
+    await request(`/api/matches/${mid}/start`,{lag_winner:'a',first:'a',version:m.version,table_no:1});
     tabletToken=(await request('/api/tables/1/login',{pin:'012345'},false)).body.token;
     await request(`/api/matches/${mid}/score`,{version:1,side:'a',delta:1},false);
     await request(`/api/matches/${mid}/finish`,{version:2},false);
@@ -64,7 +64,7 @@ test('Veranstaltungen bleiben bis zum Gesamtabschluss editierbar und löschbar',
     assert.equal((await request(`/api/matches/${movable}/edit`,{...other,event_id:eid})).status,409);
     const destination=await createEvent('Ziel');
     assert.equal((await request(`/api/matches/${movable}/edit`,{...other,event_id:destination})).status,200);
-    other=await match(movable); await request(`/api/matches/${movable}/start`,{version:other.version,table_no:1});
+    other=await match(movable); await request(`/api/matches/${movable}/start`,{lag_winner:'a',first:'a',version:other.version,table_no:1});
     const doomed=await event(destination);
     assert.equal((await request(`/api/events/${destination}/delete`,{version:doomed.version})).status,200);
     assert.equal((await request('/api/tables/1',undefined,false)).body.match,null);
@@ -74,7 +74,7 @@ test('Veranstaltungen bleiben bis zum Gesamtabschluss editierbar und löschbar',
     assert.equal((await event(eid)).status,'closed');
     assert.equal((await match(mid)).b,1);
     const db=new DatabaseSync(path);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version,3);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version,4);
     const deleted=db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get();
     assert.equal(JSON.parse(deleted.detail).matches[0].id,movable);
     db.close();

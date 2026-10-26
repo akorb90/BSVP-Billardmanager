@@ -5,11 +5,11 @@ Lokale Webanwendung für einen Billardverein in Bayern. Node.js 24 LTS, SQLite u
 ## Funktionsumfang
 
 - Liga-Spieltage und Turniere mit Name und Datum anlegen.
-- Begegnungen manuell planen: zwei Spieler, 8-/9-/10-Ball, Gewinnspiele und erstes Break.
+- Begegnungen manuell planen: zwei Spieler, 8-/9-/10-Ball, Gewinnspiele und Tablet-PIN. Ausstoßen und erstes Break werden vor Ort abgefragt.
 - Begegnungen einem von acht freien Tischen zuweisen; Doppelbelegung wird verhindert.
 - Feste Kiosk-Endpunkte `/tisch/1` bis `/tisch/8`, Punkte +/−, Wechselbreak und automatische Aktualisierung alle drei Sekunden.
 - Ergebnisse nach Erreichen des Spielziels zentral oder direkt am zugeordneten Tablet bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
-- Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Punkteübersicht und Ergebnisse. Die Punkteübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
+- Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung und Ergebnisse. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
 
 **Bewusste Draft-Grenzen:** keine automatische Turnierauslosung, Gruppen-/KO-Bäume, Liga-Mannschaftswertung, Spieler-Stammdaten oder Verbandsregelwerke. Jedes gewonnene Rack zählt einen Punkt. Kein 14/1 oder Karambol. Kein Offline-Schreiben: bei Verbindungsverlust bleiben Änderungen gesperrt. Ergebnisse bleiben für Administratoren bis zum Gesamtabschluss der Veranstaltung korrigierbar; danach sind sie gesperrt. Tischgebühren kommen als Feature 1 später hinzu. Es gibt zunächst ein gemeinsames Administratorkonto; personenbezogene Admin-Auditierung benötigt später individuelle Konten.
@@ -52,11 +52,19 @@ Die Tablet-Anmeldung verwendet ein zufälliges Sitzungstoken im tabgebundenen se
 
 Nach fünf erfolglosen PIN-Versuchen innerhalb von 15 Minuten ist die Anmeldung an diesem Tisch bis zum Ende des Zeitfensters gesperrt. Dieses Limit überlebt App-Neustarts; andere Tische und bestehende Sitzungen bleiben nutzbar. Unterschiedliche PINs für Partien wählen und vertraulich behandeln. Ein angemeldeter Administrator kann Tischseiten ohne PIN öffnen. Am gemeinsam genutzten Tablet daher keine Admin-Sitzung offen lassen.
 
+### Spielvorbereitung und Zeitmessung
+
+Nach **Tisch zuweisen** ist der Tisch reserviert. Nach der PIN-Anmeldung fragt die Tischseite zuerst **Wer hat das Ausstoßen (Lag) gewonnen?**, danach **Wer hat das erste Break?** Beide Spieler können unabhängig gewählt werden. Mit der zweiten Bestätigung beginnt die Partie; vorher sind Punkte gesperrt. Administratoren können diese Schritte ebenfalls über die Tischseite durchführen. Die Auswahl wird gespeichert und bleibt bis zum Veranstaltungsabschluss administrativ korrigierbar.
+
+Tablet und Tischübersicht zeigen **Partie** (Gesamtspielzeit) und **Runde** (aktuelle Rackdauer) sekundengenau. Jede Punkteänderung, auch eine Korrektur, startet die aktuelle Rundenzeit neu; beim Erreichen des Spielziels entfällt die nächste Rundenzeit. Die Gesamtzeit endet bei „Spiel abschließen“. Eine Wiederaufnahme setzt die Gesamtzeit fort, ohne die zwischenzeitliche Unterbrechung mitzuzählen; Zurücksetzen auf „Geplant“ löscht die Zeitmessung und verlangt die Vorbereitung erneut. Neuladen und App-Neustarts setzen laufende Zeiten nicht zurück; währenddessen verstrichene Zeit zählt mit.
+
+Die Schema-4-Migration erhält bestehende Ergebnisse und Break-Reihenfolgen. Bereits laufende Bestands-Partien werden ab dem Update zeitlich erfasst; frühere Spielzeit ist nicht rekonstruierbar. Für bereits abgeschlossene Bestands-Partien wird keine Dauer erfunden. Neue Partien beginnen immer mit der zweistufigen Vorbereitung.
+
 ### Spiel abschließen
 
-In der zentralen Tisch-/Punkteübersicht sowie direkt am Tablet ist die Schaltfläche **Spiel abschließen** sichtbar. Sie wird aktiv, sobald ein Spieler das konfigurierte Spielziel erreicht. Im Dialog den Endstand prüfen und **Ergebnis speichern** wählen; **Zurück zur Partie** lässt den Stand unverändert und ermöglicht weitere Korrekturen. Der Partienabschluss wird im Auditprotokoll dem Administrator oder der Tisch-ID zugeordnet und gibt den Tisch für die nächste Begegnung frei. Die Verwaltung kann die Partie bis zum Gesamtabschluss der Veranstaltung weiter bearbeiten oder löschen. Das Tablet wechselt automatisch zur Warteanzeige. Gleichzeitige Abschlüsse oder zwischenzeitliche Punktänderungen werden durch Versionsprüfung abgefangen. Ein vorzeitiger Abbruch unterhalb des Spielziels ist weiterhin nicht vorgesehen.
+In der zentralen Tischübersicht sowie direkt am Tablet ist die Schaltfläche **Spiel abschließen** sichtbar. Sie wird aktiv, sobald ein Spieler das konfigurierte Spielziel erreicht. Im Dialog den Endstand prüfen und **Ergebnis speichern** wählen; **Zurück zur Partie** lässt den Stand unverändert und ermöglicht weitere Korrekturen. Der Partienabschluss wird im Auditprotokoll dem Administrator oder der Tisch-ID zugeordnet und gibt den Tisch für die nächste Begegnung frei. Die Verwaltung kann die Partie bis zum Gesamtabschluss der Veranstaltung weiter bearbeiten oder löschen. Das Tablet wechselt automatisch zur Warteanzeige. Gleichzeitige Abschlüsse oder zwischenzeitliche Punktänderungen werden durch Versionsprüfung abgefangen. Ein vorzeitiger Abbruch unterhalb des Spielziels ist weiterhin nicht vorgesehen.
 
-Die Spieltagsverwaltung ist direkt über `/#spieltage`, die Punkteübersicht über `/#punkte` und das Archiv über `/#ergebnisse` erreichbar. Formulareingaben bleiben beim Menüwechsel innerhalb der Seite erhalten; sie werden erst beim erfolgreichen Speichern zurückgesetzt und nicht über einen Browser-Neustart gespeichert.
+Die Spieltagsverwaltung ist direkt über `/#spieltage`, die Tischübersicht über `/#uebersicht` und das Archiv über `/#ergebnisse` erreichbar. Formulareingaben bleiben beim Menüwechsel innerhalb der Seite erhalten; sie werden erst beim erfolgreichen Speichern zurückgesetzt und nicht über einen Browser-Neustart gespeichert.
 
 ### Veranstaltungen bearbeiten, löschen und endgültig abschließen
 
@@ -143,7 +151,7 @@ Restore in eine frische Installation mit zuvor geprüfter Sicherung: Stack erste
 Tablets / Adminbrowser ── HTTPS :443 ── Caddy ── App :3000 ── SQLite-Volume
 ```
 
-Das Schema verwendet Version 3 (`PRAGMA user_version`). Die Migration von Version 2 ergänzt PIN-Hashes, eine Berechtigungsrevision und persistente PIN-Versuchslimits. Bestehende Partien erhalten keine automatische PIN; diese wird bei Bedarf im Adminbereich nachgetragen. Eine transaktionale Migration übernimmt bestehende Version-1-Daten: Veranstaltungen erhalten den Status `open` und eine Versionsnummer, Spieler und Ergebnisse bleiben unverändert. ID-Zähler verhindern, dass nach dem Löschen alte IDs wiederverwendet werden. Vor Migrationen eine konsistente Sicherung erstellen. Ältere App-Versionen dürfen nicht gegen das migrierte Schema gestartet werden; für einen Rollback passende App-Version und Datenbank-Backup zusammen wiederherstellen. SQLite passt zu acht Tischen und einem App-Prozess; bei Mehrprozess-/Mehrstandortbetrieb auf PostgreSQL migrieren. Die Tisch-ID ist bereits auf 1–8 begrenzt und kann später mit gebührenpflichtigen Tischbelegungen verknüpft werden.
+Das Schema verwendet Version 4 (`PRAGMA user_version`). Die Migration von Version 2 ergänzt PIN-Hashes, eine Berechtigungsrevision und persistente PIN-Versuchslimits. Bestehende Partien erhalten keine automatische PIN; diese wird bei Bedarf im Adminbereich nachgetragen. Eine transaktionale Migration übernimmt bestehende Version-1-Daten: Veranstaltungen erhalten den Status `open` und eine Versionsnummer, Spieler und Ergebnisse bleiben unverändert. ID-Zähler verhindern, dass nach dem Löschen alte IDs wiederverwendet werden. Vor Migrationen eine konsistente Sicherung erstellen. Ältere App-Versionen dürfen nicht gegen das migrierte Schema gestartet werden; für einen Rollback passende App-Version und Datenbank-Backup zusammen wiederherstellen. SQLite passt zu acht Tischen und einem App-Prozess; bei Mehrprozess-/Mehrstandortbetrieb auf PostgreSQL migrieren. Die Tisch-ID ist bereits auf 1–8 begrenzt und kann später mit gebührenpflichtigen Tischbelegungen verknüpft werden.
 
 Nächste fachliche Entscheidungen: konkrete bayerische Liga-/Mannschaftsregeln, Turniermodus (Gruppen/Einfach-/Doppel-KO), Spielerregister sowie Berechtigungen für Schiedsrichter und Vereinsverwaltung.
 
