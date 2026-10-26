@@ -77,6 +77,12 @@ Nach dem Lauf werden ausschließlich die Container und Volumes dieses Testprojek
 
 ## Sicherheit und Betrieb
 
+### Dauerhaft aktive lokale Prüfinstanz
+
+Der Stack wird mit `docker compose up -d --build --wait` gestartet und bleibt anschließend aktiv. Nach Änderungen denselben Befehl im Checkout ausführen: Compose ersetzt die betroffenen Container und erhält die Datenvolumes. Docker Desktop muss laufen; `restart: unless-stopped` startet die Dienste nach einem Neustart der Engine erneut, sofern sie nicht ausdrücklich gestoppt wurden. Während einer Aktualisierung kann die Anwendung kurz nicht erreichbar sein; Admin-Sitzungen werden beim App-Neustart ungültig.
+
+Die lokale Standardeinstellung ist `https://localhost` (nur auf dem Laptop erreichbar). Die einmalig erzeugten Zugangsdaten liegen bei der betreuten Ersteinrichtung in der ignorierten Datei `secrets/admin-zugang.txt`; diese Datei vertraulich behandeln und das Passwort in einen Passwortmanager übernehmen. Die Datei gehört nicht in Git oder Backups ohne Verschlüsselung.
+
 - Admin-Passwort nur als scrypt-Hash mit zufälligem Salt. Zufällige Sitzungstoken, HttpOnly-/SameSite=Strict-Cookies und unter HTTPS Secure-Cookies; Sitzungen laufen nach acht Stunden ab und verschwinden bei Neustart.
 - Origin-Prüfung für alle Schreibzugriffe und zusätzlicher CSRF-Token für Admin-Sitzungen. Kein CORS. Parametrisierte SQL-Anweisungen, Eingabevalidierung, Request-Größenlimit, CSP und HTML-Escaping.
 - Nach zehn Anmeldeversuchen pro Quelladresse für 15 Minuten gesperrt. Hinter Caddy wird absichtlich dessen Adresse verwendet: damit gilt ein gemeinsames Login-Limit für das ganze Vereinsnetz. Ein Angreifer im Netz kann dadurch vorübergehend Admin-Anmeldungen blockieren. Tischbetrieb bleibt unabhängig davon. Nur ein App-Prozess; Sitzungen und Limits sind im Speicher.
