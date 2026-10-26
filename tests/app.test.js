@@ -8,7 +8,7 @@ import { createApp } from '../src/server.js';
 import { changeScore, breaker } from '../src/domain.js';
 
 test('Wechselbreak folgt der Rackzahl, einschließlich Korrekturen', () => {
-  const initial = { a:0, b:0, first:'b', target:2, status:'live' };
+  const initial = { a:0, b:0, first:'b',pin:'012345', target:2, status:'live' };
   assert.equal(breaker(initial), 'b');
   const next = changeScore(initial,'a',1);
   assert.equal(breaker(next), 'a');
@@ -45,12 +45,12 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-99-99'})).status,400);
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-02-30'})).status,400);
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-26'})).status,201);
-    for (let i=0;i<2;i++) assert.equal((await request('/api/matches',{event_id:1,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:2,first:'b'})).status,201);
+    for (let i=0;i<2;i++) assert.equal((await request('/api/matches',{event_id:1,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:2,first:'b',pin:'012345'})).status,201);
     assert.equal((await request('/api/matches/1/start',{table_no:1,version:0})).status,200);
     assert.equal((await request('/api/matches/2/start',{table_no:1,version:0})).status,409);
     assert.equal((await request('/api/tables/1',undefined,{admin:false})).status,401);
-    assert.equal((await request('/api/tables/2',undefined,{admin:false,key:config.tables[0]})).status,401);
-    const kiosk = { admin:false,key:config.tables[0] };
+    assert.equal((await request('/api/tables/2',undefined,{admin:false,key:config.tables[0]})).status,200);
+    const kiosk = { admin:false,key:(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token };
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match.breaker,'b');
     assert.equal((await request('/api/matches/1/score',{side:'a',delta:1,version:1},{admin:false,key:config.tables[1]})).status,403);
     const simultaneous = await Promise.all([request('/api/matches/1/score',{side:'a',delta:1,version:1},kiosk),request('/api/matches/1/score',{side:'b',delta:1,version:1},kiosk)]);
@@ -66,11 +66,13 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
     assert.equal((await request('/api/matches/1/finish',{version:2},kiosk)).status,409);
     assert.equal((await request('/api/matches/1/finish',{version:3},kiosk)).status,200);
     assert.equal((await request('/api/matches/1/finish',{version:3})).status,409);
-    assert.equal((await request('/api/matches/1/score',{side,delta:-1,version:4},kiosk)).status,400);
+    assert.equal((await request('/api/matches/1/score',{side,delta:-1,version:4},kiosk)).status,403);
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match,null);
     assert.equal((await request('/api/matches/2/start',{table_no:1,version:0})).status,200);
     await new Promise(resolve=>server.close(resolve));
     await start(); cookie='';
+    assert.equal((await request('/api/tables/1',undefined,kiosk)).status,401);
+    kiosk.key=(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token;
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match.id,2);
     assert.equal((await request('/api/admin')).status,401);
     const relogin = await request('/api/login',{password:'test-password'});

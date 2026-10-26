@@ -21,7 +21,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 2) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 3) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -31,14 +31,19 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       INSERT INTO entity_ids VALUES('matches', (SELECT COALESCE(MAX(id),0) FROM matches));
       PRAGMA user_version=2; COMMIT;`);
   }
-  const sessions = new Map(), attempts = new Map();
+  if (schema < 3) db.exec(`BEGIN IMMEDIATE;
+    ALTER TABLE matches ADD COLUMN pin_hash TEXT;
+    ALTER TABLE matches ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE pin_attempts(table_no INTEGER PRIMARY KEY, count INTEGER NOT NULL, until INTEGER NOT NULL);
+    PRAGMA user_version=3; COMMIT;`);
+  const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
   const equal = (a, b) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
   const json = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(body)); };
   const fail = (status, message) => Object.assign(new Error(message), { status });
   const text = (v, max = 100) => { if (typeof v !== 'string' || !v.trim() || v.trim().length > max) throw fail(400, 'Bitte gültige Texte eingeben.'); return v.trim(); };
   const integer = (v, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw fail(400, 'Ungültiger Zahlenwert.'); return v; };
-  const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail));
+  const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
   const openEvent = id => {
@@ -53,12 +58,20 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
     return {name,kind,date};
   };
-  const publicMatch = m => m && ({ ...m, breaker: breaker(m) });
+  const publicMatch = m => { if (!m) return m; const {pin_hash,auth_version,...safe}=m; return {...safe,pin_set:!!pin_hash,breaker:breaker(m)}; };
+  const encodePin = pin => {
+    if (typeof pin !== 'string' || !/^[0-9]{6}$/.test(pin)) throw fail(400,'Die PIN muss genau sechs Ziffern enthalten.');
+    const salt=randomBytes(16).toString('hex');
+    return salt+':'+scryptSync(pin,salt,64).toString('hex');
+  };
+  const authorizedTablet = (auth,m) => auth && m && m.status==='live' && auth.id===m.id && auth.table===m.table_no && auth.revision===m.auth_version;
+  const liveAt = number => db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.table_no=? AND m.status='live'").get(number);
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Cache-Control', 'no-store');
     const now = Date.now();
     for (const [key, value] of sessions) if (value.expires < now) sessions.delete(key);
+    for (const [key,value] of tabletSessions) if(value.expires < now) tabletSessions.delete(key);
     for (const [key, value] of attempts) if (value.until < now) attempts.delete(key);
     try {
       const url = new URL(req.url, origin);
@@ -81,7 +94,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       const session = sid && sessions.get(hash(sid));
       let table = 0;
       const token = req.headers.authorization?.replace(/^Bearer /, '') || '';
-      if (token) table = config.tables.findIndex(k => equal(k, token)) + 1;
+      const tabletAuth = tabletSessions.get(hash(token));
+      if (tabletAuth) table = tabletAuth.table;
       const admin = () => { if (!session) throw fail(401, 'Bitte anmelden.'); };
       let body = {};
       if (req.method === 'POST') {
@@ -108,10 +122,30 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
       if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
+      const pinRoute = /^\/api\/tables\/([1-8])\/login$/.exec(url.pathname);
+      if (req.method==='POST' && pinRoute) {
+        const number=Number(pinRoute[1]);
+        const attempt=db.prepare('SELECT * FROM pin_attempts WHERE table_no=?').get(number);
+        if(attempt && attempt.until>now && attempt.count>=5) throw fail(429,'Zu viele PIN-Versuche. Bitte 15 Minuten warten.');
+        const count=attempt && attempt.until>now ? attempt.count+1 : 1, until=attempt && attempt.until>now ? attempt.until : now+15*60_000;
+        db.prepare('INSERT INTO pin_attempts VALUES(?,?,?) ON CONFLICT(table_no) DO UPDATE SET count=excluded.count,until=excluded.until').run(number,count,until);
+        const m=liveAt(number);
+        const [salt,expected]=(m?.pin_hash || 'missing:invalid').split(':');
+        const actual=scryptSync(typeof body.pin==='string' && /^[0-9]{6}$/.test(body.pin) ? body.pin : '',salt,64).toString('hex');
+        if(!m?.pin_hash || !equal(actual,expected)) throw fail(401,'PIN ungültig oder keine Partie mit PIN gestartet.');
+        db.prepare('DELETE FROM pin_attempts WHERE table_no=?').run(number);
+        // Bound memory usage even if an authorized client repeatedly logs in.
+        const existing=[...tabletSessions].filter(([,v])=>v.table===number);
+        if(existing.length>=16) tabletSessions.delete(existing[0][0]);
+        const token=randomBytes(32).toString('hex');
+        tabletSessions.set(hash(token),{id:m.id,table:number,revision:m.auth_version,expires:now+8*3600_000});
+        return json(res,200,{token});
+      }
       const tableRoute = /^\/api\/tables\/([1-8])$/.exec(url.pathname);
       if (req.method === 'GET' && tableRoute) {
-        const number = Number(tableRoute[1]); if (!session && table !== number) throw fail(401, 'Tischschlüssel fehlt oder ist ungültig.');
-        return json(res, 200, { match: publicMatch(db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.table_no=? AND m.status='live'").get(number)) || null });
+        const number=Number(tableRoute[1]), m=liveAt(number);
+        if(m && !session && !authorizedTablet(tabletAuth,m)) throw fail(401,'Bitte die sechsstellige PIN der Partie eingeben.');
+        return json(res,200,{match:publicMatch(m)||null});
       }
       if (req.method === 'POST' && url.pathname === '/api/events') {
         admin(); const {name,kind,date} = eventFields(body);
@@ -143,8 +177,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         admin(); const event = integer(body.event_id, 1, 1e9), target = integer(body.target, 1, 99);
         if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400, 'Ungültige Spielregel.');
         const id=transaction(() => {
-          openEvent(event); const id=nextId('matches');
-          db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first) VALUES(?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first);
+          openEvent(event); const pinHash=encodePin(body.pin); const id=nextId('matches');
+          db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,pinHash);
           touchEvent(event); return id;
         });
         return json(res, 201, { id });
@@ -155,7 +189,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         const result = transaction(() => {
           const m = db.prepare('SELECT * FROM matches WHERE id=?').get(id);
           if (!m) throw fail(404, 'Begegnung nicht gefunden.');
-          if (['start','edit','delete'].includes(action)) admin(); else if (!session && (!table || table !== m.table_no)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
+          if (['start','edit','delete'].includes(action)) admin(); else if (!session && !authorizedTablet(tabletAuth,m)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
           openEvent(m.event_id);
           if (body.version !== m.version) throw fail(409, 'Der Spielstand wurde zwischenzeitlich geändert. Anzeige aktualisiert; bitte erneut prüfen.');
           if (action === 'delete') {
@@ -168,6 +202,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
             if (status==='live' && db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)) throw fail(409,'Dieser Tisch ist belegt.');
             db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
+            if(body.pin !== undefined && body.pin !== '') db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
+            db.prepare('UPDATE matches SET auth_version=auth_version+1 WHERE id=?').run(id);
             if(event!==m.event_id) touchEvent(event);
           } else if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');

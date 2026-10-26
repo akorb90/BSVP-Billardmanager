@@ -98,10 +98,10 @@ try {
   assert.equal((await request('/api/events', event, { csrfValue: 'invalid' })).status, 403);
   assert.equal((await request('/api/events', event, { requestOrigin: 'https://example.invalid' })).status, 403);
   assert.equal((await request('/api/events', event)).status, 201);
-  assert.equal((await request('/api/matches', { event_id: 1, player_a: 'Test A', player_b: 'Test B', discipline: '9-Ball', target: 2, first: 'a' })).status, 201);
+  assert.equal((await request('/api/matches', { event_id: 1, player_a: 'Test A', player_b: 'Test B', discipline: '9-Ball', target: 2, first: 'a',pin:'012345' })).status, 201);
   assert.equal((await request('/api/matches/1/start', { table_no: 1, version: 0 })).status, 200);
-  const kiosk = { admin: false, key: config.tables[0] };
-  assert.equal((await request('/api/tables/2', undefined, kiosk)).status, 401);
+  const kiosk = { admin:false,key:(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token };
+  assert.equal((await request('/api/tables/2', undefined, kiosk)).status, 200);
   const scored = await request('/api/matches/1/score', { side: 'a', delta: 1, version: 1 }, kiosk);
   assert.equal(scored.status, 200); assert.equal(scored.body.a, 1); assert.equal(scored.body.breaker, 'b');
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 1 }, kiosk)).status, 409);
@@ -120,10 +120,14 @@ try {
   await compose(['restart', 'app']);
   await ready();
   assert.equal((await request('/api/admin')).status, 401);
+  assert.equal((await request('/api/tables/1',undefined,kiosk)).status,401);
+  kiosk.key=(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token;
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match.a, 1);
   console.log('PASS: score survives restart; previous admin session is invalid');
   await compose(['up', '-d', '--force-recreate', '--no-deps', '--wait', 'app']);
   await ready();
+  assert.equal((await request('/api/tables/1',undefined,kiosk)).status,401);
+  kiosk.key=(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token;
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match.a, 1);
   await login();
   assert.equal((await request('/api/admin')).body.events[0].name, event.name);
