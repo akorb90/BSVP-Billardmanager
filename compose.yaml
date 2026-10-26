@@ -1,0 +1,54 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: https://${BILLARD_HOST:-localhost}
+    secrets:
+      - app_config
+    volumes:
+      - billard_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:443:443"
+    environment:
+      BILLARD_HOST: ${BILLARD_HOST:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  backend:
+volumes:
+  billard_data:
+  caddy_data:
+  caddy_config:
+secrets:
+  app_config:
+    file: ./secrets/config.json

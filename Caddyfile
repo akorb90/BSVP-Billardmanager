@@ -1,0 +1,5 @@
+{$BILLARD_HOST:localhost} {
+    tls internal
+    header Strict-Transport-Security "max-age=31536000"
+    reverse_proxy app:3000
+}
