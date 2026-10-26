@@ -19,7 +19,18 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS matches(id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL REFERENCES events(id), player_a TEXT NOT NULL, player_b TEXT NOT NULL, discipline TEXT NOT NULL, target INTEGER NOT NULL CHECK(target BETWEEN 1 AND 99), first TEXT NOT NULL CHECK(first IN ('a','b')), table_no INTEGER CHECK(table_no BETWEEN 1 AND 8), a INTEGER NOT NULL DEFAULT 0, b INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned','live','finished')), version INTEGER NOT NULL DEFAULT 0);
     CREATE UNIQUE INDEX IF NOT EXISTS occupied_table ON matches(table_no) WHERE status='live';
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
-    PRAGMA user_version=1;`);
+    `);
+  const schema = db.prepare('PRAGMA user_version').get().user_version;
+  if (schema > 2) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema < 2) {
+    db.exec(`BEGIN IMMEDIATE;
+      ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
+      ALTER TABLE events ADD COLUMN version INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE entity_ids(name TEXT PRIMARY KEY, value INTEGER NOT NULL);
+      INSERT INTO entity_ids VALUES('events', (SELECT COALESCE(MAX(id),0) FROM events));
+      INSERT INTO entity_ids VALUES('matches', (SELECT COALESCE(MAX(id),0) FROM matches));
+      PRAGMA user_version=2; COMMIT;`);
+  }
   const sessions = new Map(), attempts = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
   const equal = (a, b) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
@@ -29,6 +40,19 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const integer = (v, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw fail(400, 'Ungültiger Zahlenwert.'); return v; };
   const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
+  const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
+  const openEvent = id => {
+    const event = db.prepare('SELECT * FROM events WHERE id=?').get(id);
+    if (!event) throw fail(404, 'Veranstaltung nicht gefunden.');
+    if (event.status !== 'open') throw fail(409, 'Diese Veranstaltung ist endgültig abgeschlossen.');
+    return event;
+  };
+  const touchEvent = id => db.prepare('UPDATE events SET version=version+1 WHERE id=?').run(id);
+  const eventFields = body => {
+    const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
+    if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
+    return {name,kind,date};
+  };
   const publicMatch = m => m && ({ ...m, breaker: breaker(m) });
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -87,30 +111,65 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       const tableRoute = /^\/api\/tables\/([1-8])$/.exec(url.pathname);
       if (req.method === 'GET' && tableRoute) {
         const number = Number(tableRoute[1]); if (!session && table !== number) throw fail(401, 'Tischschlüssel fehlt oder ist ungültig.');
-        return json(res, 200, { match: publicMatch(db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE table_no=? AND status='live'").get(number)) || null });
+        return json(res, 200, { match: publicMatch(db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.table_no=? AND m.status='live'").get(number)) || null });
       }
       if (req.method === 'POST' && url.pathname === '/api/events') {
-        admin(); const name = text(body.name), kind = text(body.kind), date = text(body.date);
-        const parsedDate = new Date(date);
-        if (!['Liga', 'Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
-        db.prepare('INSERT INTO events(name,kind,date) VALUES(?,?,?)').run(name, kind, date); return json(res, 201, { ok: true });
+        admin(); const {name,kind,date} = eventFields(body);
+        const id = transaction(() => { const id=nextId('events'); db.prepare('INSERT INTO events(id,name,kind,date) VALUES(?,?,?,?)').run(id,name,kind,date); return id; });
+        return json(res, 201, { id });
+      }
+      const eventRoute = /^\/api\/events\/(\d+)\/(edit|delete|close)$/.exec(url.pathname);
+      if (req.method === 'POST' && eventRoute) {
+        admin(); const id=Number(eventRoute[1]), action=eventRoute[2];
+        transaction(() => {
+          const event=openEvent(id);
+          if (body.version !== event.version) throw fail(409, 'Die Veranstaltung oder ihre Partien wurden geändert. Bitte neu prüfen.');
+          const matches=db.prepare('SELECT * FROM matches WHERE event_id=? ORDER BY id').all(id);
+          if (action === 'edit') {
+            const {name,kind,date}=eventFields(body);
+            db.prepare('UPDATE events SET name=?,kind=?,date=?,version=version+1 WHERE id=?').run(name,kind,date,id);
+          } else if (action === 'close') {
+            if (matches.some(m=>m.status !== 'finished')) throw fail(409, 'Zuerst alle Partien abschließen oder nicht gespielte Partien löschen.');
+            db.prepare("UPDATE events SET status='closed',version=version+1 WHERE id=?").run(id);
+          } else {
+            db.prepare('DELETE FROM matches WHERE event_id=?').run(id);
+            db.prepare('DELETE FROM events WHERE id=?').run(id);
+          }
+          log('admin','event:'+action,null,{before:event,matches:action==='edit'?undefined:matches,after:action==='edit'?eventFields(body):undefined});
+        });
+        return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/matches') {
         admin(); const event = integer(body.event_id, 1, 1e9), target = integer(body.target, 1, 99);
-        if (!db.prepare('SELECT id FROM events WHERE id=?').get(event)) throw fail(400, 'Veranstaltung nicht gefunden.');
         if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400, 'Ungültige Spielregel.');
-        db.prepare('INSERT INTO matches(event_id,player_a,player_b,discipline,target,first) VALUES(?,?,?,?,?,?)').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first);
-        return json(res, 201, { ok: true });
+        const id=transaction(() => {
+          openEvent(event); const id=nextId('matches');
+          db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first) VALUES(?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first);
+          touchEvent(event); return id;
+        });
+        return json(res, 201, { id });
       }
-      const matchRoute = /^\/api\/matches\/(\d+)\/(start|score|finish)$/.exec(url.pathname);
+      const matchRoute = /^\/api\/matches\/(\d+)\/(start|score|finish|edit|delete)$/.exec(url.pathname);
       if (req.method === 'POST' && matchRoute) {
         const id = Number(matchRoute[1]), action = matchRoute[2];
         const result = transaction(() => {
           const m = db.prepare('SELECT * FROM matches WHERE id=?').get(id);
           if (!m) throw fail(404, 'Begegnung nicht gefunden.');
-          if (action === 'start') admin(); else if (!session && (!table || table !== m.table_no)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
+          if (['start','edit','delete'].includes(action)) admin(); else if (!session && (!table || table !== m.table_no)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
+          openEvent(m.event_id);
           if (body.version !== m.version) throw fail(409, 'Der Spielstand wurde zwischenzeitlich geändert. Anzeige aktualisiert; bitte erneut prüfen.');
-          if (action === 'start') {
+          if (action === 'delete') {
+            db.prepare('DELETE FROM matches WHERE id=?').run(id);
+          } else if (action === 'edit') {
+            const event=integer(body.event_id,1,Number.MAX_SAFE_INTEGER); openEvent(event);
+            const target=integer(body.target,1,99), a=integer(body.a,0,target), b=integer(body.b,0,target);
+            const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,8);
+            if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
+            if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
+            if (status==='live' && db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)) throw fail(409,'Dieser Tisch ist belegt.');
+            db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
+            if(event!==m.event_id) touchEvent(event);
+          } else if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');
             const number = integer(body.table_no, 1, 8);
             if (db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409, 'Dieser Tisch ist belegt.');
@@ -122,8 +181,9 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             if (m.status !== 'live' || Math.max(m.a,m.b) !== m.target) throw fail(409, 'Das Spielziel muss erreicht sein.');
             db.prepare("UPDATE matches SET status='finished',version=version+1 WHERE id=?").run(id);
           }
-          log(session ? 'admin' : `table:${table}`, action, id, body);
-          return publicMatch(db.prepare('SELECT * FROM matches WHERE id=?').get(id));
+          touchEvent(m.event_id);
+          log(session ? 'admin' : `table:${table}`, action, id, {before:m,request:body});
+          return publicMatch(db.prepare('SELECT * FROM matches WHERE id=?').get(id)) || {ok:true};
         });
         return json(res, 200, result);
       }

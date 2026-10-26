@@ -122,6 +122,13 @@ footer span{display:none}
 .event-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
 .event-card { padding:20px; background:#101924; border:1px solid #26394d; border-radius:8px; }
 .event-card p { margin-bottom:0; }
+.entity-actions { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+.match-row>.entity-actions { flex:0 1 180px; }
+.entity-actions button { font-size:12px; padding:10px 12px; }
+.event-card small { color:#a9bdd0; }
+#admin-dialog { max-width:700px; max-height:90vh; overflow:auto; }
+#admin-dialog-error { color:#ffb7a6; }
+#admin-dialog-content small { display:block; color:#a9bdd0; margin-bottom:18px; }
 .match-actions { display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
 .match-actions a { color:#89d7ff; font-size:14px; }
 .match-actions small,.finish-bar small { color:#a9bdd0; font-size:12px; }

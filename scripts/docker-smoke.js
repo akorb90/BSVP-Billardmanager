@@ -130,6 +130,12 @@ try {
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 2 }, kiosk)).status, 200);
   assert.equal((await request('/api/matches/1/finish', { version: 3 }, kiosk)).status, 200);
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match, null);
+  const completed=(await request('/api/admin')).body.matches[0];
+  assert.equal((await request('/api/matches/1/edit',{...completed,a:0,b:2,player_b:'Korrigierter Spieler'})).status,200);
+  const eventState=(await request('/api/admin')).body.events[0];
+  assert.equal((await request('/api/events/1/close',{version:eventState.version})).status,200);
+  assert.equal((await request('/api/matches/1/delete',{version:completed.version+1})).status,409);
+  console.log('PASS: admin corrects finished result; event closure locks its matches');
   console.log('PASS: volume survives container replacement; match finishes and table becomes available');
   writeFileSync(join(directory, 'result.json'), JSON.stringify({ project, passed: true, testedAt: new Date().toISOString(), image: inspection.Image }, null, 2));
   console.log('All Docker smoke checks passed.');

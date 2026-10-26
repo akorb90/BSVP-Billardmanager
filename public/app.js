@@ -34,18 +34,18 @@ function dashboard() {
   document.querySelector('#logout').hidden = false;
   navigation.hidden = false;
   for (const link of navigation.querySelectorAll('a')) { if (link.hash === '#' + view) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current'); }
-  const visibleMatches = state.matches.filter(m => view === 'ergebnisse' ? m.status === 'finished' : view === 'spieltage' ? m.status === 'planned' : m.status === 'live');
+  const visibleMatches = state.matches.filter(m => view === 'ergebnisse' ? m.status === 'finished' : view === 'spieltage' ? true : m.status === 'live');
   root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length} / 8 Tische belegt</span></div>
     <section ${view === 'uebersicht' ? '' : 'hidden'}><div class="section-title"><h2>Unsere Tische</h2><span>Live-Spielstände · alle 3 Sekunden</span></div><section class="tables">${Array.from({length:8}, (_,i) => {
       const m = live.find(m => m.table_no === i + 1);
       return `<a href="/tisch/${i+1}" class="table-card ${m ? 'occupied' : ''}"><div><strong>TISCH ${String(i+1).padStart(2,'0')}</strong><span class="dot ${m ? 'active' : ''}"></span></div>${m ? `<p>${esc(m.discipline)} · Race to ${m.target}</p><div class="mini-score"><span>${esc(m.player_a)}</span><b>${m.a}</b></div><div class="mini-score"><span>${esc(m.player_b)}</span><b>${m.b}</b></div><small>● Break: ${esc(m[m.breaker === 'a' ? 'player_a' : 'player_b'])}</small>` : '<div class="free">Bereit für die nächste Partie</div><small>Frei verfügbar ↗</small>'}</a>`;
     }).join('')}</section></section>
     <section class="planning" ${view === 'spieltage' ? '' : 'hidden'}><div class="panel"><p class="eyebrow">01 · VERANSTALTUNG</p><h2>Spieltag anlegen</h2><form id="event"><label>Name<input name="name" maxlength="100" placeholder="z. B. Bezirksliga · 3. Spieltag" required></label><div class="form-row"><label>Format<select name="kind"><option>Liga</option><option>Turnier</option></select></label><label>Datum<input name="date" type="date" required></label></div><button class="primary">Veranstaltung anlegen</button></form></div>
-    <div class="panel"><p class="eyebrow">02 · BEGEGNUNG</p><h2>Die nächste Partie</h2><form id="match"><label>Veranstaltung<select name="event_id" required><option value="">Bitte auswählen</option>${state.events.map(e => `<option value="${e.id}">${esc(e.date)} · ${esc(e.name)} (${esc(e.kind)})</option>`).join('')}</select></label><div class="form-row"><label>Spieler A<input name="player_a" maxlength="100" required></label><label>Spieler B<input name="player_b" maxlength="100" required></label></div><div class="form-row"><label>Disziplin<select name="discipline"><option>8-Ball</option><option>9-Ball</option><option>10-Ball</option></select></label><label>Gewinnspiele<input name="target" type="number" value="5" min="1" max="99" required></label><label>Erstes Break<select name="first"><option value="a">Spieler A</option><option value="b">Spieler B</option></select></label></div><button class="primary" ${state.events.length ? '' : 'disabled'}>Begegnung planen</button></form></div></section>
-    <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div><div class="event-list">${state.events.map(e => `<article class="event-card"><span class="pill">${esc(e.kind)}</span><h3>${esc(e.name)}</h3><p>${esc(e.date)} · ${state.matches.filter(m => m.event_id === e.id).length} Partien</p></article>`).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>'}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Geplante Begegnungen' : 'Laufende Partien'}</h2><span>${visibleMatches.length} Partien</span></div><section id="matches">${matchRows(visibleMatches)}</section>`;
+    <div class="panel"><p class="eyebrow">02 · BEGEGNUNG</p><h2>Die nächste Partie</h2><form id="match"><label>Veranstaltung<select name="event_id" required><option value="">Bitte auswählen</option>${state.events.filter(e=>e.status === 'open').map(e => `<option value="${e.id}">${esc(e.date)} · ${esc(e.name)} (${esc(e.kind)})</option>`).join('')}</select></label><div class="form-row"><label>Spieler A<input name="player_a" maxlength="100" required></label><label>Spieler B<input name="player_b" maxlength="100" required></label></div><div class="form-row"><label>Disziplin<select name="discipline"><option>8-Ball</option><option>9-Ball</option><option>10-Ball</option></select></label><label>Gewinnspiele<input name="target" type="number" value="5" min="1" max="99" required></label><label>Erstes Break<select name="first"><option value="a">Spieler A</option><option value="b">Spieler B</option></select></label></div><button class="primary" ${state.events.some(e=>e.status === 'open') ? '' : 'disabled'}>Begegnung planen</button></form></div></section>
+    <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div><div class="event-list">${state.events.map(eventCard).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>'}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Alle Begegnungen' : 'Laufende Partien'}</h2><span>${visibleMatches.length} Partien</span></div><section id="matches">${matchRows(visibleMatches)}</section>`;
 }
 function matchRows(matches) {
-  return matches.map(m => `<article class="match-row"><div><span class="pill ${m.status === 'live' ? 'green' : ''}">${labels[m.status]}</span><h3>${esc(m.player_a)} <span class="muted">vs.</span> ${esc(m.player_b)}</h3><p>${esc(state.events.find(e => e.id === m.event_id)?.name)} · ${esc(m.discipline)} · Ziel ${m.target}${m.table_no ? ' · Tisch ' + m.table_no : ''}</p></div><strong class="result">${m.a} : ${m.b}</strong>${m.status === 'planned' ? `<form class="start" data-id="${m.id}"><label>Tisch<select name="table_no">${Array.from({length:8},(_,i) => `<option value="${i+1}">Tisch ${i+1}</option>`).join('')}</select></label><button>Starten ↗</button></form>` : m.status === 'live' ? `<div class="match-actions"><a href="/tisch/${m.table_no}">Punkte bearbeiten ↗</a>${finishButton(m)}${Math.max(m.a,m.b) < m.target ? '<small>Abschluss ab Erreichen des Spielziels</small>' : '<small>Spielziel erreicht · bereit zum Abschluss</small>'}</div>` : ''}</article>`).join('') || '<div class="empty">Keine Partien in dieser Ansicht.</div>';
+  return matches.map(m => `<article class="match-row"><div><span class="pill ${m.status === 'live' ? 'green' : ''}">${labels[m.status]}</span><h3>${esc(m.player_a)} <span class="muted">vs.</span> ${esc(m.player_b)}</h3><p>${esc(state.events.find(e => e.id === m.event_id)?.name)} · ${esc(m.discipline)} · Ziel ${m.target}${m.table_no ? ' · Tisch ' + m.table_no : ''}</p></div><strong class="result">${m.a} : ${m.b}</strong>${m.status === 'planned' ? `<form class="start" data-id="${m.id}"><label>Tisch<select name="table_no">${Array.from({length:8},(_,i) => `<option value="${i+1}">Tisch ${i+1}</option>`).join('')}</select></label><button>Starten ↗</button></form>` : m.status === 'live' ? `<div class="match-actions"><a href="/tisch/${m.table_no}">Punkte bearbeiten ↗</a>${finishButton(m)}${Math.max(m.a,m.b) < m.target ? '<small>Abschluss ab Erreichen des Spielziels</small>' : '<small>Spielziel erreicht · bereit zum Abschluss</small>'}</div>` : ''}${matchAdminActions(m)}</article>`).join('') || '<div class="empty">Keine Partien in dieser Ansicht.</div>';
 }
 function kiosk() {
   document.querySelector('#logout').hidden = true; navigation.hidden = true;
@@ -111,5 +111,69 @@ window.addEventListener('hashchange', () => {
   if (state) { dashboard(); restoreDrafts(); }
 });
 document.querySelector('#logout').addEventListener('click', () => mutate(() => api('/api/logout', {})));
+
+
+const adminDialog = document.querySelector('#admin-dialog');
+let pendingAdmin;
+function eventCard(event) {
+  const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
+  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3>${esc(event.name)}</h3><p>${esc(event.date)} · ${matches.length} Partien</p>${closed?'<p>Gesperrt · Ergebnisse endgültig</p>':`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button><button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button></div><small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
+}
+function matchAdminActions(m) {
+  const event=state.events.find(e=>e.id===m.event_id);
+  if(event?.status!=='open')return '<span class="pill">Veranstaltung gesperrt</span>';
+  return `<div class="entity-actions"><button data-entity="match" data-action="edit" data-id="${m.id}">Partie bearbeiten</button><button data-entity="match" data-action="delete" data-id="${m.id}">Partie löschen</button></div>`;
+}
+function field(label,name,value,type='text',extra='') {
+  return '<label>'+label+'<input name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+extra+' required></label>';
+}
+function selectField(label,name,value,options) {
+  return '<label>'+label+'<select name="'+name+'">'+options.map(([v,l])=>'<option value="'+esc(v)+'" '+(String(v)===String(value)?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select></label>';
+}
+root.addEventListener('click',e=>{
+  const button=e.target.closest('button[data-entity]'); if(!button||busy||table)return;
+  const entity=button.dataset.entity, action=button.dataset.action;
+  const item=(entity==='event'?state.events:state.matches).find(v=>v.id===Number(button.dataset.id));
+  if(!item)return;
+  pendingAdmin={entity,action,item:{...item}};
+  const title=(entity==='event'?'Veranstaltung':'Partie')+' '+({edit:'bearbeiten',delete:'löschen',close:'abschließen'}[action]);
+  document.querySelector('#admin-dialog-title').textContent=title;
+  document.querySelector('#admin-dialog-error').textContent='';
+  document.querySelector('#admin-dialog-save').textContent=action==='edit'?'Änderungen speichern':action==='delete'?'Verbindlich löschen':'Gesamtabschluss bestätigen';
+  let content='';
+  if(action==='edit'&&entity==='event') {
+    content=field('Name','name',item.name,'text','maxlength="100"')+selectField('Format','kind',item.kind,[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date',item.date,'date');
+  } else if(action==='edit') {
+    content='<p>Bis zum Gesamtabschluss sind auch beendete Partien korrigierbar. Zum Weiterspielen Status „Am Tisch“ wählen und einen freien Tisch zuweisen.</p>'+selectField('Veranstaltung','event_id',item.event_id,state.events.filter(e=>e.status==='open').map(e=>[e.id,e.name]))+
+      '<div class="form-row">'+field('Spieler A','player_a',item.player_a,'text','maxlength="100"')+field('Spieler B','player_b',item.player_b,'text','maxlength="100"')+'</div>'+
+      '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball'].map(v=>[v,v]))+field('Gewinnspiele','target',item.target,'number','min="1" max="99"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
+      '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="99"')+field('Punkte B','b',item.b,'number','min="0" max="99"')+'</div>'+
+      '<div class="form-row">'+selectField('Status','status',item.status,Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:8},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
+      '<small>Geplant: 0:0 und kein Tisch. Am Tisch: freier Tisch erforderlich. Abgeschlossen: genau ein Spieler hat das Spielziel erreicht.</small>';
+  } else {
+    const name=entity==='event'?item.name:item.player_a+' / '+item.player_b;
+    content='<p><strong>'+esc(name)+'</strong></p>';
+    if(action==='delete')content+='<p>Dieser Eintrag wird gelöscht.'+(entity==='event'?' Alle '+state.matches.filter(m=>m.event_id===item.id).length+' zugehörigen Partien einschließlich ihrer Ergebnisse werden ebenfalls gelöscht.':'')+' Belegte Tische werden freigegeben. Diese Aktion kann in der Oberfläche nicht rückgängig gemacht werden.</p>';
+    else content+='<p>Nach dem Gesamtabschluss sind Veranstaltung, Partien und Ergebnisse endgültig gesperrt. Alle Partien müssen zuvor abgeschlossen oder gelöscht sein. Bitte die Ergebnisse vorher prüfen.</p>';
+  }
+  document.querySelector('#admin-dialog-content').innerHTML=content;
+  adminDialog.showModal();
+});
+document.querySelector('#admin-dialog-cancel').addEventListener('click',()=>adminDialog.close());
+document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
+  e.preventDefault(); if(!pendingAdmin||busy)return;
+  const {entity,action,item}=pendingAdmin, data=Object.fromEntries(new FormData(e.target));
+  if(entity==='match'&&action==='edit') {
+    for(const key of ['event_id','target','a','b'])data[key]=Number(data[key]);
+    data.table_no=data.table_no===''?null:Number(data.table_no);
+  }
+  busy=true; adminDialog.querySelectorAll('button').forEach(b=>b.disabled=true);
+  try {
+    await api('/api/'+(entity==='event'?'events':'matches')+'/'+item.id+'/'+action,{...data,version:item.version});
+    adminDialog.close(); message('');
+  } catch(error) { document.querySelector('#admin-dialog-error').textContent=error.message; }
+  finally {busy=false; adminDialog.querySelectorAll('button').forEach(b=>b.disabled=false); await refresh(true);}
+});
+
 await refresh(true);
 setInterval(() => { if (!busy) refresh(); }, 3000);
