@@ -61,14 +61,26 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
     const side = match.a ? 'a':'b';
     assert.equal((await request('/api/matches/1/score',{side,delta:1,version:2},kiosk)).status,200);
     assert.equal((await request('/api/matches/1/score',{side,delta:1,version:3},kiosk)).status,400);
-    assert.equal((await request('/api/matches/1/finish',{version:3},kiosk)).status,401);
-    assert.equal((await request('/api/matches/1/finish',{version:3})).status,200);
+    assert.equal((await request('/api/matches/1/finish',{version:3},{admin:false})).status,403);
+    assert.equal((await request('/api/matches/1/finish',{version:3},{admin:false,key:config.tables[1]})).status,403);
+    assert.equal((await request('/api/matches/1/finish',{version:2},kiosk)).status,409);
+    assert.equal((await request('/api/matches/1/finish',{version:3},kiosk)).status,200);
+    assert.equal((await request('/api/matches/1/finish',{version:3})).status,409);
+    assert.equal((await request('/api/matches/1/score',{side,delta:-1,version:4},kiosk)).status,400);
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match,null);
     assert.equal((await request('/api/matches/2/start',{table_no:1,version:0})).status,200);
     await new Promise(resolve=>server.close(resolve));
     await start(); cookie='';
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match.id,2);
     assert.equal((await request('/api/admin')).status,401);
+    const relogin = await request('/api/login',{password:'test-password'});
+    cookie=relogin.cookie.split(';')[0]; csrf=relogin.body.csrf;
+    assert.equal((await request('/api/matches/2/finish',{version:1},kiosk)).status,409);
+    assert.equal((await request('/api/matches/2/score',{side:'b',delta:1,version:1},kiosk)).status,200);
+    assert.equal((await request('/api/matches/2/score',{side:'b',delta:1,version:2},kiosk)).status,200);
+    assert.equal((await request('/api/matches/2/finish',{version:3})).status,200);
+    const results=(await request('/api/admin')).body.matches;
+    assert.equal(results.filter(m=>m.status==='finished').length,2);
     assert.match((await request('/health')).headers.get('content-security-policy'),/frame-ancestors 'none'/);
   } finally { if (server?.listening) await new Promise(resolve=>server.close(resolve)); rmSync(dir,{recursive:true,force:true}); }
 });

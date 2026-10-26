@@ -108,7 +108,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         const result = transaction(() => {
           const m = db.prepare('SELECT * FROM matches WHERE id=?').get(id);
           if (!m) throw fail(404, 'Begegnung nicht gefunden.');
-          if (action !== 'score') admin(); else if (!session && (!table || table !== m.table_no)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
+          if (action === 'start') admin(); else if (!session && (!table || table !== m.table_no)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
           if (body.version !== m.version) throw fail(409, 'Der Spielstand wurde zwischenzeitlich geändert. Anzeige aktualisiert; bitte erneut prüfen.');
           if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');

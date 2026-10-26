@@ -8,7 +8,8 @@ Lokale Webanwendung für einen Billardverein in Bayern. Node.js 24 LTS, SQLite u
 - Begegnungen manuell planen: zwei Spieler, 8-/9-/10-Ball, Gewinnspiele und erstes Break.
 - Begegnungen einem von acht freien Tischen zuweisen; Doppelbelegung wird verhindert.
 - Feste Kiosk-Endpunkte `/tisch/1` bis `/tisch/8`, Punkte +/−, Wechselbreak und automatische Aktualisierung alle drei Sekunden.
-- Ergebnisse nach Erreichen des Spielziels durch die Verwaltung bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
+- Ergebnisse nach Erreichen des Spielziels zentral oder direkt am zugeordneten Tablet bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
+- Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Punkteübersicht und Ergebnisse. Die Punkteübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
 
 **Bewusste Draft-Grenzen:** keine automatische Turnierauslosung, Gruppen-/KO-Bäume, Liga-Mannschaftswertung, Spieler-Stammdaten oder Verbandsregelwerke. Jedes gewonnene Rack zählt einen Punkt. Kein 14/1 oder Karambol. Kein Offline-Schreiben: bei Verbindungsverlust bleiben Änderungen gesperrt. Abgeschlossene Ergebnisse sind unveränderlich. Tischgebühren kommen als Feature 1 später hinzu. Es gibt zunächst ein gemeinsames Administratorkonto; personenbezogene Admin-Auditierung benötigt später individuelle Konten.
@@ -45,6 +46,12 @@ Nur das öffentliche `root.crt` verteilen, niemals den CA-Privatschlüssel oder 
 Der Schlüssel steht im URL-Fragment, wird vom Browser **nicht** an Webserver/Access-Logs geschickt und nach dem Laden aus der sichtbaren URL entfernt. Er wird im tabgebundenen `sessionStorage` gespeichert und als Authorization-Header übertragen. Der Kiosk-Launcher muss beim Neustart wieder die vollständige Startadresse mit Fragment aufrufen. Wer einen Tischschlüssel kennt, kann ausschließlich diesen Tisch lesen und dessen laufende Partie zählen. Verwaltungsrechte erhält er nicht. Startadressen vertraulich behandeln. Die Eingabe der Kiosk-Adresse ist die Tischvorbereitung; eine zusätzliche Tischwahl oder Anmeldung am Tablet entfällt.
 
 Ohne Schlüssel kann ein angemeldeter Administrator dieselben Tischseiten öffnen. Der Adminzugang ist `/` bzw. `/admin`. Alle benötigten Assets werden lokal ausgeliefert.
+
+### Spiel abschließen
+
+In der zentralen Tisch-/Punkteübersicht sowie direkt am Tablet ist die Schaltfläche **Spiel abschließen** sichtbar. Sie wird aktiv, sobald ein Spieler das konfigurierte Spielziel erreicht. Im Dialog den Endstand prüfen und **Ergebnis speichern** wählen; **Zurück zur Partie** lässt den Stand unverändert und ermöglicht weitere Korrekturen. Der Abschluss ist endgültig, wird im Auditprotokoll dem Administrator oder der Tisch-ID zugeordnet und gibt den Tisch für die nächste Begegnung frei. Das Tablet wechselt automatisch zur Warteanzeige. Gleichzeitige Abschlüsse oder zwischenzeitliche Punktänderungen werden durch Versionsprüfung abgefangen. Ein vorzeitiger Abbruch unterhalb des Spielziels ist weiterhin nicht vorgesehen.
+
+Die Spieltagsverwaltung ist direkt über `/#spieltage`, die Punkteübersicht über `/#punkte` und das Archiv über `/#ergebnisse` erreichbar. Formulareingaben bleiben beim Menüwechsel innerhalb der Seite erhalten; sie werden erst beim erfolgreichen Speichern zurückgesetzt und nicht über einen Browser-Neustart gespeichert.
 
 ## Entwicklung und Tests
 
@@ -90,7 +97,7 @@ Bei Änderungen am eingebundenen `Caddyfile` zusätzlich `docker compose exec -T
 Die blau-schwarze Oberfläche orientiert sich an der [Vereinswebsite](https://www.billard-pfaffenhofen.de/). Das Original-Vereinslogo wird lokal ausgeliefert; die Herkunft ist unter `public/assets/README.md` dokumentiert.
 
 - Admin-Passwort nur als scrypt-Hash mit zufälligem Salt. Zufällige Sitzungstoken, HttpOnly-/SameSite=Strict-Cookies und unter HTTPS Secure-Cookies; Sitzungen laufen nach acht Stunden ab und verschwinden bei Neustart.
-- Origin-Prüfung für alle Schreibzugriffe und zusätzlicher CSRF-Token für Admin-Sitzungen. Kein CORS. Parametrisierte SQL-Anweisungen, Eingabevalidierung, Request-Größenlimit, CSP und HTML-Escaping.
+- Origin-Prüfung für alle Schreibzugriffe und zusätzlicher CSRF-Token für Admin-Sitzungen. CORS ausschließlich für die explizit erlaubten Origins. Parametrisierte SQL-Anweisungen, Eingabevalidierung, Request-Größenlimit, CSP und HTML-Escaping.
 - Nach zehn Anmeldeversuchen pro Quelladresse für 15 Minuten gesperrt. Hinter Caddy wird absichtlich dessen Adresse verwendet: damit gilt ein gemeinsames Login-Limit für das ganze Vereinsnetz. Ein Angreifer im Netz kann dadurch vorübergehend Admin-Anmeldungen blockieren. Tischbetrieb bleibt unabhängig davon. Nur ein App-Prozess; Sitzungen und Limits sind im Speicher.
 - App läuft ohne Root, mit schreibgeschütztem Dateisystem, ohne Linux-Capabilities und ohne veröffentlichten App-/DB-Port. SQLite befindet sich ausschließlich im Datenvolume.
 - Compose-Secrets werden dateibasiert eingebunden. Sie sind kein verschlüsselter Tresor. Windows-Gerät/Backups mit BitLocker schützen und Zugriffsrechte pflegen.

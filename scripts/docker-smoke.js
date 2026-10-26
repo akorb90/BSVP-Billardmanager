@@ -128,7 +128,7 @@ try {
   await login();
   assert.equal((await request('/api/admin')).body.events[0].name, event.name);
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 2 }, kiosk)).status, 200);
-  assert.equal((await request('/api/matches/1/finish', { version: 3 })).status, 200);
+  assert.equal((await request('/api/matches/1/finish', { version: 3 }, kiosk)).status, 200);
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match, null);
   console.log('PASS: volume survives container replacement; match finishes and table becomes available');
   writeFileSync(join(directory, 'result.json'), JSON.stringify({ project, passed: true, testedAt: new Date().toISOString(), image: inspection.Image }, null, 2));
