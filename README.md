@@ -58,6 +58,23 @@ Danach `http://localhost:3000` öffnen. Dieser HTTP-Modus dient nur der Entwickl
 
 Die Tests prüfen Breakwechsel einschließlich Korrekturen, ungültige Punkte, vollständigen Spielablauf, Authentifizierung, CSRF/Origin, Tischisolation, doppelte Tischbelegung, konkurrierende Punkteingaben, Ergebnisabschluss, Persistenz nach Neustart und Login-Limit.
 
+### Docker-Integrationstest auf Windows
+
+Bei laufender Docker Desktop Engine kann der vollständige Stack separat geprüft werden:
+
+```powershell
+node scripts/docker-smoke.js
+# Alternativ mit npm: npm run test:docker
+```
+
+Der Test baut das Image und startet ein zufällig benanntes Compose-Projekt (`bsvp-smoke-…`) mit eigenen Secrets und Volumes auf `https://localhost:18443`. Port 18443 muss frei sein; alternativ `$env:DOCKER_TEST_PORT = '19443'` setzen. Compose muss `!override` unterstützen (Version 2.24.4 oder neuer).
+
+Geprüft werden die echte TLS-Zertifikatskette über die temporäre Caddy-CA, Frontend-Assets, Secure-/HttpOnly-Cookies, CSRF-/Origin-Schutz, Tischrechte, Punkte, Wechselbreak, Versionskonflikte, Ergebnisabschluss sowie Datenpersistenz bei Neustart **und Ersetzen** des App-Containers. Zusätzlich prüft der Test UID 1000, Read-only-Rootfs, entfernte Capabilities, `no-new-privileges` und fehlende veröffentlichte App-Ports. Es werden keine Zertifikate in den Windows-Zertifikatsspeicher importiert und keine TLS-Prüfungen deaktiviert.
+
+Nach dem Lauf werden ausschließlich die Container und Volumes dieses Testprojekts entfernt. Das gebaute Testimage bleibt als Build-Cache erhalten. Der lokale Bericht `data/docker-test-*/result.json`, temporäre Test-Secrets und das öffentliche CA-Zertifikat bleiben im von Git ausgeschlossenen Testordner; diese Zugangsdaten gelten nur für den bereits entfernten Teststack. Bei hartem Prozessabbruch kann dessen Compose-Projekt bestehen bleiben: dann das konkret ausgegebene Projekt gezielt über Docker Desktop aufräumen, niemals pauschal Produktionsvolumes löschen.
+
+**Verifiziert am 26.10.2026:** vollständiger Docker-Test auf Docker Desktop / Engine 29.7.2 erfolgreich. Echte Tablets im Vereins-WLAN, Zertifikatsinstallation auf den Geräten und Backup-Restore sind noch separat zu prüfen.
+
 ## Sicherheit und Betrieb
 
 - Admin-Passwort nur als scrypt-Hash mit zufälligem Salt. Zufällige Sitzungstoken, HttpOnly-/SameSite=Strict-Cookies und unter HTTPS Secure-Cookies; Sitzungen laufen nach acht Stunden ab und verschwinden bei Neustart.
