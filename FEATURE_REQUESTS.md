@@ -1,11 +1,19 @@
 # Feature Requests – BSVP Billardmanager
 
-Dieses Dokument sammelt geplante Erweiterungen. Ein Eintrag beschreibt eine Anforderung und bedeutet noch keine Umsetzung.
+Dieses Dokument sammelt Erweiterungswünsche und ihren Umsetzungsstand. Ob eine Anforderung bereits umgesetzt ist, zeigt der jeweilige Status.
 
 ## FR-001: Durchgängige Admin-Navigation und Tischübersicht als Home-Seite
 
-**Status:** Offen
+**Status:** Umgesetzt am 27.10.2026
 **Erfasst am:** 26.10.2026
+
+### Umsetzung und Prüfung
+
+- Die Admin-Navigation ist auch an freien Tischen, während der Spielvorbereitung und in laufenden Partien verfügbar. Die Sitzungsprüfung aktualisiert sie auch bei unverändertem Spielstand.
+- Anmeldung, Verwaltungs-Startseiten und Vereinslogo führen zur Tischübersicht. Menülinks funktionieren aus einzelnen Tischansichten; dort ist die Tischübersicht als aktiv markiert.
+- Reine Partie-PIN-Sitzungen erhalten weder Admin-Navigation noch Verwaltungsrechte.
+- Alle zwölf automatisierten Tests bestanden, einschließlich Frontend-Regressionstests für Navigation und Sitzungswechsel sowie API-Prüfungen der Berechtigungen.
+- Mit `docker compose up -d --build --wait` lokal deployt. HTTPS mit validierter Zertifikatskette und Containerzustand erfolgreich geprüft; bestehende Secrets und Datenvolumes erhalten.
 
 ### Anforderung
 

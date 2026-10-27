@@ -51,6 +51,8 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
     assert.equal((await request('/api/tables/1',undefined,{admin:false})).status,401);
     assert.equal((await request('/api/tables/2',undefined,{admin:false,key:config.tables[0]})).status,200);
     const kiosk = { admin:false,key:(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token };
+    assert.equal((await request('/api/admin',undefined,kiosk)).status,401);
+    assert.equal((await request('/api/events',{name:'Unerlaubt',kind:'Liga',date:'2026-10-26'},kiosk)).status,401);
     assert.equal((await request('/api/tables/1',undefined,kiosk)).body.match.breaker,'b');
     assert.equal((await request('/api/matches/1/score',{side:'a',delta:1,version:1},{admin:false,key:config.tables[1]})).status,403);
     const simultaneous = await Promise.all([request('/api/matches/1/score',{side:'a',delta:1,version:1},kiosk),request('/api/matches/1/score',{side:'b',delta:1,version:1},kiosk)]);

@@ -9,6 +9,14 @@ const finishDialog = document.querySelector('#finish-dialog');
 const views = { uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const drafts = new Map();
+function adminNavigation(authenticated) {
+  navigation.hidden = !authenticated;
+  document.querySelector('#logout').hidden = !authenticated;
+  for (const link of navigation.querySelectorAll('a')) {
+    if (authenticated && link.hash === '#' + (table ? 'uebersicht' : view)) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
+}
 function saveDrafts() { for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login'].includes(form.id)) drafts.set(form.id, [...new FormData(form)]); }
 function restoreDrafts() { for (const [id, entries] of drafts) for (const [name, value] of entries) { const field = document.getElementById(id)?.elements.namedItem(name); if (field) field.value = value; } }
 function finishButton(m) { return '<button data-finish="' + m.id + '" ' + (Math.max(m.a,m.b) < m.target ? 'disabled title="Spielziel noch nicht erreicht"' : 'class="primary"') + '>Spiel abschließen</button>'; }
@@ -27,15 +35,13 @@ async function api(path, data) {
   return result;
 }
 function login() {
-  state = undefined; navigation.hidden = true;
+  state = undefined; adminNavigation(false);
   root.innerHTML = `<section class="login"><div class="login-copy"><p class="eyebrow">WILLKOMMEN IM VEREIN</p><h1>Der nächste Stoß.<br>Alles im Blick.</h1><p>Spieltage organisieren. Begegnungen starten.<br>Spielstände direkt am Tisch erfassen.</p><form id="login"><label>Administrator-Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden →</button></form><small>Die Tablets öffnen ihre eigene Tisch-Adresse.</small></div><div class="login-badge"><img src="/assets/bsv-logo.png" alt="BSV Pfaffenhofen · Vereinslogo seit 1995"></div></section>`;
   connection.textContent = 'Vereinsverwaltung'; connection.className = ''; document.querySelector('#logout').hidden = true;
 }
 function dashboard() {
   const live = state.matches.filter(m => m.status === 'live');
-  document.querySelector('#logout').hidden = false;
-  navigation.hidden = false;
-  for (const link of navigation.querySelectorAll('a')) { if (link.hash === '#' + view) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current'); }
+  adminNavigation(true);
   const visibleMatches = state.matches.filter(m => view === 'ergebnisse' ? m.status === 'finished' : view === 'spieltage' ? true : m.status === 'live');
   root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length} / 8 Tische belegt</span></div>
     <section ${view === 'uebersicht' ? '' : 'hidden'}><div class="section-title"><h2>Unsere Tische</h2><span>Live-Spielstände · alle 3 Sekunden</span></div><section class="tables">${Array.from({length:8}, (_,i) => {
@@ -50,7 +56,7 @@ function matchRows(matches) {
   return matches.map(m => `<article class="match-row"><div><span class="pill ${m.status === 'live' ? 'green' : ''}">${labels[m.status]}</span><h3>${esc(m.player_a)} <span class="muted">vs.</span> ${esc(m.player_b)}</h3><p>${esc(state.events.find(e => e.id === m.event_id)?.name)} · ${esc(m.discipline)} · Ziel ${m.target}${m.table_no ? ' · Tisch ' + m.table_no : ''}</p></div><strong class="result">${m.a} : ${m.b}</strong>${m.status === 'planned' ? `<form class="start" data-id="${m.id}"><label>Tisch<select name="table_no">${Array.from({length:8},(_,i) => `<option value="${i+1}">Tisch ${i+1}</option>`).join('')}</select></label><button>Tisch zuweisen ↗</button></form>` : m.status === 'live' ? `<div class="match-actions"><a href="/tisch/${m.table_no}">Punkte bearbeiten ↗</a>${finishButton(m)}${Math.max(m.a,m.b) < m.target ? '<small>Abschluss ab Erreichen des Spielziels</small>' : '<small>Spielziel erreicht · bereit zum Abschluss</small>'}</div>` : ''}${m.pin_set ? '' : '<small>Tablet-PIN fehlt · bitte Partie bearbeiten</small>'}${timers(m)}${matchAdminActions(m)}</article>`).join('') || '<div class="empty">Keine Partien in dieser Ansicht.</div>';
 }
 function tabletLogin() {
-  current=undefined; navigation.hidden=true; document.querySelector('#logout').hidden=true;
+  current=undefined; adminNavigation(false);
   if(root.querySelector('#tablet-login')) { root.querySelector('button').disabled=false; return; }
   root.innerHTML=`<section class="panel"><p class="eyebrow">TISCH ${table}</p><h1>Partie freischalten</h1><p>Die sechsstellige PIN erhaltet ihr von der Spielleitung.</p><form id="tablet-login"><label>Partie-PIN<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label><button class="primary">Tisch freischalten</button></form></section>`;
 }
@@ -67,7 +73,6 @@ function preparation(m) {
   root.innerHTML=`<section class="panel"><p class="eyebrow">TISCH ${table} · SPIELVORBEREITUNG</p><h1>${lag?'Wer hat das erste Break?':'Wer hat das Ausstoßen (Lag) gewonnen?'}</h1><p>${esc(m.player_a)} gegen ${esc(m.player_b)}</p>${lag?'<p>Ausstoßen gewonnen: '+esc(m[lag==='a'?'player_a':'player_b'])+'</p>':''}<div class="dialog-actions">${['a','b'].map(side=>'<button class="primary" data-'+(lag?'begin':'lag')+'="'+side+'">'+esc(m[side==='a'?'player_a':'player_b'])+'</button>').join('')}</div>${lag?'<button data-setup-back>Zurück zum Ausstoßen</button>':''}<p>Die Zeitmessung beginnt mit der Bestätigung des ersten Breaks.</p></section>`;
 }
 function kiosk() {
-  document.querySelector('#logout').hidden = true; navigation.hidden = true;
   if (!current) { root.innerHTML = `<div class="waiting"><p class="eyebrow">TISCH ${String(table).padStart(2,'0')}</p><img class="waiting-logo" src="/assets/bsv-logo.png" alt="BSV Pfaffenhofen"><h1>Bereit, wenn ihr es seid.</h1><p>Die nächste Begegnung erscheint hier automatisch,<br>sobald sie in der Verwaltung gestartet wird.</p></div>`; return; }
   if(!current.setup_done) { preparation(current); return; }
   const m = current, done = Math.max(m.a,m.b) === m.target;
@@ -77,7 +82,8 @@ async function refresh(initial = false) {
   try {
     if (table) {
       // A logged-in administrator can also open the table view.
-      try { const admin = await api('/api/admin'); csrf = admin.csrf; } catch(e) { if (e.status !== 401) throw e; }
+      try { const admin = await api('/api/admin'); csrf = admin.csrf; adminNavigation(true); }
+      catch(e) { if (e.status !== 401) throw e; csrf = ''; adminNavigation(false); }
       const data = await api(`/api/tables/${table}`);
       if(data.match) delete data.match.server_now; // Clock sync must not replace focused controls.
       if (initial || JSON.stringify(current) !== JSON.stringify(data.match)) { current = data.match; kiosk(); }
@@ -104,7 +110,10 @@ root.addEventListener('submit', e => {
   e.preventDefault(); const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
     if (form.id === 'tablet-login') { const result=await api(`/api/tables/${table}/login`,data); sessionStorage.setItem(`tablet-session:${table}`,result.token); form.reset(); }
-    if (form.id === 'login') { const result = await api('/api/login', data); csrf = result.csrf; }
+    if (form.id === 'login') {
+      const result = await api('/api/login', data); csrf = result.csrf;
+      view = 'uebersicht'; history.replaceState(null, '', '/#uebersicht');
+    }
     if (form.id === 'event') { await api('/api/events', data); form.reset(); drafts.delete('event'); }
     if (form.id === 'match') { await api('/api/matches', { ...data, event_id:Number(data.event_id), target:Number(data.target) }); form.reset(); drafts.delete('match'); }
     if (form.classList.contains('start')) { const m = state.matches.find(m => m.id === Number(form.dataset.id)); await api(`/api/matches/${m.id}/start`, { table_no:Number(data.table_no), version:m.version }); }
