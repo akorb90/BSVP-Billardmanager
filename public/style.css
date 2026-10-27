@@ -175,3 +175,7 @@ button.primary:hover:not(:disabled) { background:#198ecb; }
 .waiting .waiting-logo { width:110px; height:135px; padding:8px; background:white; object-fit:contain; margin:24px auto; }
 footer { background:#05090e; }
 @media(max-width:700px) { .login { grid-template-columns:1fr; gap:30px; margin:25px auto; } .login-badge { grid-row:1; justify-self:center; padding:12px; box-shadow:8px 8px 0 #126997; } .login-badge img { width:95px; height:115px; } .login-copy { padding-left:18px; } .brand { font-size:14px; letter-spacing:1px; } .brand small { font-size:8px; letter-spacing:2px; } .club-logo { width:36px; height:44px; } }
+
+#warning-dialog { border:2px solid #ff746c; background:#431b22; max-width:720px; max-height:90vh; overflow:auto; }
+#warning-dialog h2, #warning-dialog p, #warning-dialog li { color:#ffe3e0; }
+#warning-save { background:#a5212e; color:white; }

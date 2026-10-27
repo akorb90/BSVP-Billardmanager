@@ -48,14 +48,20 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
     assert.equal((await call('/api/matches/2/start',{table_no:1,version:0})).status,409);
     const match=(await state()).matches.find(m=>m.id===2);
     assert.equal((await call('/api/matches/2/edit',{...match,status:'live',table_no:1})).status,409);
-    assert.equal((await call('/api/rentals/settings',{version:0,base_euros:12})).status,200);
+    assert.equal((await call('/api/rentals/settings',{version:0,base_euros:12,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'})).status,200);
     assert.equal((await call('/api/rentals',{table_no:3,settings_version:0})).status,409);
     assert.equal((await call('/api/rentals',{table_no:3,settings_version:1})).body.hourly_cents,1200);
     await new Promise(r=>server.close(r)); await start(); await login();
     const saved=(await state()).rentals.find(r=>r.id===first.id);
     assert.equal(saved.started_at,first.started_at); assert.equal(saved.hourly_cents,900);
-    const end=(await call('/api/rentals/1/finish',{version:0})).body;
-    assert.equal(end.status,'finished'); assert.deepEqual(await call('/api/rentals/1/finish',{version:0}).then(r=>r.body),end);
+    const finish={version:0,ended_at:Date.now(),action:'rental:finish'};
+    assert.equal((await call('/api/rentals/1/finish',{...finish,action:'other'})).status,400);
+    assert.equal((await call('/api/rentals/1/finish',{...finish,ended_at:first.started_at-1})).status,400);
+    assert.equal((await call('/api/rentals/1/finish',{...finish,ended_at:Date.now()+60000})).status,400);
+    const end=(await call('/api/rentals/1/finish',finish)).body;
+    assert.equal(end.ended_at,finish.ended_at);
+    assert.equal(end.total_cents,rentalPrice(first.started_at,finish.ended_at,900).total_cents);
+    assert.equal(end.status,'finished'); assert.deepEqual(await call('/api/rentals/1/finish',finish).then(r=>r.body),end);
     assert.equal((await call('/api/rentals',{table_no:1,settings_version:1,mode:'direct',value:8})).status,201);
     const ended_at=Date.now()-60000, started_at=ended_at-1801000;
     const correction={version:end.version,started_at,ended_at,mode:'direct',value:9,action:'rental:edit',confirmation:'BUCHUNG ÄNDERN'};
@@ -70,9 +76,28 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
     assert.equal((await state()).rentals.filter(r=>r.table_no===1&&r.status==='active').length,1);
     const discounted=(await call('/api/rentals/1/edit',{...correction,version:corrected.version,started_at:ended_at-1800000,mode:'percent',value:-20})).body;
     assert.equal(discounted.total_cents,360); assert.equal(discounted.base_cents,900);
+    assert.equal((await call('/api/rentals/1/finish',finish)).status,409);
+    for(const id of [1,2]) {
+      const item=(await state()).rentals.find(r=>r.id===id);
+      const deletion={version:item.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'};
+      assert.equal((await call(`/api/rentals/${id}/delete`,deletion,false)).status,401);
+      for(const confirmation of ['', 'BUCHUNG', 'buchung löschen', 'BUCHUNG LÖSCHEN ']) assert.equal((await call(`/api/rentals/${id}/delete`,{...deletion,confirmation})).status,400);
+      assert.equal((await call(`/api/rentals/${id}/delete`,{...deletion,action:'rental:edit'})).status,400);
+      assert.equal((await call(`/api/rentals/${id}/delete`,{...deletion,version:-1})).status,409);
+      assert.equal((await call(`/api/rentals/${id}/delete`,deletion)).status,200);
+    }
+    // Removing the highest ID must not let an old dialog target a new booking.
+    const highest=(await state()).rentals[0];
+    await call(`/api/rentals/${highest.id}/delete`,{version:highest.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'});
+    const replacement=(await call('/api/rentals',{table_no:2,settings_version:1})).body;
+    assert.ok(replacement.id>highest.id);
+    for(const confirmation of ['', 'GRUNDPREIS', 'GRUNDPREIS ÄNDERN ']) assert.equal((await call('/api/rentals/settings',{version:1,base_euros:10,action:'rental:settings',confirmation})).status,400);
+    assert.equal((await call('/api/rentals/settings',{version:0,base_euros:10,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'})).status,409);
     const db=new DatabaseSync(dbPath);
     assert.equal(db.prepare("SELECT count(*) AS n FROM audit WHERE action='rental:finish'").get().n,1);
     const audit=JSON.parse(db.prepare("SELECT detail FROM audit WHERE action='rental:edit' ORDER BY id LIMIT 1").get().detail);
-    assert.deepEqual(audit.before,end); assert.deepEqual(audit.after,corrected); db.close();
+    assert.deepEqual(audit.before,end); assert.deepEqual(audit.after,corrected);
+    const deleted=db.prepare("SELECT detail FROM audit WHERE action='rental:delete' ORDER BY id").all().map(r=>JSON.parse(r.detail));
+    assert.deepEqual(deleted[0].before,discounted);assert.equal(deleted[1].before.status,'active');db.close();
   } finally {if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
 });

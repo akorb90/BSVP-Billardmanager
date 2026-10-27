@@ -61,13 +61,21 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
   const rentals = rentalService({db, transaction, fail, integer, log});
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
-  const openEvent = id => {
+  const getEvent = id => {
     const event = db.prepare('SELECT * FROM events WHERE id=?').get(id);
     if (!event) throw fail(404, 'Veranstaltung nicht gefunden.');
+    return event;
+  };
+  const openEvent = id => {
+    const event = getEvent(id);
     if (event.status !== 'open') throw fail(409, 'Diese Veranstaltung ist endgültig abgeschlossen.');
     return event;
   };
   const touchEvent = id => db.prepare('UPDATE events SET version=version+1 WHERE id=?').run(id);
+  const confirm = (body, action, phrase) => {
+    if (body.action !== action || body.confirmation !== phrase) throw fail(400, 'Die Aktion muss mit dem angezeigten Text exakt bestätigt werden.');
+  };
+  const today = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Berlin'}).format(new Date());
   const eventFields = body => {
     const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
@@ -174,13 +182,15 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       if (req.method === 'POST' && eventRoute) {
         admin(); const id=Number(eventRoute[1]), action=eventRoute[2];
         transaction(() => {
-          const event=openEvent(id);
+          const event=getEvent(id);
           if (body.version !== event.version) throw fail(409, 'Die Veranstaltung oder ihre Partien wurden geändert. Bitte neu prüfen.');
+          if (action !== 'edit' || event.status === 'closed' || event.date < today()) confirm(body, 'event:'+action, {edit:'EVENT ÄNDERN',delete:'EVENT LÖSCHEN',close:'EVENT ABSCHLIESSEN'}[action]);
           const matches=db.prepare('SELECT * FROM matches WHERE event_id=? ORDER BY id').all(id);
           if (action === 'edit') {
             const {name,kind,date}=eventFields(body);
             db.prepare('UPDATE events SET name=?,kind=?,date=?,version=version+1 WHERE id=?').run(name,kind,date,id);
           } else if (action === 'close') {
+            if (event.status === 'closed') throw fail(409, 'Die Veranstaltung ist bereits abgeschlossen.');
             if (matches.some(m=>m.status !== 'finished')) throw fail(409, 'Zuerst alle Partien abschließen oder nicht gespielte Partien löschen.');
             db.prepare("UPDATE events SET status='closed',version=version+1 WHERE id=?").run(id);
           } else {
@@ -208,13 +218,22 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
           const m = db.prepare('SELECT * FROM matches WHERE id=?').get(id);
           if (!m) throw fail(404, 'Begegnung nicht gefunden.');
           if (['start','edit','delete'].includes(action)) admin(); else if (!session && !authorizedTablet(tabletAuth,m)) throw fail(403, 'Keine Berechtigung für diesen Tisch.');
-          openEvent(m.event_id);
+          const parent=getEvent(m.event_id);
+          if (!['edit','delete'].includes(action)) openEvent(m.event_id);
           if (body.version !== m.version) throw fail(409, 'Der Spielstand wurde zwischenzeitlich geändert. Anzeige aktualisiert; bitte erneut prüfen.');
+          if (['edit','delete'].includes(action)) {
+            if (body.event_version !== parent.version) throw fail(409, 'Die Veranstaltung wurde zwischenzeitlich geändert. Bitte erneut prüfen.');
+            if (action === 'delete' || m.status === 'finished' || parent.status === 'closed') confirm(body, 'match:'+action, action === 'delete' ? 'SPIEL LÖSCHEN' : 'SPIEL ÄNDERN');
+          }
           const tick=Date.now();
           if (action === 'delete') {
             db.prepare('DELETE FROM matches WHERE id=?').run(id);
           } else if (action === 'edit') {
-            const event=integer(body.event_id,1,Number.MAX_SAFE_INTEGER); openEvent(event);
+            const event=integer(body.event_id,1,Number.MAX_SAFE_INTEGER);
+            if (parent.status === 'closed') {
+              if (event !== m.event_id || body.status !== 'finished') throw fail(409, 'Korrekturen erhalten den Gesamtabschluss. Verschieben oder Wiederaufnehmen ist nicht möglich.');
+            } else openEvent(event);
+            if (event !== m.event_id && body.destination_version !== getEvent(event).version) throw fail(409, 'Die Zielveranstaltung wurde geändert. Bitte erneut prüfen.');
             const target=integer(body.target,1,99), a=integer(body.a,0,target), b=integer(body.b,0,target);
             const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,8);
             if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
@@ -250,6 +269,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             db.prepare('UPDATE matches SET a=?,b=?,rack_since=?,running_since=COALESCE(running_since,?),started_at=COALESCE(started_at,?),version=version+1 WHERE id=?').run(next.a,next.b,Math.max(next.a,next.b)===m.target?null:tick,tick,tick,id);
           } else {
             if (!m.setup_done || m.status !== 'live' || Math.max(m.a,m.b) !== m.target) throw fail(409, 'Das Spielziel muss erreicht sein.');
+            confirm(body, 'match:finish', 'SPIEL ABSCHLIESSEN');
             db.prepare("UPDATE matches SET status='finished',elapsed_ms=?,running_since=NULL,rack_since=NULL,version=version+1 WHERE id=?").run(m.elapsed_ms+(m.running_since===null?0:Math.max(0,tick-m.running_since)),id);
           }
           touchEvent(m.event_id);

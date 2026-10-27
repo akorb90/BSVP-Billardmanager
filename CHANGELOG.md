@@ -2,6 +2,22 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Tischvermietung: Warnbestätigungen und Buchungslöschung — 2026-10-27
+
+- Mietabschluss zeigt Buchung, Tisch, festen Endzeitpunkt, Dauer und Abrechnungsbetrag. Wie gewünscht genügt „Vermietung abschließen“ ohne manuelle Texteingabe. Abbrechen lässt die Vermietung weiterlaufen. Gespeichert wird genau der angezeigte Endzeitpunkt.
+- Aktive und abgeschlossene Buchungen können mit „BUCHUNG LÖSCHEN“ gelöscht werden. Der Dialog benennt den Verlust der Abrechnungsdaten und bei aktiven Buchungen die Tischfreigabe. Grundpreisänderungen zeigen alten und neuen Preis und verlangen „GRUNDPREIS ÄNDERN“. Bestehende Korrekturen verwenden weiterhin „BUCHUNG ÄNDERN“.
+- Admin-, Aktions- und Versionsprüfungen sowie Auditdaten sichern die Aktionen ab. Gelöschte Buchungsnummern werden nicht erneut vergeben. Nur die identische Abschlusswiederholung bleibt ohne zusätzlichen Schreibvorgang möglich; nach Korrekturen werden alte Abschlussanfragen abgewiesen.
+- Prüfung: 18 automatisierte Tests bestanden, einschließlich Frontend-Dialogabläufen, Abschluss ohne Texteingabe, Abbruch, Konflikten, Löschungen und Auditdaten. Isolierter Docker-HTTPS-Test und anschließende lokale Bereitstellung mit Zertifikats- und Containerprüfung.
+
+## FR-002: Warnbestätigte Korrekturen und Löschungen auch nach Gesamtabschluss — 2026-10-27
+
+- Administratoren können vergangene und abgeschlossene Veranstaltungen sowie abgeschlossene Partien korrigieren und löschen. Der Gesamtabschluss bleibt erhalten; Wiederaufnahme und Verschieben aus abgeschlossenen Veranstaltungen sind gesperrt. Tablet-Berechtigungen bleiben unverändert.
+- Rote Warnungen nennen Eintrag und Änderungen; Veranstaltungslöschungen nennen zusätzlich die Anzahl der Partien und den Ergebnisverlust. Exakte, aktionsbezogene Texte müssen von Hand eingegeben werden. Einfügen, Kontextmenü und Drag-and-drop werden blockiert. Ausführung erfordert einen zusätzlichen Klick; Abbrechen und Escape verwerfen die Bestätigung.
+- Auch Spielabschluss und Gesamtabschluss verwenden dieses Muster. Buchungskorrekturen nutzen denselben Eingabeschutz. Zwischenzeitliche Änderungen entwerten offene Warnungen; nach Fehlern ist erneutes Öffnen und Prüfen erforderlich.
+- Serverseitige Aktions-, Text-, Admin- und Versionsprüfung innerhalb der Schreibtransaktion. Partienkorrekturen und -löschungen berücksichtigen auch die Veranstaltungsversion. Auditprotokolle erhalten die vorherigen Datenstände ohne PINs.
+- Prüfstand: 17 automatisierte Tests einschließlich echter Frontend-Handler mit DOM/API-Fixture, Einfügeschutz, Abbruch, exakter Texteingabe, Versionskonflikten und Auditdaten. Isolierter Docker-HTTPS-Test mit Neustart, Containerersatz, Korrektur und kaskadierender Löschung nach Gesamtabschluss erfolgreich.
+- Deployment: Bestehender lokaler Stack mit `docker compose up -d --build --wait`; HTTPS-Zertifikatskette und Containerzustand geprüft. Bestehende Secrets und Datenvolumes erhalten.
+
 ## FR-003: Tischvermietung mit minutengenauer Abrechnung und bearbeitbarer Historie — 2026-10-27
 
 - Neuer Admin-Menüpunkt „Tischvermietung“ mit acht Tischkarten, laufenden Timern, aktuellen Preisen, Abschluss und dauerhafter Buchungshistorie. Vermietungen und laufende Partien schließen sich auf demselben Tisch aus; Transaktionen und ein eindeutiger Index verhindern parallele Vermietungen.

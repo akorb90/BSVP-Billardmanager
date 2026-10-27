@@ -4,9 +4,9 @@ const table = Number(/^\/tisch\/([1-8])$/.exec(location.pathname)?.[1]);
 if (table) document.body.classList.add('kiosk');
 if (table && location.hash) history.replaceState(null, '', location.pathname);
 let setupChoice, clockOffset=0;
-let csrf = '', state, current, busy = false, pendingFinish;
+let csrf = '', state, current, busy = false;
 const navigation = document.querySelector('#admin-nav');
-const finishDialog = document.querySelector('#finish-dialog');
+
 const views = { vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const drafts = new Map();
@@ -98,6 +98,7 @@ async function refresh(initial = false) {
         saveDrafts(); dashboard(); restoreDrafts(); updateRentalPreview();
       }
     }
+    checkWarning();
     connection.textContent = '● Verbunden'; connection.className = 'online';
   } catch(e) {
     connection.textContent = '● Nicht verbunden'; connection.className = 'offline';
@@ -133,17 +134,8 @@ root.addEventListener('click', e => {
   if (button.dataset.finish && !busy) {
     const m = table ? current : state.matches.find(m => m.id === Number(button.dataset.finish));
     if (!m) return;
-    pendingFinish = { ...m };
-    document.querySelector('#finish-summary').textContent = m.player_a + ' ' + m.a + ' : ' + m.b + ' ' + m.player_b;
-    finishDialog.showModal();
+    showWarning({phrase:'SPIEL ABSCHLIESSEN', label:'Spiel abschließen', summary:'<p>'+esc(m.player_a)+' '+m.a+' : '+m.b+' '+esc(m.player_b)+'</p><p>Der Endstand wird gespeichert und der Tisch freigegeben.</p>', valid:()=> (table?current:state.matches.find(v=>v.id===m.id))?.version===m.version, run:()=>api('/api/matches/'+m.id+'/finish',{version:m.version,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'})});
   }
-});
-document.querySelector('#finish-cancel').addEventListener('click', () => finishDialog.close());
-finishDialog.addEventListener('close', () => pendingFinish = undefined);
-document.querySelector('#finish-confirm').addEventListener('click', () => {
-  if (!pendingFinish || busy) return;
-  const m = pendingFinish; finishDialog.close();
-  mutate(() => api('/api/matches/' + m.id + '/finish', { version:m.version }));
 });
 window.addEventListener('hashchange', () => {
   if (table) return;
@@ -157,11 +149,9 @@ const adminDialog = document.querySelector('#admin-dialog');
 let pendingAdmin;
 function eventCard(event) {
   const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
-  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3>${esc(event.name)}</h3><p>${esc(event.date)} · ${matches.length} Partien</p>${closed?'<p>Gesperrt · Ergebnisse endgültig</p>':`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button><button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button></div><small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
+  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3>${esc(event.name)}</h3><p>${esc(event.date)} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div><small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
 }
 function matchAdminActions(m) {
-  const event=state.events.find(e=>e.id===m.event_id);
-  if(event?.status!=='open')return '<span class="pill">Veranstaltung gesperrt</span>';
   return `<div class="entity-actions"><button data-entity="match" data-action="edit" data-id="${m.id}">Partie bearbeiten</button><button data-entity="match" data-action="delete" data-id="${m.id}">Partie löschen</button></div>`;
 }
 function field(label,name,value,type='text',extra='') {
@@ -175,31 +165,32 @@ root.addEventListener('click',e=>{
   const entity=button.dataset.entity, action=button.dataset.action;
   const item=(entity==='event'?state.events:state.matches).find(v=>v.id===Number(button.dataset.id));
   if(!item)return;
-  pendingAdmin={entity,action,item:{...item}};
+  pendingAdmin={entity,action,item:{...item},eventVersion:entity==='match'?state.events.find(e=>e.id===item.event_id)?.version:undefined};
   const title=(entity==='event'?'Veranstaltung':'Partie')+' '+({edit:'bearbeiten',delete:'löschen',close:'abschließen'}[action]);
   document.querySelector('#admin-dialog-title').textContent=title;
   document.querySelector('#admin-dialog-error').textContent='';
-  document.querySelector('#admin-dialog-save').textContent=action==='edit'?'Änderungen speichern':action==='delete'?'Verbindlich löschen':'Gesamtabschluss bestätigen';
+  document.querySelector('#admin-dialog-save').textContent=action==='edit'?'Änderungen speichern':action==='delete'?(entity==='event'?'Veranstaltung löschen':'Spiel löschen'):'Veranstaltung abschließen';
   let content='';
   if(action==='edit'&&entity==='event') {
     content=field('Name','name',item.name,'text','maxlength="100"')+selectField('Format','kind',item.kind,[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date',item.date,'date');
   } else if(action==='edit') {
-    content='<p>Bis zum Gesamtabschluss sind auch beendete Partien korrigierbar. Zum Weiterspielen Status „Am Tisch“ wählen und einen freien Tisch zuweisen.</p>'+selectField('Veranstaltung','event_id',item.event_id,state.events.filter(e=>e.status==='open').map(e=>[e.id,e.name]))+
+    content='<p>Abgeschlossene Partien sind nach Warnbestätigung korrigierbar. Nach Gesamtabschluss bleiben Status und Veranstaltungszuordnung erhalten.</p>'+selectField('Veranstaltung','event_id',item.event_id,state.events.filter(e=>e.id===item.event_id || (state.events.find(v=>v.id===item.event_id)?.status==='open' && e.status==='open')).map(e=>[e.id,e.name]))+
       '<div class="form-row">'+field('Spieler A','player_a',item.player_a,'text','maxlength="100"')+field('Spieler B','player_b',item.player_b,'text','maxlength="100"')+'</div>'+
       '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field('Gewinnspiele','target',item.target,'number','min="1" max="99"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
       '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="99"')+field('Punkte B','b',item.b,'number','min="0" max="99"')+'</div>'+
-      '<div class="form-row">'+selectField('Status','status',item.status,Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:8},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
+      '<div class="form-row">'+selectField('Status','status',item.status,state.events.find(e=>e.id===item.event_id)?.status==='closed'?[['finished','Abgeschlossen']]:Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:8},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
       '<label>'+ (item.pin_set ? 'Neue Tablet-PIN (leer lassen zum Beibehalten)' : 'Tablet-PIN nachtragen') +'<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>'+
       '<small>Geplant: 0:0 und kein Tisch. Am Tisch: freier Tisch erforderlich. Abgeschlossen: genau ein Spieler hat das Spielziel erreicht.</small>';
   } else {
     const name=entity==='event'?item.name:item.player_a+' / '+item.player_b;
     content='<p><strong>'+esc(name)+'</strong></p>';
     if(action==='delete')content+='<p>Dieser Eintrag wird gelöscht.'+(entity==='event'?' Alle '+state.matches.filter(m=>m.event_id===item.id).length+' zugehörigen Partien einschließlich ihrer Ergebnisse werden ebenfalls gelöscht.':'')+' Belegte Tische werden freigegeben. Diese Aktion kann in der Oberfläche nicht rückgängig gemacht werden.</p>';
-    else content+='<p>Nach dem Gesamtabschluss sind Veranstaltung, Partien und Ergebnisse endgültig gesperrt. Alle Partien müssen zuvor abgeschlossen oder gelöscht sein. Bitte die Ergebnisse vorher prüfen.</p>';
+    else content+='<p>Der Spielbetrieb wird abgeschlossen. Spätere Korrekturen und Löschungen erfordern eine erneute Warnbestätigung. Alle Partien müssen zuvor abgeschlossen oder gelöscht sein. Bitte die Ergebnisse vorher prüfen.</p>';
   }
   document.querySelector('#admin-dialog-content').innerHTML=content;
   adminDialog.showModal();
 });
+adminDialog.addEventListener('close',()=>{pendingAdmin=undefined;});
 document.querySelector('#admin-dialog-cancel').addEventListener('click',()=>adminDialog.close());
 document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
   e.preventDefault(); if(!pendingAdmin||busy)return;
@@ -209,12 +200,27 @@ document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
     data.lag_winner=data.lag_winner || null;
     data.table_no=data.table_no===''?null:Number(data.table_no);
   }
-  busy=true; adminDialog.querySelectorAll('button').forEach(b=>b.disabled=true);
-  try {
-    await api('/api/'+(entity==='event'?'events':'matches')+'/'+item.id+'/'+action,{...data,version:item.version});
-    adminDialog.close(); message('');
-  } catch(error) { document.querySelector('#admin-dialog-error').textContent=error.message; }
-  finally {busy=false; adminDialog.querySelectorAll('button').forEach(b=>b.disabled=false); await refresh(true);}
+  const parent=entity==='match'?state.events.find(e=>e.id===item.event_id):null;
+  const payload={...data,version:item.version,event_version:pendingAdmin.eventVersion};
+  if(entity==='match' && data.event_id!==item.event_id) payload.destination_version=state.events.find(e=>e.id===data.event_id)?.version;
+  const valid=()=>{
+    const latest=(entity==='event'?state.events:state.matches).find(v=>v.id===item.id);
+    return latest?.version===item.version && (entity==='event' || state.events.find(e=>e.id===item.event_id)?.version===payload.event_version) && (payload.destination_version===undefined || state.events.find(e=>e.id===data.event_id)?.version===payload.destination_version);
+  };
+  if(!valid()) {document.querySelector('#admin-dialog-error').textContent='Daten geändert. Bitte abbrechen und erneut öffnen.';return;}
+  const run=async()=>{await api('/api/'+(entity==='event'?'events':'matches')+'/'+item.id+'/'+action,payload);adminDialog.close();};
+  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'}).format(new Date());
+  if(action!=='edit' || (entity==='event'?(item.status==='closed'||item.date<today):(item.status==='finished'||parent?.status==='closed'))) {
+    const phrase=entity==='event'?{edit:'EVENT ÄNDERN',delete:'EVENT LÖSCHEN',close:'EVENT ABSCHLIESSEN'}[action]:{edit:'SPIEL ÄNDERN',delete:'SPIEL LÖSCHEN'}[action];
+    payload.action=entity+':'+action; payload.confirmation=phrase;
+    const name=entity==='event'?item.name:item.player_a+' / '+item.player_b;
+    const summary='<p><strong>'+esc(name)+' · #'+item.id+'</strong></p>'+(action==='edit'?changeSummary(item,data):document.querySelector('#admin-dialog-content').innerHTML);
+    showWarning({phrase,label:document.querySelector('#admin-dialog-save').textContent,summary,valid,run});
+  } else {
+    busy=true;
+    try {await run();}catch(error){document.querySelector('#admin-dialog-error').textContent=error.message;}
+    finally {busy=false;await refresh(true);}
+  }
 });
 
 
@@ -240,7 +246,7 @@ function rentalDashboard() {
     }).join('')+'</section><section class="planning"><div class="panel"><h2>Vermietung starten</h2><form id="rental-start" data-version="'+settings.version+'" data-base="'+settings.base_cents+'">'+
     selectField('Tisch','table_no',free[0]??'',free.map(n=>[n,'Tisch '+n]))+selectField('Preis festlegen','mode','direct',[['direct','Euro pro Stunde'],['percent','Zu- / Abschlag in %']])+field('Eurobetrag oder Prozentanpassung','value',settings.base_cents/100,'number','step="0.01"')+'<p>Grundpreis: '+euro(settings.base_cents)+'/h</p><p id="rental-preview" aria-live="polite"></p><button class="primary" '+(free.length?'':'disabled')+'>Vermietung starten</button></form></div>'+
     '<div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div></section>'+
-    '<h2>Buchungshistorie</h2><div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Korrektur</th></tr></thead><tbody>'+rentals.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+r.billed_minutes+' Minuten')+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'</td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
+    '<h2>Buchungshistorie</h2><div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Aktionen</th></tr></thead><tbody>'+rentals.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+r.billed_minutes+' Minuten')+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'<button data-rental-delete="'+r.id+'">Buchung löschen</button></td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
   tickRentals(); updateRentalPreview();
 }
 function updateRentalPreview() {
@@ -258,9 +264,14 @@ root.addEventListener('change',e=>{
 function handleRentalSubmit(form) {
   if(!['rental-start','rental-settings'].includes(form.id)) return false;
   const data=Object.fromEntries(new FormData(form));
-  mutate(async()=>{
-    if(form.id==='rental-start') await api('/api/rentals',{table_no:Number(data.table_no),mode:data.mode,value:Number(data.value),settings_version:Number(form.dataset.version)});
-    else await api('/api/rentals/settings',{base_euros:Number(data.base_euros),version:Number(form.dataset.version)});
+  if(form.id==='rental-settings') {
+    const before={...state.rental_settings}, version=Number(form.dataset.version), base_euros=Number(data.base_euros);
+    try {
+      const rate=hourlyRate(900,'direct',base_euros);
+      showWarning({phrase:'GRUNDPREIS ÄNDERN',label:'Grundpreis speichern',summary:'<p>Grundpreis für neue Vermietungen: '+euro(before.base_cents)+' → <strong>'+euro(rate)+'/h</strong></p><p>Bestehende Buchungen behalten ihren vereinbarten Preis.</p>',valid:()=>state.rental_settings.version===version,run:async()=>{await api('/api/rentals/settings',{base_euros,version,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'});drafts.delete(form.id);form.reset();}});
+    } catch(error) {message(error.message);}
+  } else mutate(async()=>{
+    await api('/api/rentals',{table_no:Number(data.table_no),mode:data.mode,value:Number(data.value),settings_version:Number(form.dataset.version)});
     drafts.delete(form.id); form.reset();
   });
   return true;
@@ -272,11 +283,16 @@ function localDateInput(time) {
 }
 root.addEventListener('click',e=>{
   const button=e.target.closest('button'); if(!button || busy || table)return;
-  if(button.dataset.rentalFinish) {
-    mutate(async()=>{
-      const r=await api('/api/rentals/'+button.dataset.rentalFinish+'/finish',{version:Number(button.dataset.version)});
-      message('Tisch '+r.table_no+': Vermietung abgeschlossen · '+duration(r.duration_ms)+' · '+r.billed_minutes+' Minuten × '+euro(r.hourly_cents)+'/h = '+euro(r.total_cents));
-    });
+  if(button.dataset.rentalFinish || button.dataset.rentalDelete) {
+    const r=state.rentals.find(r=>r.id===Number(button.dataset.rentalFinish || button.dataset.rentalDelete));if(!r)return;
+    const snapshot={...r}, valid=()=>state.rentals.find(v=>v.id===snapshot.id)?.version===snapshot.version;
+    const identity='<p><strong>Buchung #'+r.id+' · Tisch '+r.table_no+'</strong></p><p>Start: '+rentalDate(r.started_at)+' · Stundenpreis: '+euro(r.hourly_cents)+'</p>';
+    if(button.dataset.rentalDelete) {
+      showWarning({phrase:'BUCHUNG LÖSCHEN',label:'Buchung löschen',summary:identity+'<p>Diese Buchung einschließlich ihrer Abrechnungsdaten wird aus der Historie gelöscht. '+(r.status==='active'?'Die laufende Vermietung wird entfernt und der Tisch freigegeben.':'Gespeicherter Gesamtbetrag: '+euro(r.total_cents)+'.')+' Die Löschung kann in der Oberfläche nicht rückgängig gemacht werden.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/delete',{version:r.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})});
+    } else {
+      const ended_at=Math.max(r.started_at,Date.now()+clockOffset), price=rentalPrice(r.started_at,ended_at,r.hourly_cents);
+      showWarning({phrase:null,label:'Vermietung abschließen',summary:identity+'<p>Endzeitpunkt: '+rentalDate(ended_at)+'<br>Dauer: '+duration(price.duration_ms)+'<br>Abrechnung: '+price.billed_minutes+' Minuten<br>Gesamtbetrag: <strong>'+euro(price.total_cents)+'</strong></p><p>Dieser Endzeitpunkt und Betrag werden gespeichert; der Tisch wird freigegeben. Abbrechen lässt die Vermietung weiterlaufen.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/finish',{version:r.version,ended_at,action:'rental:finish'})});
+    }
   }
   if(button.dataset.rentalEdit) {
     const r=state.rentals.find(r=>r.id===Number(button.dataset.rentalEdit)); if(!r)return;
@@ -300,10 +316,7 @@ rentalEdit.addEventListener('submit',e=>{
     document.querySelector('#rental-error').textContent=''; rentalConfirmation.focus();
   }catch(error){document.querySelector('#rental-error').textContent=error.message;}
 });
-for(const event of ['paste','drop','contextmenu']) rentalConfirmation.addEventListener(event,e=>e.preventDefault());
-rentalConfirmation.addEventListener('beforeinput',e=>{if(['insertFromPaste','insertFromDrop'].includes(e.inputType))e.preventDefault();});
-rentalConfirmation.addEventListener('keydown',e=>{if(((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v')||(e.shiftKey&&e.key==='Insert')||e.key==='Enter')e.preventDefault();});
-rentalConfirmation.addEventListener('input',()=>{rentalSave.disabled=busy||!rentalCorrection||rentalConfirmation.value!=='BUCHUNG ÄNDERN';});
+guardConfirmation(rentalConfirmation,()=>{rentalSave.disabled=busy||!rentalCorrection||rentalConfirmation.value!=='BUCHUNG ÄNDERN';});
 document.querySelector('#rental-cancel').addEventListener('click',()=>rentalDialog.close());
 rentalDialog.addEventListener('close',()=>{pendingRental=undefined;rentalCorrection=undefined;rentalConfirmation.value='';rentalSave.disabled=true;});
 rentalSave.addEventListener('click',async()=>{
@@ -313,6 +326,52 @@ rentalSave.addEventListener('click',async()=>{
   try { await api('/api/rentals/'+id+'/edit',data); rentalDialog.close(); message('Buchung korrigiert und protokolliert.'); }
   catch(error) { document.querySelector('#rental-error').textContent=error.message+' Bitte abbrechen und die Buchung erneut öffnen.'; rentalCorrection=undefined; rentalConfirmation.value=''; }
   finally { busy=false; await refresh(true); }
+});
+
+
+// One immutable action snapshot per warning. Enter never executes an action.
+const warningDialog=document.querySelector('#warning-dialog'), warningInput=document.querySelector('#warning-input'), warningSave=document.querySelector('#warning-save');
+let pendingWarning;
+function guardConfirmation(input, changed) {
+  for(const type of ['paste','drop','contextmenu']) input.addEventListener(type,e=>e.preventDefault());
+  input.addEventListener('beforeinput',e=>{if(['insertFromPaste','insertFromDrop','insertReplacementText'].includes(e.inputType))e.preventDefault();});
+  input.addEventListener('keydown',e=>{if(((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v')||(e.shiftKey&&e.key==='Insert')||e.key==='Enter')e.preventDefault();});
+  input.addEventListener('input',changed);
+}
+function changeSummary(item,data) {
+  const names={name:'Name',kind:'Format',date:'Datum',event_id:'Veranstaltung',player_a:'Spieler A',player_b:'Spieler B',discipline:'Disziplin',target:'Spielziel',first:'Erstes Break',lag_winner:'Ausstoßen',a:'Punkte A',b:'Punkte B',status:'Status',table_no:'Tisch',pin:'Tablet-PIN'};
+  const display=(key,value)=>key==='event_id'?state.events.find(e=>e.id===Number(value))?.name??value:key==='status'?labels[value]:value??'–';
+  const changes=Object.entries(data).filter(([key,value])=>key==='pin'?value!=='':String(item[key]??'')!==String(value??''));
+  return '<p>Folgende Änderungen werden gespeichert:</p><ul>'+changes.map(([key,value])=>'<li>'+esc(names[key]||key)+': '+(key==='pin'?'wird ersetzt':esc(display(key,item[key]))+' → '+esc(display(key,value)))+'</li>').join('')+'</ul>'+(changes.length?'':'<p>Keine Feldänderungen.</p>');
+}
+function showWarning(pending) {
+  pendingWarning=pending; warningInput.value='';warningSave.disabled=!!pending.phrase;
+  document.querySelector('#warning-entry').hidden=!pending.phrase;
+  warningSave.textContent=pending.label;
+  document.querySelector('#warning-summary').innerHTML=pending.summary;
+  document.querySelector('#warning-phrase').textContent=pending.phrase || '';
+  document.querySelector('#warning-error').textContent='';
+  warningDialog.showModal();if(pending.phrase)warningInput.focus();else document.querySelector('#warning-cancel').focus();
+}
+function checkWarning() {
+  if(rentalCorrection && state?.rentals.find(r=>r.id===pendingRental.id)?.version!==pendingRental.version) {
+    rentalCorrection=undefined;rentalConfirmation.value='';rentalSave.disabled=true;
+    document.querySelector('#rental-error').textContent='Buchung geändert. Bitte abbrechen und erneut öffnen.';
+  }
+  if(pendingWarning && !pendingWarning.valid()) {
+    pendingWarning=undefined;warningInput.value='';warningSave.disabled=true;
+    document.querySelector('#warning-error').textContent='Daten wurden geändert. Bitte abbrechen, den aktualisierten Eintrag öffnen und erneut prüfen.';
+  }
+}
+guardConfirmation(warningInput,()=>{checkWarning();warningSave.disabled=busy||!pendingWarning||(pendingWarning.phrase && warningInput.value!==pendingWarning.phrase);});
+document.querySelector('#warning-cancel').addEventListener('click',()=>warningDialog.close());
+warningDialog.addEventListener('close',()=>{pendingWarning=undefined;warningInput.value='';warningSave.disabled=true;});
+warningSave.addEventListener('click',async()=>{
+  checkWarning();if(busy||!pendingWarning||(pendingWarning.phrase && warningInput.value!==pendingWarning.phrase))return;
+  const pending=pendingWarning;busy=true;warningSave.disabled=true;
+  try {await pending.run();warningDialog.close();message('Aktion gespeichert und protokolliert.');}
+  catch(error){pendingWarning=undefined;warningInput.value='';document.querySelector('#warning-error').textContent=error.message+' Bitte abbrechen und erneut öffnen.';}
+  finally{busy=false;await refresh(true);}
 });
 
 await refresh(true);

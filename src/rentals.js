@@ -13,6 +13,10 @@ export function migrateRentals(db) {
 }
 
 export function rentalService({db, transaction, fail, integer, log}) {
+  db.prepare("INSERT OR IGNORE INTO entity_ids(name,value) VALUES('rentals',(SELECT COALESCE(MAX(id),0) FROM rentals))").run();
+  const confirm = (body, action, phrase) => {
+    if(body.action !== action || (phrase && body.confirmation !== phrase)) throw fail(400,'Bitte die angezeigte Aktion bestätigen.');
+  };
   const settings = () => db.prepare('SELECT * FROM rental_settings WHERE id=1').get();
   const occupied = number => db.prepare("SELECT id FROM rentals WHERE table_no=? AND status='active'").get(number);
   const get = id => {
@@ -29,6 +33,7 @@ export function rentalService({db, transaction, fail, integer, log}) {
         if (path === '/api/rentals/settings') {
           const before=settings();
           if(body.version !== before.version) throw fail(409, 'Der Grundpreis wurde geändert. Bitte neu prüfen.');
+          confirm(body,'rental:settings','GRUNDPREIS ÄNDERN');
           const base=calculate(()=>hourlyRate(900,'direct',body.base_euros));
           db.prepare('UPDATE rental_settings SET base_cents=?,version=version+1 WHERE id=1').run(base);
           log('admin','rental:settings',null,{before,after:settings()});
@@ -40,19 +45,28 @@ export function rentalService({db, transaction, fail, integer, log}) {
           if (occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409,'Dieser Tisch ist belegt.');
           const mode=body.mode ?? 'direct', value=body.value ?? base.base_cents/100;
           const rate=calculate(()=>hourlyRate(base.base_cents,mode,value));
-          const result=db.prepare('INSERT INTO rentals(table_no,started_at,hourly_cents,base_cents,adjustment_percent) VALUES(?,?,?,?,?)').run(number,Date.now(),rate,base.base_cents,mode==='percent'?value:null);
-          const item=get(Number(result.lastInsertRowid));
+          const id=db.prepare("UPDATE entity_ids SET value=value+1 WHERE name='rentals' RETURNING value").get().value;
+          db.prepare('INSERT INTO rentals(id,table_no,started_at,hourly_cents,base_cents,adjustment_percent) VALUES(?,?,?,?,?,?)').run(id,number,Date.now(),rate,base.base_cents,mode==='percent'?value:null);
+          const item=get(id);
           log('admin','rental:start',null,{after:item});
           return item;
         }
-        const route=/^\/api\/rentals\/(\d+)\/(finish|edit)$/.exec(path);
+        const route=/^\/api\/rentals\/(\d+)\/(finish|edit|delete)$/.exec(path);
         if (!route) throw fail(404,'Nicht gefunden.');
         const id=Number(route[1]), action=route[2], before=get(id);
-        // A repeated finish is harmless, including after a lost response.
-        if(action==='finish' && before.status==='finished') return before;
+        // Retry only the exact same completion; corrections invalidate old requests.
+        if(action==='finish' && before.status==='finished' && body.version===before.version-1 && body.ended_at===before.ended_at) {
+          confirm(body,'rental:finish'); return before;
+        }
         if (body.version !== before.version) throw fail(409,'Die Buchung wurde zwischenzeitlich geändert. Bitte neu öffnen und erneut bestätigen.');
-        if(action==='finish') {
-          const end=Math.max(Date.now(),before.started_at), price=rentalPrice(before.started_at,end,before.hourly_cents);
+        if(action==='delete') {
+          confirm(body,'rental:delete','BUCHUNG LÖSCHEN');
+          db.prepare('DELETE FROM rentals WHERE id=?').run(id);
+          log('admin','rental:delete',null,{before}); return {ok:true};
+        } else if(action==='finish') {
+          if(before.status!=='active') throw fail(409,'Die Buchung ist bereits abgeschlossen.');
+          confirm(body,'rental:finish');
+          const end=integer(body.ended_at,before.started_at,Date.now()), price=rentalPrice(before.started_at,end,before.hourly_cents);
           db.prepare("UPDATE rentals SET ended_at=?,duration_ms=?,billed_minutes=?,total_cents=?,status='finished',version=version+1 WHERE id=?").run(end,price.duration_ms,price.billed_minutes,price.total_cents,id);
         } else {
           if(before.status!=='finished') throw fail(409,'Nur abgeschlossene Buchungen können korrigiert werden.');
