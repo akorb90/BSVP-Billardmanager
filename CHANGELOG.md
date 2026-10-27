@@ -1,10 +1,17 @@
-# Änderungen
+# Release Notes
 
-## FR-001: Durchgängige Admin-Navigation — 2026-10-27
+Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
+
+## FR-001: Durchgängige Admin-Navigation und Tischübersicht als Home-Seite — 2026-10-27
+
+Erfasst am 26.10.2026 · umgesetzt am 27.10.2026 · Implementierungscommit: `3753fd0`.
 
 - Die Admin-Menüleiste und Abmeldung bleiben auch an freien Tischen, während der Spielvorbereitung und beim Zählen sichtbar. Die Sitzungsprüfung aktualisiert die Navigation auch bei unverändertem Spielstand.
 - Menülinks führen aus jeder Tischansicht zur Verwaltung; einzelne Tische markieren die Tischübersicht als aktiv. Das Vereinslogo und die Verwaltungs-Startseiten öffnen die Tischübersicht. Eine neue Admin-Anmeldung setzt auch einen zuvor geöffneten Ergebnis- oder Spieltagslink auf die Tischübersicht zurück.
 - Reine PIN-Sitzungen erhalten weiterhin keine Admin-Navigation oder Verwaltungsrechte. Frontend-Regressionstests decken Startseiten, Ansichten, Tischzustände, Sitzungswechsel und Anmeldung ab; API-Tests prüfen zusätzlich die Abweisung von Verwaltungszugriffen mit Partie-PIN.
+
+- Prüfung: Alle zwölf automatisierten Tests bestanden. Lokal mit `docker compose up -d --build --wait` deployt; HTTPS mit validierter Zertifikatskette und Containerzustand erfolgreich geprüft. Bestehende Secrets und Datenvolumes erhalten.
+- Umfang: Tischzählung, Spielvorbereitung und Zeitmessung bleiben unverändert; die entfernte Punkteübersicht wird nicht wieder eingeführt.
 
 ## Gesamtabschluss und Korrekturen — 2026-10-26
 
