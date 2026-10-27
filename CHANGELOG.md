@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Rabattfeld und Einstellungen — 2026-10-27
+
+- Preisauswahl-Dropdown entfernt; neue Vermietungen erhalten ein eigenes Rabattfeld (0–100 %) und eine sofortige Stundenpreisvorschau. Buchungskorrekturen bieten Stundenpreis und optionalen Rabatt als getrennte Felder, ohne Dropdown.
+- Neuer Menüpunkt „Einstellungen“ bündelt den Grundpreis mit bestehender Warnbestätigung und den Admin-Passwortwechsel. Passwortwechsel verlangt das aktuelle Passwort und zwei übereinstimmende neue Eingaben (12–128 Zeichen), ist gegen CSRF und wiederholtes Raten geschützt und meldet alle Admin-Sitzungen ab.
+- Schema 6 übernimmt den vorhandenen scrypt-Hash, speichert spätere Passwortwechsel dauerhaft im Datenvolume und protokolliert nur den Wechsel, keine Passwörter oder Hashes. Bestehende Secrets bleiben unverändert. Passwortfelder werden nicht als Formularentwürfe gespeichert.
+- Prüfung: 20 automatisierte Tests erfolgreich, einschließlich Rabattvalidierung, Navigation, Passwortprüfung, Sitzungsausschluss, Neustartpersistenz und Audit ohne Zugangsdaten. Rabattvorschau und Einstellungen im Browser mit separater Testdatenbank geprüft. Isolierter Docker-Integrationstest erfolgreich; im bestehenden lokalen Stack mit `docker compose up -d --build --wait` deployt. App gesund, Proxy aktiv und HTTPS über localhost sowie 127.0.0.1 mit validierter Zertifikatskette geprüft.
+
 ## Tischvermietung: Warnbestätigungen und Buchungslöschung — 2026-10-27
 
 - Mietabschluss zeigt Buchung, Tisch, festen Endzeitpunkt, Dauer und Abrechnungsbetrag. Wie gewünscht genügt „Vermietung abschließen“ ohne manuelle Texteingabe. Abbrechen lässt die Vermietung weiterlaufen. Gespeichert wird genau der angezeigte Endzeitpunkt.

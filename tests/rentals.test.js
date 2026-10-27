@@ -41,6 +41,7 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
     assert.equal((await call('/api/rentals',{table_no:8,settings_version:0})).status,409);
     const attempts=await Promise.all([call('/api/rentals',{table_no:1,settings_version:0}),call('/api/rentals',{table_no:1,settings_version:0})]);
     assert.deepEqual(attempts.map(r=>r.status).sort(),[201,409]);
+    for(const discount of [-1,101,'20',null,0.001]) assert.equal((await call('/api/rentals',{table_no:7,settings_version:0,discount})).status,400);
     const first=attempts.find(r=>r.status===201).body;
     assert.equal(first.hourly_cents,900);
     assert.equal((await call('/api/rentals',{table_no:2,settings_version:0,mode:'percent',value:-20})).body.hourly_cents,720);
@@ -93,6 +94,8 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
     assert.ok(replacement.id>highest.id);
     for(const confirmation of ['', 'GRUNDPREIS', 'GRUNDPREIS ÄNDERN ']) assert.equal((await call('/api/rentals/settings',{version:1,base_euros:10,action:'rental:settings',confirmation})).status,400);
     assert.equal((await call('/api/rentals/settings',{version:0,base_euros:10,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'})).status,409);
+    const discountedStart=await call('/api/rentals',{table_no:7,settings_version:1,discount:20});
+    assert.equal(discountedStart.body.hourly_cents,960);assert.equal(discountedStart.body.adjustment_percent,-20);
     const db=new DatabaseSync(dbPath);
     assert.equal(db.prepare("SELECT count(*) AS n FROM audit WHERE action='rental:finish'").get().n,1);
     const audit=JSON.parse(db.prepare("SELECT detail FROM audit WHERE action='rental:edit' ORDER BY id LIMIT 1").get().detail);

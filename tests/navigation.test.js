@@ -23,7 +23,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
     });
     return elements.get(id);
   };
-  const links = [...html.matchAll(/href="(\/#(?:uebersicht|spieltage|ergebnisse|vermietung))"/g)].map(([_, href]) => {
+  const links = [...html.matchAll(/href="(\/#(?:uebersicht|spieltage|ergebnisse|vermietung|einstellungen))"/g)].map(([_, href]) => {
     const link = element(href); link.href = href; link.hash = new URL(href, 'https://localhost').hash; return link;
   });
   element('#admin-nav').querySelectorAll = () => links;
@@ -104,12 +104,12 @@ test('Admin-Formulare zeigen Änderungen und binden Warnungen an die konkrete Ak
 function navigation(app, active = 'uebersicht') {
   assert.equal(app.element('#admin-nav').hidden, false);
   assert.equal(app.element('#logout').hidden, false);
-  assert.equal(app.links.length, 4);
+  assert.equal(app.links.length, 5);
   assert.deepEqual(app.links.filter(link => link.attributes['aria-current'] === 'page').map(link => link.hash), ['#' + active]);
 }
 
 test('Admin-Startseiten, Ansichten und Logo führen zur richtigen Navigation', async () => {
-  for (const path of ['/', '/admin', '/#uebersicht', '/#spieltage', '/#ergebnisse', '/#vermietung']) {
+  for (const path of ['/', '/admin', '/#uebersicht', '/#spieltage', '/#ergebnisse', '/#vermietung', '/#einstellungen']) {
     const app = await frontend(path);
     navigation(app, app.location.hash.slice(1) || 'uebersicht');
     await app.refresh(true);
@@ -149,4 +149,20 @@ test('Erfolgreiche Anmeldung setzt einen vorherigen Ergebnis-Link auf die Tisch�
   assert.equal(app.location.pathname, '/');
   assert.equal(app.location.hash, '#uebersicht');
   navigation(app);
+});
+
+
+test('Rabattfeld und Einstellungen ersetzen Preisauswahl und Grundpreis im Vermietungsmenü',async()=>{
+  const rental=await frontend('/#vermietung');
+  const rentalHtml=rental.element('#app').innerHTML;
+  assert.match(rentalHtml,/Rabatt in %/);assert.doesNotMatch(rentalHtml,/Preis festlegen|id="rental-settings"/);
+  await rental.element('#app').listeners.submit({preventDefault(){},target:{id:'rental-start',dataset:{version:'0'},entries:[['table_no','1'],['discount','20']],reset(){}}});
+  await new Promise(r=>setImmediate(r));
+  assert.equal(rental.posts[0].data.discount,20);
+  const settings=await frontend('/#einstellungen');
+  assert.match(settings.element('#app').innerHTML,/id="rental-settings"/);
+  assert.match(settings.element('#app').innerHTML,/Aktuelles Passwort/);
+  assert.match(settings.element('#app').innerHTML,/Neues Passwort wiederholen/);
+  await settings.element('#app').listeners.submit({preventDefault(){},target:{id:'admin-password',entries:[['new_password','a'],['repeat_password','b']]}});
+  assert.equal(settings.posts.length,0);
 });

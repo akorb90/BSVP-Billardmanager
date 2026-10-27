@@ -43,7 +43,8 @@ export function rentalService({db, transaction, fail, integer, log}) {
           const number=integer(body.table_no,1,8), base=settings();
           if (body.settings_version !== base.version) throw fail(409,'Der Grundpreis wurde geändert. Bitte den Preis erneut prüfen.');
           if (occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409,'Dieser Tisch ist belegt.');
-          const mode=body.mode ?? 'direct', value=body.value ?? base.base_cents/100;
+          if(body.discount!==undefined && (typeof body.discount!=='number' || !Number.isFinite(body.discount) || body.discount<0 || body.discount>100)) throw fail(400,'Rabatt muss zwischen 0 und 100 % liegen.');
+          const mode=body.discount!==undefined?'percent':body.mode ?? 'direct', value=body.discount!==undefined?-body.discount:body.value ?? base.base_cents/100;
           const rate=calculate(()=>hourlyRate(base.base_cents,mode,value));
           const id=db.prepare("UPDATE entity_ids SET value=value+1 WHERE name='rentals' RETURNING value").get().value;
           db.prepare('INSERT INTO rentals(id,table_no,started_at,hourly_cents,base_cents,adjustment_percent) VALUES(?,?,?,?,?,?)').run(id,number,Date.now(),rate,base.base_cents,mode==='percent'?value:null);

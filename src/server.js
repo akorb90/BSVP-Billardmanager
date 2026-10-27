@@ -22,7 +22,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 5) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 6) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -50,6 +50,15 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       PRAGMA user_version=4; COMMIT;`);
   }
   if (schema < 5) migrateRentals(db);
+  if (schema < 6) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec('CREATE TABLE admin_credentials(id INTEGER PRIMARY KEY CHECK(id=1), password_hash TEXT NOT NULL)');
+      db.prepare('INSERT INTO admin_credentials VALUES(1,?)').run(config.adminHash);
+      db.exec('PRAGMA user_version=6; COMMIT');
+    } catch(error) { db.exec('ROLLBACK'); throw error; }
+  }
+  const adminHash = () => db.prepare('SELECT password_hash FROM admin_credentials WHERE id=1').get().password_hash;
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
   const equal = (a, b) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
@@ -134,7 +143,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         const key = req.socket.remoteAddress; const attempt = attempts.get(key) || { count: 0, until: now + 15 * 60_000 };
         if (attempt.count >= 10) throw fail(429, 'Zu viele Versuche. Bitte 15 Minuten warten.');
         attempt.count++; attempts.set(key, attempt);
-        const [salt, expected] = config.adminHash.split(':');
+        const [salt, expected] = adminHash().split(':');
         const actual = scryptSync(typeof body.password === 'string' ? body.password : '', salt, 64).toString('hex');
         if (!equal(actual, expected)) throw fail(401, 'Anmeldung fehlgeschlagen.');
         attempts.delete(key); if (sid) sessions.delete(hash(sid));
@@ -142,6 +151,28 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         sessions.set(hash(id), { csrf, expires: now + 8 * 3600_000 });
         res.setHeader('Set-Cookie', `session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${origin.startsWith('https:') ? '; Secure' : ''}`);
         return json(res, 200, { csrf });
+      }
+      if (req.method === 'POST' && url.pathname === '/api/settings/password') {
+        admin();
+        const key='password:'+req.socket.remoteAddress;
+        const attempt=attempts.get(key) || {count:0,until:now+15*60_000};
+        if(attempt.count>=10) throw fail(429,'Zu viele Versuche. Bitte 15 Minuten warten.');
+        attempt.count++; attempts.set(key,attempt);
+        const [salt,expected]=adminHash().split(':');
+        const actual=scryptSync(typeof body.current_password==='string'?body.current_password:'',salt,64).toString('hex');
+        if(!equal(actual,expected)) throw fail(400,'Das aktuelle Passwort ist nicht korrekt.');
+        const password=body.new_password;
+        if(typeof password!=='string' || password.length<12 || password.length>128 || !password.trim()) throw fail(400,'Das neue Passwort muss 12 bis 128 Zeichen enthalten.');
+        if(password!==body.repeat_password) throw fail(400,'Die neuen Passwörter stimmen nicht überein.');
+        if(password===body.current_password) throw fail(400,'Bitte ein anderes neues Passwort wählen.');
+        const nextSalt=randomBytes(16).toString('hex'), encoded=nextSalt+':'+scryptSync(password,nextSalt,64).toString('hex');
+        transaction(()=>{
+          db.prepare('UPDATE admin_credentials SET password_hash=? WHERE id=1').run(encoded);
+          log('admin','admin:password',null,{changed:true});
+        });
+        sessions.clear(); attempts.delete(key);
+        res.setHeader('Set-Cookie','session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+        return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
       if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...rentals.state(), csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
