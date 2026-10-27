@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { migrateRentals, rentalService } from './rentals.js';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
@@ -21,7 +22,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 4) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 5) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -48,6 +49,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       UPDATE matches SET started_at=CAST(unixepoch('subsec')*1000 AS INTEGER),running_since=CAST(unixepoch('subsec')*1000 AS INTEGER),rack_since=CAST(unixepoch('subsec')*1000 AS INTEGER) WHERE status='live';
       PRAGMA user_version=4; COMMIT;`);
   }
+  if (schema < 5) migrateRentals(db);
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
   const equal = (a, b) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
@@ -57,6 +59,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const integer = (v, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw fail(400, 'Ungültiger Zahlenwert.'); return v; };
   const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
+  const rentals = rentalService({db, transaction, fail, integer, log});
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
   const openEvent = id => {
     const event = db.prepare('SELECT * FROM events WHERE id=?').get(id);
@@ -133,7 +136,10 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         return json(res, 200, { csrf });
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
-      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
+      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...rentals.state(), csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
+      if (req.method === 'POST' && (url.pathname === '/api/rentals' || url.pathname.startsWith('/api/rentals/'))) {
+        admin(); return json(res, url.pathname === '/api/rentals' ? 201 : 200, rentals.handle(url.pathname,body));
+      }
       const pinRoute = /^\/api\/tables\/([1-8])\/login$/.exec(url.pathname);
       if (req.method==='POST' && pinRoute) {
         const number=Number(pinRoute[1]);
@@ -213,7 +219,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,8);
             if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
-            if (status==='live' && db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)) throw fail(409,'Dieser Tisch ist belegt.');
+            if (status==='live' && (rentals.occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id))) throw fail(409,'Dieser Tisch ist belegt.');
             db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
             if(body.pin !== undefined && body.pin !== '') db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
             db.prepare('UPDATE matches SET auth_version=auth_version+1 WHERE id=?').run(id);
@@ -228,7 +234,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
           } else if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');
             const number = integer(body.table_no, 1, 8);
-            if (db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409, 'Dieser Tisch ist belegt.');
+            if (rentals.occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409, 'Dieser Tisch ist belegt.');
             db.prepare("UPDATE matches SET table_no=?,status='live',version=version+1 WHERE id=?").run(number, id);
             if(body.lag_winner!==undefined || body.first!==undefined) {
               if(!['a','b'].includes(body.lag_winner) || !['a','b'].includes(body.first)) throw fail(400,'Ausstoßen und erstes Break auswählen.');
@@ -252,8 +258,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         });
         return json(res, 200, result);
       }
-      if (req.method === 'GET' && ['/', '/admin', '/app.js', '/style.css'].includes(url.pathname) || req.method === 'GET' && /^\/tisch\/[1-8]$/.test(url.pathname)) {
-        const asset = url.pathname === '/app.js' ? 'app.js' : url.pathname === '/style.css' ? 'style.css' : 'index.html';
+      if (req.method === 'GET' && ['/', '/admin', '/app.js', '/rental-pricing.js', '/style.css'].includes(url.pathname) || req.method === 'GET' && /^\/tisch\/[1-8]$/.test(url.pathname)) {
+        const asset = url.pathname === '/rental-pricing.js' ? 'rental-pricing.js' : url.pathname === '/app.js' ? 'app.js' : url.pathname === '/style.css' ? 'style.css' : 'index.html';
         res.setHeader('Content-Type', asset.endsWith('.js') ? 'text/javascript; charset=utf-8' : asset.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8');
         return res.end(readFileSync(new URL(`../public/${asset}`, import.meta.url)));
       }

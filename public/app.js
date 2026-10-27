@@ -1,3 +1,4 @@
+import { rentalPrice, hourlyRate } from './rental-pricing.js';
 const root = document.querySelector('#app'), connection = document.querySelector('#connection');
 const table = Number(/^\/tisch\/([1-8])$/.exec(location.pathname)?.[1]);
 if (table) document.body.classList.add('kiosk');
@@ -6,7 +7,7 @@ let setupChoice, clockOffset=0;
 let csrf = '', state, current, busy = false, pendingFinish;
 const navigation = document.querySelector('#admin-nav');
 const finishDialog = document.querySelector('#finish-dialog');
-const views = { uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+const views = { vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const drafts = new Map();
 function adminNavigation(authenticated) {
@@ -30,6 +31,7 @@ async function api(path, data) {
   const res = await fetch(path, { method: data ? 'POST' : 'GET', headers, body: data ? JSON.stringify(data) : undefined, signal: AbortSignal.timeout(8000) });
   const result = await res.json();
   if (!res.ok) { const error = new Error(result.error); error.status = res.status; throw error; }
+  if(result.server_now) clockOffset=result.server_now-Date.now();
   if(result.match?.server_now) clockOffset=result.match.server_now-Date.now();
   if(result.matches?.[0]?.server_now) clockOffset=result.matches[0].server_now-Date.now();
   return result;
@@ -40,12 +42,15 @@ function login() {
   connection.textContent = 'Vereinsverwaltung'; connection.className = ''; document.querySelector('#logout').hidden = true;
 }
 function dashboard() {
+  if(view==='vermietung') { adminNavigation(true); rentalDashboard(); return; }
   const live = state.matches.filter(m => m.status === 'live');
   adminNavigation(true);
   const visibleMatches = state.matches.filter(m => view === 'ergebnisse' ? m.status === 'finished' : view === 'spieltage' ? true : m.status === 'live');
-  root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length} / 8 Tische belegt</span></div>
+  root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length + (state.rentals || []).filter(r=>r.status==='active').length} / 8 Tische belegt</span></div>
     <section ${view === 'uebersicht' ? '' : 'hidden'}><div class="section-title"><h2>Unsere Tische</h2><span>Live-Spielstände · alle 3 Sekunden</span></div><section class="tables">${Array.from({length:8}, (_,i) => {
       const m = live.find(m => m.table_no === i + 1);
+      const r = (state.rentals || []).find(r=>r.table_no===i+1 && r.status==='active');
+      if(r) return `<a href="/#vermietung" class="table-card occupied"><strong>TISCH ${i+1}</strong><h3>Vermietet</h3>${rentalRunning(r)}<small>Zur Tischvermietung ↗</small></a>`;
       return `<a href="/tisch/${i+1}" class="table-card ${m ? 'occupied' : ''}"><div><strong>TISCH ${String(i+1).padStart(2,'0')}</strong><span class="dot ${m ? 'active' : ''}"></span></div>${m ? `<p>${esc(m.discipline)} · Race to ${m.target}</p><div class="mini-score"><span>${esc(m.player_a)}</span><b>${m.a}</b></div><div class="mini-score"><span>${esc(m.player_b)}</span><b>${m.b}</b></div>${timers(m)}<small>● Break: ${m.setup_done ? esc(m[m.breaker === 'a' ? 'player_a' : 'player_b']) : 'Noch offen'}</small>` : '<div class="free">Bereit für die nächste Partie</div><small>Frei verfügbar ↗</small>'}</a>`;
     }).join('')}</section></section>
     <section class="planning" ${view === 'spieltage' ? '' : 'hidden'}><div class="panel"><p class="eyebrow">01 · VERANSTALTUNG</p><h2>Spieltag anlegen</h2><form id="event"><label>Name<input name="name" maxlength="100" placeholder="z. B. Bezirksliga · 3. Spieltag" required></label><div class="form-row"><label>Format<select name="kind"><option>Liga</option><option>Turnier</option></select></label><label>Datum<input name="date" type="date" required></label></div><button class="primary">Veranstaltung anlegen</button></form></div>
@@ -66,7 +71,7 @@ function timers(m) {
   if(!m.started_at) return '<p>Spielzeit noch nicht erfasst (Bestand)</p>';
   return '<p class="match-timers">Partie: <strong data-time-base="'+m.elapsed_ms+'" data-time-since="'+(m.running_since??'')+'">'+duration(m.elapsed_ms+(m.running_since===null?0:Date.now()+clockOffset-m.running_since))+'</strong>'+(m.rack_since!==null?' · Runde: <strong data-time-base="0" data-time-since="'+m.rack_since+'">'+duration(Date.now()+clockOffset-m.rack_since)+'</strong>':'')+'</p>';
 }
-function tickTimers() { for(const el of document.querySelectorAll('[data-time-base]')) el.textContent=duration(Number(el.dataset.timeBase)+(el.dataset.timeSince===''?0:Date.now()+clockOffset-Number(el.dataset.timeSince))); }
+function tickTimers() { tickRentals(); for(const el of document.querySelectorAll('[data-time-base]')) el.textContent=duration(Number(el.dataset.timeBase)+(el.dataset.timeSince===''?0:Date.now()+clockOffset-Number(el.dataset.timeSince))); }
 function preparation(m) {
   if(setupChoice?.id!==m.id || setupChoice?.version!==m.version) setupChoice={id:m.id,version:m.version};
   const lag=setupChoice.lag;
@@ -90,7 +95,7 @@ async function refresh(initial = false) {
     } else {
       state = await api('/api/admin'); csrf = state.csrf;
       if (initial || !root.contains(document.activeElement) || document.activeElement.tagName === 'BUTTON') {
-        saveDrafts(); dashboard(); restoreDrafts();
+        saveDrafts(); dashboard(); restoreDrafts(); updateRentalPreview();
       }
     }
     connection.textContent = '● Verbunden'; connection.className = 'online';
@@ -107,7 +112,7 @@ async function mutate(fn) {
   finally { busy = false; await refresh(true); }
 }
 root.addEventListener('submit', e => {
-  e.preventDefault(); const form = e.target, data = Object.fromEntries(new FormData(form));
+  e.preventDefault(); if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
     if (form.id === 'tablet-login') { const result=await api(`/api/tables/${table}/login`,data); sessionStorage.setItem(`tablet-session:${table}`,result.token); form.reset(); }
     if (form.id === 'login') {
@@ -210,6 +215,104 @@ document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
     adminDialog.close(); message('');
   } catch(error) { document.querySelector('#admin-dialog-error').textContent=error.message; }
   finally {busy=false; adminDialog.querySelectorAll('button').forEach(b=>b.disabled=false); await refresh(true);}
+});
+
+
+const euro = cents => (cents/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+const rentalDate = value => value === null ? 'Läuft' : new Date(value).toLocaleString('de-DE');
+function rentalRunning(r) {
+  return '<p class="rental-clock" data-rental-start="'+r.started_at+'" data-rental-rate="'+r.hourly_cents+'"></p><p>'+euro(r.hourly_cents)+'/h</p>';
+}
+function tickRentals() {
+  for(const el of document.querySelectorAll('[data-rental-start]')) {
+    const start=Number(el.dataset.rentalStart), end=Math.max(start,Date.now()+clockOffset);
+    const price=rentalPrice(start,end,Number(el.dataset.rentalRate));
+    el.textContent=duration(price.duration_ms)+' · '+price.billed_minutes+' Min. · '+euro(price.total_cents);
+  }
+}
+function rentalDashboard() {
+  const rentals=state.rentals || [], settings=state.rental_settings || {base_cents:900,version:0};
+  const free=Array.from({length:8},(_,i)=>i+1).filter(n=>!rentals.some(r=>r.table_no===n&&r.status==='active')&&!state.matches.some(m=>m.table_no===n&&m.status==='live'));
+  root.innerHTML='<div class="page-title"><div><p class="eyebrow">TISCHVERMIETUNG</p><h1>Tischvermietung</h1><p>Angefangene Minuten werden aufgerundet. Vereinbarte Preise bleiben gespeichert.</p></div><span class="pill">'+free.length+' / 8 Tische frei</span></div>'+
+    '<section class="tables">'+Array.from({length:8},(_,i)=>{
+      const n=i+1,r=rentals.find(r=>r.table_no===n&&r.status==='active'), m=state.matches.find(m=>m.table_no===n&&m.status==='live');
+      return '<article class="table-card '+(r||m?'occupied':'')+'"><strong>TISCH '+n+'</strong><h3>'+(r?'Vermietet':m?'Partie am Tisch':'Frei')+'</h3>'+(r?rentalRunning(r)+'<button data-rental-finish="'+r.id+'" data-version="'+r.version+'">Vermietung abschließen</button>':m?'<p>'+esc(m.player_a)+' / '+esc(m.player_b)+'</p>':'<p>Für eine neue Vermietung verfügbar</p>')+'</article>';
+    }).join('')+'</section><section class="planning"><div class="panel"><h2>Vermietung starten</h2><form id="rental-start" data-version="'+settings.version+'" data-base="'+settings.base_cents+'">'+
+    selectField('Tisch','table_no',free[0]??'',free.map(n=>[n,'Tisch '+n]))+selectField('Preis festlegen','mode','direct',[['direct','Euro pro Stunde'],['percent','Zu- / Abschlag in %']])+field('Eurobetrag oder Prozentanpassung','value',settings.base_cents/100,'number','step="0.01"')+'<p>Grundpreis: '+euro(settings.base_cents)+'/h</p><p id="rental-preview" aria-live="polite"></p><button class="primary" '+(free.length?'':'disabled')+'>Vermietung starten</button></form></div>'+
+    '<div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div></section>'+
+    '<h2>Buchungshistorie</h2><div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Korrektur</th></tr></thead><tbody>'+rentals.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+r.billed_minutes+' Minuten')+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'</td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
+  tickRentals(); updateRentalPreview();
+}
+function updateRentalPreview() {
+  const form=root.querySelector('#rental-start'); if(!form)return;
+  try { root.querySelector('#rental-preview').textContent='Vereinbarter Stundenpreis: '+euro(hourlyRate(Number(form.dataset.base),form.elements.mode.value,Number(form.elements.value.value)))+'/h'; }
+  catch(e) { root.querySelector('#rental-preview').textContent=e.message; }
+}
+root.addEventListener('input',updateRentalPreview);
+root.addEventListener('change',e=>{
+  if(e.target.name==='mode' && e.target.form?.id==='rental-start') {
+    e.target.form.elements.value.value=e.target.value==='percent'?0:Number(e.target.form.dataset.base)/100;
+    updateRentalPreview();
+  }
+});
+function handleRentalSubmit(form) {
+  if(!['rental-start','rental-settings'].includes(form.id)) return false;
+  const data=Object.fromEntries(new FormData(form));
+  mutate(async()=>{
+    if(form.id==='rental-start') await api('/api/rentals',{table_no:Number(data.table_no),mode:data.mode,value:Number(data.value),settings_version:Number(form.dataset.version)});
+    else await api('/api/rentals/settings',{base_euros:Number(data.base_euros),version:Number(form.dataset.version)});
+    drafts.delete(form.id); form.reset();
+  });
+  return true;
+}
+const rentalDialog=document.querySelector('#rental-dialog'), rentalEdit=document.querySelector('#rental-edit'), rentalWarning=document.querySelector('#rental-warning'), rentalConfirmation=document.querySelector('#rental-confirmation'), rentalSave=document.querySelector('#rental-save');
+let pendingRental, rentalCorrection;
+function localDateInput(time) {
+  const date=new Date(time); return new Date(time-date.getTimezoneOffset()*60000).toISOString().slice(0,23);
+}
+root.addEventListener('click',e=>{
+  const button=e.target.closest('button'); if(!button || busy || table)return;
+  if(button.dataset.rentalFinish) {
+    mutate(async()=>{
+      const r=await api('/api/rentals/'+button.dataset.rentalFinish+'/finish',{version:Number(button.dataset.version)});
+      message('Tisch '+r.table_no+': Vermietung abgeschlossen · '+duration(r.duration_ms)+' · '+r.billed_minutes+' Minuten × '+euro(r.hourly_cents)+'/h = '+euro(r.total_cents));
+    });
+  }
+  if(button.dataset.rentalEdit) {
+    const r=state.rentals.find(r=>r.id===Number(button.dataset.rentalEdit)); if(!r)return;
+    pendingRental={...r}; rentalCorrection=undefined;
+    rentalEdit.hidden=false; rentalWarning.hidden=true; rentalConfirmation.value=''; rentalSave.disabled=true;
+    document.querySelector('#rental-error').textContent='';
+    document.querySelector('#rental-fields').innerHTML='<p>Buchung #'+r.id+' · Tisch '+r.table_no+'</p>'+field('Startzeit','started_at',localDateInput(r.started_at),'datetime-local','step="0.001"')+field('Endzeit','ended_at',localDateInput(r.ended_at),'datetime-local','step="0.001"')+selectField('Preis festlegen','mode',r.adjustment_percent===null?'direct':'percent',[['direct','Euro pro Stunde'],['percent','Zu- / Abschlag auf gespeicherten Grundpreis']])+field('Eurobetrag oder Prozentanpassung','value',r.adjustment_percent??r.hourly_cents/100,'number','step="0.01"')+'<p>Gespeicherter Grundpreis: '+euro(r.base_cents)+'/h</p>';
+    rentalDialog.showModal();
+  }
+});
+rentalEdit.addEventListener('submit',e=>{
+  e.preventDefault(); if(!pendingRental || busy)return;
+  try {
+    const values=Object.fromEntries(new FormData(rentalEdit)), r=pendingRental;
+    const started_at=new Date(values.started_at).getTime(), ended_at=new Date(values.ended_at).getTime();
+    if(started_at<0 || ended_at>Date.now()+clockOffset) throw new Error('Zeitangaben dürfen nicht in der Zukunft liegen.');
+    const rate=hourlyRate(r.base_cents,values.mode,Number(values.value)), price=rentalPrice(started_at,ended_at,rate);
+    rentalCorrection={started_at,ended_at,mode:values.mode,value:Number(values.value),version:r.version,action:'rental:edit'};
+    document.querySelector('#rental-summary').innerHTML='<p><strong>Buchung #'+r.id+' · Tisch '+r.table_no+'</strong></p><p>Start: '+rentalDate(r.started_at)+' → '+rentalDate(started_at)+'<br>Ende: '+rentalDate(r.ended_at)+' → '+rentalDate(ended_at)+'<br>Stundenpreis: '+euro(r.hourly_cents)+' → '+euro(rate)+'<br>Anpassung: '+(r.adjustment_percent===null?'Direktpreis':r.adjustment_percent+' %')+' → '+(values.mode==='percent'?esc(values.value)+' %':'Direktpreis')+'<br>Dauer: '+duration(r.duration_ms)+' → '+duration(price.duration_ms)+'<br>Abgerechnete Minuten: '+r.billed_minutes+' → '+price.billed_minutes+'<br>Gesamtpreis: '+euro(r.total_cents)+' → <strong>'+euro(price.total_cents)+'</strong></p>';
+    rentalEdit.hidden=true; rentalWarning.hidden=false; rentalConfirmation.value=''; rentalSave.disabled=true;
+    document.querySelector('#rental-error').textContent=''; rentalConfirmation.focus();
+  }catch(error){document.querySelector('#rental-error').textContent=error.message;}
+});
+for(const event of ['paste','drop','contextmenu']) rentalConfirmation.addEventListener(event,e=>e.preventDefault());
+rentalConfirmation.addEventListener('beforeinput',e=>{if(['insertFromPaste','insertFromDrop'].includes(e.inputType))e.preventDefault();});
+rentalConfirmation.addEventListener('keydown',e=>{if(((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v')||(e.shiftKey&&e.key==='Insert')||e.key==='Enter')e.preventDefault();});
+rentalConfirmation.addEventListener('input',()=>{rentalSave.disabled=busy||!rentalCorrection||rentalConfirmation.value!=='BUCHUNG ÄNDERN';});
+document.querySelector('#rental-cancel').addEventListener('click',()=>rentalDialog.close());
+rentalDialog.addEventListener('close',()=>{pendingRental=undefined;rentalCorrection=undefined;rentalConfirmation.value='';rentalSave.disabled=true;});
+rentalSave.addEventListener('click',async()=>{
+  if(busy||!pendingRental||!rentalCorrection||rentalConfirmation.value!=='BUCHUNG ÄNDERN')return;
+  const id=pendingRental.id, data={...rentalCorrection,confirmation:rentalConfirmation.value};
+  busy=true; rentalSave.disabled=true;
+  try { await api('/api/rentals/'+id+'/edit',data); rentalDialog.close(); message('Buchung korrigiert und protokolliert.'); }
+  catch(error) { document.querySelector('#rental-error').textContent=error.message+' Bitte abbrechen und die Buchung erneut öffnen.'; rentalCorrection=undefined; rentalConfirmation.value=''; }
+  finally { busy=false; await refresh(true); }
 });
 
 await refresh(true);

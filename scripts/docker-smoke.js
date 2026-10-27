@@ -91,7 +91,7 @@ try {
   assert.equal(page.status, 200); assert.match(page.body, /Billardmanager/);
   assert.match(page.headers['strict-transport-security'], /max-age=/);
   assert.match(page.headers['content-security-policy'], /frame-ancestors 'none'/);
-  for (const asset of ['/app.js', '/style.css']) assert.equal((await request(asset)).status, 200);
+  for (const asset of ['/app.js', '/rental-pricing.js', '/style.css']) assert.equal((await request(asset)).status, 200);
   assert.equal((await request('/api/admin')).status, 401);
   await login();
   const event = { name: 'Docker Testspieltag', kind: 'Liga', date: '2026-10-26' };
@@ -107,6 +107,10 @@ try {
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 1 }, kiosk)).status, 409);
   console.log('PASS: verified TLS chain, frontend, secure login, CSRF/origin, table isolation, scoring and break');
 
+  const rental=await request('/api/rentals',{table_no:2,settings_version:0,mode:'percent',value:-20});
+  assert.equal(rental.status,201); assert.equal(rental.body.hourly_cents,720);
+  assert.equal((await request('/api/rentals',{table_no:2,settings_version:0})).status,409);
+  assert.equal((await request('/api/rentals/1/finish',{version:0},kiosk)).status,401);
   const container = await compose(['ps', '-q', 'app'], true);
   const [inspection] = JSON.parse(await docker(['inspect', container], true));
   assert.equal(inspection.Config.User, 'node');
@@ -130,6 +134,18 @@ try {
   kiosk.key=(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token;
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match.a, 1);
   await login();
+  const restored=(await request('/api/admin')).body.rentals.find(r=>r.id===rental.body.id);
+  assert.equal(restored.started_at,rental.body.started_at); assert.equal(restored.hourly_cents,720);
+  const finished=(await request('/api/rentals/1/finish',{version:0})).body;
+  assert.equal(finished.status,'finished');
+  assert.deepEqual((await request('/api/rentals/1/finish',{version:0})).body,finished);
+  const end=Date.now()-1000;
+  const correction={version:finished.version,started_at:end-1801000,ended_at:end,mode:'direct',value:9,action:'rental:edit',confirmation:'BUCHUNG ÄNDERN'};
+  assert.equal((await request('/api/rentals/1/edit',{...correction,confirmation:''})).status,400);
+  const corrected=await request('/api/rentals/1/edit',correction);
+  assert.equal(corrected.status,200); assert.equal(corrected.body.total_cents,465);
+  assert.equal((await request('/api/rentals/1/edit',correction)).status,409);
+  console.log('PASS: rental price, double booking, tablet denial, restart persistence, finish and confirmed correction');
   assert.equal((await request('/api/admin')).body.events[0].name, event.name);
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 2 }, kiosk)).status, 200);
   assert.equal((await request('/api/matches/1/finish', { version: 3 }, kiosk)).status, 200);

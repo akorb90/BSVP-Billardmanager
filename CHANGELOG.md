@@ -2,6 +2,16 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-003: Tischvermietung mit minutengenauer Abrechnung und bearbeitbarer Historie — 2026-10-27
+
+- Neuer Admin-Menüpunkt „Tischvermietung“ mit acht Tischkarten, laufenden Timern, aktuellen Preisen, Abschluss und dauerhafter Buchungshistorie. Vermietungen und laufende Partien schließen sich auf demselben Tisch aus; Transaktionen und ein eindeutiger Index verhindern parallele Vermietungen.
+- Grundpreis standardmäßig 9,00 €/h, änderbar für neue Buchungen. Direktpreise und prozentuale Zu-/Abschläge werden vor dem Start angezeigt und mitsamt dem damaligen Grundpreis gespeichert. Eine gemeinsame Berechnung für Browser und Server rundet angefangene Minuten auf und rechnet in Cent ab.
+- Abgeschlossene Buchungen können mit Zeit- und Preiskorrekturen bearbeitet werden. Der rote Dialog zeigt vorherige und neue Werte einschließlich Gesamtpreis und verlangt die manuelle Eingabe „BUCHUNG ÄNDERN“. Einfügen, Kontextmenü und Drag-and-drop sind gesperrt; Abbruch verwirft die Bestätigung. Admin-, Aktions- und Versionsprüfung sowie Auditprotokoll sichern die Änderung serverseitig ab. Die Buchung bleibt abgeschlossen.
+- Datenbankschema 5 erweitert vorhandene Daten ohne Ersatz von Bestandsdaten. Wiederholte Abschlüsse erzeugen keine zusätzlichen Buchungen oder Auditabschlüsse. Tablet-PINs erhalten keine Vermietungsrechte.
+- Prüfstand: 14 automatisierte Tests bestanden, einschließlich Rundungsgrenzen, Preisänderungen, Doppelbelegung, Tablet-Abweisung, Migration, Neustartpersistenz, veralteten Korrekturen und Auditdaten. Browserdurchlauf für Prozentpreis, Neuladen, Abschluss, Einfügeschutz, Abbruch und bestätigte Korrektur erfolgreich. Isolierter Docker-HTTPS-Test einschließlich Containerersatz und Vermietung erfolgreich.
+- Deployment: Mit `docker compose up -d --build --wait` im bestehenden lokalen Stack bereitgestellt. App gesund, Proxy aktiv; HTTPS über localhost und 127.0.0.1 mit validierter Zertifikatskette erfolgreich. Bestehende Secrets und Datenvolumes erhalten.
+- FR-002 bleibt als eigenständige Anforderung für Veranstaltungen und Partien offen; dessen Schutzmuster ist hier für Buchungskorrekturen umgesetzt.
+
 ## FR-001: Durchgängige Admin-Navigation und Tischübersicht als Home-Seite — 2026-10-27
 
 Erfasst am 26.10.2026 · umgesetzt am 27.10.2026 · Implementierungscommit: `3753fd0`.

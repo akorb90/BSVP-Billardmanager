@@ -74,7 +74,7 @@ test('Veranstaltungen bleiben bis zum Gesamtabschluss editierbar und löschbar',
     assert.equal((await event(eid)).status,'closed');
     assert.equal((await match(mid)).b,1);
     const db=new DatabaseSync(path);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version,4);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version,5);
     const deleted=db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get();
     assert.equal(JSON.parse(deleted.detail).matches[0].id,movable);
     db.close();

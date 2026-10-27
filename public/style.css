@@ -1,4 +1,14 @@
 @font-face{font-family:System;src:local('Segoe UI')}
+.rental-history{overflow-x:auto;margin-top:24px}
+.rental-history table{width:100%;border-collapse:collapse;font-size:13px}
+.rental-history th,.rental-history td{text-align:left;padding:12px;border-bottom:1px solid #354b61;vertical-align:top}
+.rental-history th{white-space:nowrap}
+#rental-dialog{max-width:760px;max-height:90vh;overflow:auto}
+#rental-warning{border:2px solid #ff746c;background:#431b22;padding:20px;border-radius:8px}
+#rental-warning h3,#rental-warning p{color:#ffe3e0}
+#rental-save{background:#a22d33;border-color:#ff746c}
+#rental-error{color:#ffb7a6}
+.rental-clock{font-variant-numeric:tabular-nums}
 *{box-sizing:border-box}
 body{margin:0;background:#080c12;color:#f1f6fc;font-family:System,system-ui,sans-serif}
 header{height:88px;border-bottom:1px solid #26384b;display:flex;align-items:center;gap:22px;padding:0 4vw;background:#101924}
