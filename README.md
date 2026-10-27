@@ -2,6 +2,25 @@
 
 Lokale Webanwendung für einen Billardverein in Bayern. Node.js 24 LTS, SQLite und Caddy; keine externen JavaScript-Pakete, CDNs oder Cloud-Dienste. Die Oberfläche ist deutsch und für Tablets ausgelegt.
 
+## Screenshots
+Loginpage:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/05ce9930-2847-4ada-a03e-c4f1990eda57" />
+
+Startseite:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/d4dfeb23-cfc6-4751-a2cd-384809b9bdf7" />
+
+Spieltagsverwaltung:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/170c2ade-41b2-4024-b55a-0b6929144b49" />
+
+Ergebnisse:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/13fbaf10-7870-451c-b1d8-6708bd219f32" />
+
+Tischvermietung:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/cd9c6b31-e85f-45ef-8653-d29903dcf9bd" />
+
+Einstellungen:
+<img width="1920" height="917" alt="image" src="https://github.com/user-attachments/assets/1a883849-8dd4-4ea1-a5c5-6a2cd9469d5d" />
+
 ## Funktionsumfang
 
 - Liga-Spieltage und Turniere mit Name und Datum anlegen.
