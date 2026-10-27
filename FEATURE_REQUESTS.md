@@ -4,3 +4,6 @@ Dieses Dokument enthält ausschließlich offene oder in Umsetzung befindliche Fe
 
 FR-004:
 Pagination für alle Listenansichten einfügen z.B. Spielhistorie und Vermiertunghistorie. Dropdown für Größe der Liste einfügen (10,20,50,100)Ergebnisse. Default sind 20.
+
+FR-005:
+Implementierung Export/Import Funktion für alle Daten und Settings um z.B. bei Ausfall des Laptops über die Sicherung wiederherstellen zu können
