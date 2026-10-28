@@ -7,6 +7,7 @@ import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypt
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { changeScore, breaker } from './domain.js';
+import { brandingService, DEFAULT_BRANDING, LOGO_LIMIT } from './branding.js';
 
 export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) {
   const allowedOrigins = new Set([new URL(origin).origin]);
@@ -24,7 +25,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 6) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 7) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -60,6 +61,15 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       db.exec('PRAGMA user_version=6; COMMIT');
     } catch(error) { db.exec('ROLLBACK'); throw error; }
   }
+  if (schema < 7) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec('CREATE TABLE branding(id INTEGER PRIMARY KEY CHECK(id=1),club_name TEXT NOT NULL,primary_color TEXT NOT NULL,background TEXT NOT NULL,surface TEXT NOT NULL,text TEXT NOT NULL,logo TEXT,version INTEGER NOT NULL CHECK(version>=0))');
+      const b=DEFAULT_BRANDING;
+      db.prepare('INSERT INTO branding VALUES(1,?,?,?,?,?,?,0)').run(b.club_name,b.primary,b.background,b.surface,b.text,b.logo);
+      db.exec('PRAGMA user_version=7; COMMIT');
+    } catch(error) {db.exec('ROLLBACK');throw error;}
+  }
   const adminHash = () => db.prepare('SELECT password_hash FROM admin_credentials WHERE id=1').get().password_hash;
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
@@ -71,6 +81,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
   const rentals = rentalService({db, transaction, fail, integer, log});
+  const branding = brandingService({db, transaction, fail, log});
   const backups = backupService({db, transaction, fail, log});
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
   const getEvent = id => {
@@ -137,15 +148,30 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         if (!allowedOrigins.has(requestOrigin)) throw fail(403, 'Ungültiger Ursprung.');
         if (!req.headers['content-type']?.startsWith('application/json')) throw fail(415, 'JSON erforderlich.');
         const backupUpload = ['/api/backups/preview', '/api/backups/restore'].includes(url.pathname);
-        if (backupUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
+        const brandingUpload = url.pathname === '/api/settings/branding';
+        if (backupUpload || brandingUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
         const raw = Buffer.concat(chunks).toString('utf8');
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
       if (req.method === 'GET' && url.pathname === '/health') { db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
+      if (req.method === 'GET' && url.pathname === '/api/branding') return json(res,200,branding.publicState());
+      if (req.method === 'POST' && url.pathname === '/api/settings/branding') {admin();return json(res,200,branding.save(body));}
+      if (req.method === 'GET' && url.pathname === '/api/branding/logo') {
+        const logo=branding.get().logo;
+        res.setHeader('Content-Type',logo?.startsWith('data:image/jpeg;')?'image/jpeg':'image/png');
+        return res.end(logo?Buffer.from(logo.split(',')[1],'base64'):readFileSync(new URL('../public/assets/bsv-logo.png',import.meta.url)));
+      }
+      if (req.method === 'GET' && url.pathname === '/branding.css') {
+        const b=branding.get();
+        const rgb=b.primary.slice(1).match(/../g).map(v=>parseInt(v,16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4);
+        const light=rgb.reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0)>.179;
+        res.setHeader('Content-Type','text/css; charset=utf-8');
+        return res.end(`:root{--primary:${b.primary};--background:${b.background};--surface:${b.surface};--text:${b.text};--on-primary:${light?'#000000':'#ffffff'};color-scheme:${parseInt(b.background.slice(1,3),16)>150?'light':'dark'}}`);
+      }
       if (req.method === 'GET' && url.pathname === '/api/backups/export') {
         admin();
         const backup = backups.export();
@@ -332,7 +358,17 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       if (req.method === 'GET' && ['/', '/admin', '/app.js', '/rental-pricing.js', '/style.css'].includes(url.pathname) || req.method === 'GET' && /^\/tisch\/[1-8]$/.test(url.pathname)) {
         const asset = url.pathname === '/rental-pricing.js' ? 'rental-pricing.js' : url.pathname === '/app.js' ? 'app.js' : url.pathname === '/style.css' ? 'style.css' : 'index.html';
         res.setHeader('Content-Type', asset.endsWith('.js') ? 'text/javascript; charset=utf-8' : asset.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8');
-        return res.end(readFileSync(new URL(`../public/${asset}`, import.meta.url)));
+        let content=readFileSync(new URL(`../public/${asset}`, import.meta.url));
+        if(asset==='index.html') {
+          const b=branding.publicState(), escape=value=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          const name=escape(b.club_name);
+          content=content.toString()
+            .replace('<title>BSVP · Billardmanager</title>',()=>`<title>${name} · Billardmanager</title>`)
+            .replace('<span id="club-name">BSV PFAFFENHOFEN</span>',()=>`<span id="club-name">${name}</span>`)
+            .replace('<span id="footer-club">BSV Pfaffenhofen · Billardmanager</span>',()=>`<span id="footer-club">${name} · Billardmanager</span>`)
+            .replace('alt="Logo des BSV Pfaffenhofen"',()=>`alt="${name} · Vereinslogo"`);
+        }
+        return res.end(content);
       }
       if (req.method === 'GET' && url.pathname === '/assets/bsv-logo.png') {
         res.setHeader('Content-Type', 'image/png');

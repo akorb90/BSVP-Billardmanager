@@ -39,7 +39,8 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
     fetch: async (path,options) => {
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
-      if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
+      if (path === '/api/branding') { body={club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}; }
+      else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
       else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, rental_settings } : { error: 'Bitte anmelden.' }; }

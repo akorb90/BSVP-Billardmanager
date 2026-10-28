@@ -31,7 +31,15 @@ Einstellungen:
 - Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Ergebnisse, Tischvermietung und Einstellungen. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
 - Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die feste Übersicht der acht Tische bleibt vollständig sichtbar.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
-- Einstellungen bündeln Grundpreis, Admin-Passwortwechsel und [Datensicherung mit Export und Import (FR-005)](#sicherung-und-wiederherstellung). Eine geprüfte Sicherungsdatei kann den vollständigen Anwendungsstand auf einer neuen Installation wiederherstellen.
+- Einstellungen bündeln Vereinsgestaltung (FR-009), Grundpreis, Admin-Passwortwechsel und [Datensicherung mit Export und Import (FR-005)](#sicherung-und-wiederherstellung). Eine geprüfte Sicherungsdatei kann den vollständigen Anwendungsstand auf einer neuen Installation wiederherstellen.
+
+## Vereinsgestaltung (FR-009)
+
+Unter **Einstellungen → Vereinsgestaltung** können Administratoren den Vereinsnamen (1–80 Zeichen), ein eigenes Logo und die Farben für Akzente, Hintergrund, Flächen und Text speichern. Die Gestaltung gilt auch für Anmeldung, Browser-Titel und Tisch-Tablets; offene Seiten übernehmen sie automatisch beim nächsten Aktualisieren. PNG- und JPEG-Logos bis 1 MiB sind erlaubt. Ohne neue Dateiauswahl bleibt das vorhandene Logo erhalten; **Standardlogo verwenden** stellt beim Speichern das BSV-Logo wieder her. Andere Vereine sollten ihr eigenes Logo hochladen.
+
+Text muss zu Hintergrund und Flächen mindestens 4,5:1 Kontrast haben; die Beschriftung farbiger Hauptbuttons wird automatisch hell oder dunkel gewählt. **Änderungen verwerfen / Neu laden** lädt die gespeicherten Werte. Parallel geänderte Einstellungen erfordern erneutes Laden, damit kein fremder Stand überschrieben wird.
+
+Die Gestaltung einschließlich Logo liegt dauerhaft in der Datenbank und ist in Export/Import enthalten. Schema 7 ergänzt bestehende Installationen um die BSV-Vorgaben und erhält Spielstände, Zugangsdaten und Volumes. Sicherungen aus Schema 6 lassen sich weiterhin importieren und erhalten dabei die BSV-Standardgestaltung; Sicherungen aus Schema 7 benötigen diese oder eine kompatible neuere App-Version.
 
 ## Tischvermietung
 

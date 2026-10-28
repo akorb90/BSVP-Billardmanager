@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-009: Vereinsgestaltung — 2026-10-28
+
+- Einstellungen um Vereinsname, Logo-Upload (PNG/JPEG bis 1 MiB), Standardlogo-Rückkehr sowie editierbare Akzent-, Hintergrund-, Flächen- und Textfarben erweitert. Name und Gestaltung gelten für Kopf- und Fußzeile, Anmeldung, Browser-Titel und Tischseiten. Offene Seiten übernehmen gespeicherte Änderungen automatisch.
+- Server prüft Adminrechte, Origin/CSRF, Texte, Farbwerte, Textkontrast und Bilddaten; eine Versionsprüfung verhindert das Überschreiben paralleler Änderungen. Entwürfe und Logo-Auswahl bleiben bei automatischen Aktualisierungen erhalten, mit eigener Schaltfläche zum Verwerfen. Logo-Bilddaten werden nicht ins Änderungsprotokoll geschrieben.
+- Schema 7 speichert die Gestaltung einschließlich Logo im vorhandenen Datenvolume und im vollständigen Export/Import. Bestandsdaten und Sicherheitskonfiguration bleiben erhalten. Sicherungen aus Schema 6 werden beim Import um die bisherige BSV-Standardgestaltung ergänzt.
+- Prüfung: 29 automatisierte Tests, Browserprüfung an einer getrennten Testinstanz (helles Farbschema, Name, Logo-Upload, erneutes Speichern) sowie isolierte Docker-Integrationstests einschließlich HTTPS. Bereitstellung und abschließende HTTPS-/Containerprüfung im bestehenden lokalen Stack.
+
 ## FR-005: Datensicherung mit Export und Import — 2026-10-28
 
 - „Einstellungen → Datensicherung“ exportiert alle Anwendungsdaten und Einstellungen als konsistente, versionierte JSON-Datei mit SHA-256-Prüfsumme. Enthalten sind auch Zeitmessung, Vermietungen, ID-Zähler, Änderungsprotokoll sowie die gespeicherten Admin-Passwort- und Partien-PIN-Hashes. Dateilimit: 50 MiB. Sicherungen vertraulich außerhalb des Rechners aufbewahren.

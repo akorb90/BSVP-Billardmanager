@@ -98,6 +98,14 @@ try {
   for (const asset of ['/app.js', '/rental-pricing.js', '/style.css']) assert.equal((await request(asset)).status, 200);
   assert.equal((await request('/api/admin')).status, 401);
   await login();
+  const brand=(await request('/api/branding',undefined,{admin:false})).body;
+  const logo='data:image/png;base64,'+readFileSync(join(root,'public','assets','bsv-logo.png')).toString('base64');
+  assert.equal((await request('/api/settings/branding',{...brand,club_name:'Docker Testverein',primary:'#8b3624',logo},{admin:false})).status,401);
+  assert.equal((await request('/api/settings/branding',{...brand,club_name:'Docker Testverein',primary:'#8b3624',logo})).status,200);
+  assert.equal((await request('/api/branding',undefined,{admin:false})).body.club_name,'Docker Testverein');
+  assert.match((await request('/branding.css',undefined,{admin:false})).body,/--primary:#8b3624/);
+  assert.equal((await request('/api/branding/logo',undefined,{admin:false})).headers['content-type'],'image/png');
+  console.log('PASS: HTTPS club name, color scheme and authenticated logo upload');
   const event = { name: 'Docker Testspieltag', kind: 'Liga', date: '2026-10-26' };
   assert.equal((await request('/api/events', event, { csrfValue: 'invalid' })).status, 403);
   assert.equal((await request('/api/events', event, { requestOrigin: 'https://example.invalid' })).status, 403);

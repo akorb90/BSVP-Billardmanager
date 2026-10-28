@@ -48,12 +48,6 @@ Anforderungen und Abnahmekriterien:
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
 
-## FR-009: UI Generalisieren
-
-Einstellungsmenü erweitern um Logo Upload, eigenen Vereinsnamen und Farbschema Editierung.
-So soll der Manager auch für andere Vereine nutzbar werden.
-
-
 ## FR-010 Dokumentation und Deployment überarbeiten
 
 Die Readme Datei muss auf das wesentliche reduziert werden um eine Instanz der Anwendung frisch bereitzustellen oder mit der aktuellen Version von Github zu aktualiseren.

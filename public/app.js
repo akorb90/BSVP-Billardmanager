@@ -5,9 +5,20 @@ if (table) document.body.classList.add('kiosk');
 if (table && location.hash) history.replaceState(null, '', location.pathname);
 let setupChoice, clockOffset=0;
 let csrf = '', state, current, busy = false;
+let branding = {club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}, brandingRevision, pendingLogo;
+function applyBranding() {
+  document.title=branding.club_name+' · Billardmanager';
+  document.querySelector('#club-name').textContent=branding.club_name;
+  document.querySelector('#footer-club').textContent=branding.club_name+' · Billardmanager';
+  for(const img of document.querySelectorAll('.club-logo,.login-badge img,.waiting-logo')) {
+    const source='/api/branding/logo?v='+encodeURIComponent(brandingRevision);
+    if(img.getAttribute('src')!==source)img.src=source;
+    img.alt=branding.club_name+' · Vereinslogo';
+  }
+}
 const navigation = document.querySelector('#admin-nav');
 
-const views = { einstellungen: ['Einstellungen', 'Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+const views = { einstellungen: ['Einstellungen', 'Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const drafts = new Map();
 const listPages = new Map();
@@ -50,7 +61,7 @@ function adminNavigation(authenticated) {
     else link.removeAttribute('aria-current');
   }
 }
-function saveDrafts() { for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login','admin-password'].includes(form.id)) drafts.set(form.id, [...new FormData(form)]); }
+function saveDrafts() { for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login','admin-password'].includes(form.id)) drafts.set(form.id, [...new FormData(form)].filter(([name])=>!['logo_file','logo_reset'].includes(name))); }
 function restoreDrafts() { for (const [id, entries] of drafts) for (const [name, value] of entries) { const field = document.getElementById(id)?.elements.namedItem(name); if (field) field.value = value; } }
 function finishButton(m) { return '<button data-finish="' + m.id + '" ' + (Math.max(m.a,m.b) < m.target ? 'disabled title="Spielziel noch nicht erreicht"' : 'class="primary"') + '>Spiel abschließen</button>'; }
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -70,7 +81,7 @@ async function api(path, data) {
 }
 function login() {
   state = undefined; adminNavigation(false);
-  root.innerHTML = `<section class="login"><div class="login-copy"><p class="eyebrow">WILLKOMMEN IM VEREIN</p><h1>Der nächste Stoß.<br>Alles im Blick.</h1><p>Spieltage organisieren. Begegnungen starten.<br>Spielstände direkt am Tisch erfassen.</p><form id="login"><label>Administrator-Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden →</button></form><small>Die Tablets öffnen ihre eigene Tisch-Adresse.</small></div><div class="login-badge"><img src="/assets/bsv-logo.png" alt="BSV Pfaffenhofen · Vereinslogo seit 1995"></div></section>`;
+  root.innerHTML = `<section class="login"><div class="login-copy"><p class="eyebrow">WILLKOMMEN IM VEREIN</p><h1>Der nächste Stoß.<br>Alles im Blick.</h1><p>Spieltage organisieren. Begegnungen starten.<br>Spielstände direkt am Tisch erfassen.</p><form id="login"><label>Administrator-Passwort<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Anmelden →</button></form><small>Die Tablets öffnen ihre eigene Tisch-Adresse.</small></div><div class="login-badge"><img src="/api/branding/logo" alt="BSV Pfaffenhofen · Vereinslogo seit 1995"></div></section>`;
   connection.textContent = 'Vereinsverwaltung'; connection.className = ''; document.querySelector('#logout').hidden = true;
 }
 function dashboard() {
@@ -113,13 +124,20 @@ function preparation(m) {
   root.innerHTML=`<section class="panel"><p class="eyebrow">TISCH ${table} · SPIELVORBEREITUNG</p><h1>${lag?'Wer hat das erste Break?':'Wer hat das Ausstoßen (Lag) gewonnen?'}</h1><p>${esc(m.player_a)} gegen ${esc(m.player_b)}</p>${lag?'<p>Ausstoßen gewonnen: '+esc(m[lag==='a'?'player_a':'player_b'])+'</p>':''}<div class="dialog-actions">${['a','b'].map(side=>'<button class="primary" data-'+(lag?'begin':'lag')+'="'+side+'">'+esc(m[side==='a'?'player_a':'player_b'])+'</button>').join('')}</div>${lag?'<button data-setup-back>Zurück zum Ausstoßen</button>':''}<p>Die Zeitmessung beginnt mit der Bestätigung des ersten Breaks.</p></section>`;
 }
 function kiosk() {
-  if (!current) { root.innerHTML = `<div class="waiting"><p class="eyebrow">TISCH ${String(table).padStart(2,'0')}</p><img class="waiting-logo" src="/assets/bsv-logo.png" alt="BSV Pfaffenhofen"><h1>Bereit, wenn ihr es seid.</h1><p>Die nächste Begegnung erscheint hier automatisch,<br>sobald sie in der Verwaltung gestartet wird.</p></div>`; return; }
+  if (!current) { root.innerHTML = `<div class="waiting"><p class="eyebrow">TISCH ${String(table).padStart(2,'0')}</p><img class="waiting-logo" src="/api/branding/logo" alt="BSV Pfaffenhofen"><h1>Bereit, wenn ihr es seid.</h1><p>Die nächste Begegnung erscheint hier automatisch,<br>sobald sie in der Verwaltung gestartet wird.</p></div>`; return; }
   if(!current.setup_done) { preparation(current); return; }
   const m = current, done = Math.max(m.a,m.b) === m.target;
   root.innerHTML = `<div class="score-heading"><span class="pill">TISCH ${String(table).padStart(2,'0')}</span><p>${esc(m.event_name)}</p><h2>${esc(m.discipline)} <span class="muted">/</span> Race to ${m.target}</h2>${timers(m)}</div><section class="scoreboard">${['a','b'].map(side => `<article class="player ${m.breaker === side && !done ? 'breaking' : ''}"><div class="break-label">${m.breaker === side && !done ? '● NÄCHSTES BREAK' : '&nbsp;'}</div><h1>${esc(m[side === 'a' ? 'player_a' : 'player_b'])}</h1><div class="points">${m[side]}</div><div class="score-controls"><button data-side="${side}" data-delta="-1" aria-label="Punkt bei Spieler ${side.toUpperCase()} zurücknehmen" ${m[side] === 0 || busy ? 'disabled' : ''}>−</button><button class="primary" data-side="${side}" data-delta="1" ${done || busy ? 'disabled' : ''}>+ Punkt</button></div></article>`).join('')}</section><p class="score-note">${done ? 'Spielziel erreicht · Endstand prüfen und Spiel abschließen.' : 'Wechselbreak · Nach jedem abgeschlossenen Rack wechselt das Anstoßrecht.'}</p><div class="finish-bar">${finishButton(m)}${!done ? '<small>Verfügbar, sobald das Spielziel erreicht ist.</small>' : ''}</div>`;
 }
 async function refresh(initial = false) {
   try {
+    const nextBranding=await api('/api/branding');
+    const revision=JSON.stringify(nextBranding);
+    if(revision!==brandingRevision) {
+      branding=nextBranding;brandingRevision=revision;
+      document.querySelector('#branding-style').href='/branding.css?v='+encodeURIComponent(revision);
+      applyBranding();
+    }
     if (table) {
       // A logged-in administrator can also open the table view.
       try { const admin = await api('/api/admin'); csrf = admin.csrf; adminNavigation(true); }
@@ -141,6 +159,7 @@ async function refresh(initial = false) {
     else if (!table && e.status === 401) login();
     else { message(e.message || 'Verbindung unterbrochen. Änderungen werden nicht offline gespeichert.'); root.querySelectorAll('[data-side], [data-finish]').forEach(b => b.disabled = true); if (table) current = undefined; }
   }
+  applyBranding();
 }
 async function mutate(fn) {
   if (busy) return; busy = true; message(''); root.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -148,7 +167,7 @@ async function mutate(fn) {
   finally { busy = false; await refresh(true); }
 }
 root.addEventListener('submit', e => {
-  e.preventDefault(); if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
+  e.preventDefault(); if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
     if (form.id === 'tablet-login') { const result=await api(`/api/tables/${table}/login`,data); sessionStorage.setItem(`tablet-session:${table}`,result.token); form.reset(); }
     if (form.id === 'login') {
@@ -272,9 +291,38 @@ function tickRentals() {
   }
 }
 
+function brandingForm() {
+  return '<section class="panel branding-panel"><h2>Vereinsgestaltung</h2><p>Vereinsname, Logo und Farben gelten für Anmeldung, Verwaltung und alle Tisch-Tablets.</p><form id="club-branding" data-version="'+branding.version+'"><input type="hidden" name="version" value="'+branding.version+'">'+field('Vereinsname','club_name',branding.club_name,'text','maxlength="80" required')+'<div class="branding-colors">'+[['primary','Akzentfarbe'],['background','Hintergrund'],['surface','Flächen'],['text','Textfarbe']].map(([key,label])=>field(label,key,branding[key],'color')).join('')+'</div><p>Text benötigt mindestens 4,5:1 Kontrast zu Hintergrund und Flächen.</p><img class="branding-logo" src="/api/branding/logo" alt="Aktuelles Vereinslogo"><label>Neues Logo (PNG oder JPEG, maximal 1 MiB)<input name="logo_file" id="club-logo-file" type="file" accept="image/png,image/jpeg"></label><p id="logo-selection">'+(pendingLogo===null?'Standardlogo wird wiederhergestellt.':pendingLogo?'Neues Logo ausgewählt. Zum Übernehmen speichern.':'Ohne neue Auswahl bleibt das aktuelle Logo erhalten.')+'</p><button type="button" id="club-logo-reset">Standardlogo verwenden</button><p>Das Standardlogo gehört dem BSV Pfaffenhofen. Für einen anderen Verein bitte ein eigenes Logo hochladen.</p><button class="primary">Vereinsgestaltung speichern</button> <button type="button" id="club-branding-reload">Änderungen verwerfen / Neu laden</button></form></section>';
+}
+root.addEventListener('change',async e=>{
+  if(e.target.id!=='club-logo-file' || busy)return;
+  const file=e.target.files?.[0];if(!file)return;
+  if(file.size>1024*1024 || !['image/png','image/jpeg'].includes(file.type)) {message('Bitte PNG oder JPEG bis maximal 1 MiB auswählen.');e.target.value='';return;}
+  busy=true;
+  try {
+    pendingLogo=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Das Logo konnte nicht gelesen werden.'));reader.readAsDataURL(file);});
+    document.querySelector('#logo-selection').textContent=file.name+' ausgewählt. Zum Übernehmen speichern.';
+  } catch(error) {message(error.message);} finally {busy=false;}
+});
+root.addEventListener('click',e=>{
+  if(e.target.id==='club-branding-reload' && !busy) {pendingLogo=undefined;drafts.delete('club-branding');e.target.closest('form').remove();refresh(true);return;}
+  if(e.target.id!=='club-logo-reset' || busy)return;
+  pendingLogo=null;document.querySelector('#club-logo-file').value='';
+  document.querySelector('#logo-selection').textContent='Standardlogo wird beim Speichern wiederhergestellt.';
+});
+function handleBrandingSubmit(form) {
+  if(form.id!=='club-branding')return false;
+  const data=Object.fromEntries(new FormData(form));delete data.logo_file;
+  mutate(async()=>{
+    await api('/api/settings/branding',{...data,version:Number(data.version),...(pendingLogo===undefined?{}:{logo:pendingLogo})});
+    pendingLogo=undefined;drafts.delete(form.id);form.remove();message('Vereinsgestaltung gespeichert.');
+  });
+  return true;
+}
 function settingsDashboard() {
   const settings=state.rental_settings;
-  root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
+  root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
+  root.innerHTML += brandingForm();
   root.innerHTML += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
 }
 root.addEventListener('change', async e => {

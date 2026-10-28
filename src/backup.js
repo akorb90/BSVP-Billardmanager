@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
+import { DEFAULT_BRANDING, validateBranding } from './branding.js';
 
 export const BACKUP_LIMIT = 50 * 1024 * 1024;
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -12,7 +13,14 @@ export function backupService({ db, transaction, fail, log }) {
   const version = db.prepare('PRAGMA user_version').get().user_version;
   const read = () => Object.fromEntries(tables.map(name => [name, db.prepare(`SELECT * FROM ${quote(name)} ORDER BY rowid`).all()]));
   const revision = () => digest(read());
+  const upgrade = backup => {
+    if (!backup?.data || typeof backup.data!=='object' || backup?.schema!==6 || version!==7 || backup.checksum!==digest(backup.data) || Object.hasOwn(backup.data,'branding')) return backup;
+    const {primary,...defaults}=DEFAULT_BRANDING;
+    const data={...backup.data,branding:[{id:1,...defaults,primary_color:primary}]};
+    return {...backup,schema:7,data,checksum:digest(data)};
+  };
   const validate = backup => {
+    backup=upgrade(backup);
     if (!backup || backup.format !== 'bsvp-billardmanager' || backup.version !== 1 || backup.schema !== version || typeof backup.created_at !== 'string' || !Number.isFinite(Date.parse(backup.created_at)) || !backup.data || typeof backup.data !== 'object' || Array.isArray(backup.data) || Object.keys(backup.data).sort().join() !== [...tables].sort().join() || backup.checksum !== digest(backup.data)) throw fail(400, 'Ungültige, beschädigte oder nicht kompatible Sicherung. Bitte die passende App-Version verwenden.');
     const check = new DatabaseSync(':memory:');
     try {
@@ -35,6 +43,9 @@ export function backupService({ db, transaction, fail, log }) {
       }
       if (check.prepare('PRAGMA foreign_key_check').all().length || check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('integrity');
       const credentials = check.prepare('SELECT * FROM admin_credentials').all();
+      const brand=check.prepare('SELECT *,primary_color AS "primary" FROM branding').all();
+      if(brand.length!==1) throw new Error('branding');
+      validateBranding(brand[0]);
       if (credentials.length !== 1 || !/^[a-zA-Z0-9]+:[a-f0-9]{128}$/.test(credentials[0].password_hash) || check.prepare('SELECT * FROM rental_settings').all().length !== 1) throw new Error('settings');
       for (const name of ['events', 'matches', 'rentals']) {
         const counter = check.prepare('SELECT value FROM entity_ids WHERE name=?').get(name)?.value;
@@ -61,7 +72,7 @@ export function backupService({ db, transaction, fail, log }) {
     },
     restore(body, session) {
       if (body.action !== 'backup:restore' || body.confirmation !== 'DATEN WIEDERHERSTELLEN') throw fail(400, 'Bitte DATEN WIEDERHERSTELLEN eingeben.');
-      const summary = validate(body.backup), pending = session.restore;
+      const summary = validate(body.backup), pending = session.restore, upgraded = upgrade(body.backup);
       transaction(() => {
         if (!pending || pending.expires < Date.now() || pending.checksum !== digest(body.backup) || pending.revision !== revision()) throw fail(409, 'Die Vorschau ist abgelaufen oder Daten wurden geändert. Bitte die Sicherung erneut prüfen.');
         db.exec('PRAGMA defer_foreign_keys=ON');
@@ -69,7 +80,7 @@ export function backupService({ db, transaction, fail, log }) {
         for (const name of tables) {
           const columns = db.prepare(`PRAGMA table_info(${quote(name)})`).all().map(c => c.name);
           const insert = db.prepare(`INSERT INTO ${quote(name)} (${columns.map(quote)}) VALUES (${columns.map(() => '?')})`);
-          for (const row of body.backup.data[name]) insert.run(...columns.map(c => row[c]));
+          for (const row of upgraded.data[name]) insert.run(...columns.map(c => row[c]));
         }
         log('admin', 'backup:restore', null, summary);
       });
