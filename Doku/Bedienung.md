@@ -28,8 +28,20 @@ Einstellungen:
 - Ergebnisse nach Erreichen des Spielziels zentral oder direkt am zugeordneten Tablet bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
 - Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Ergebnisse, Tischvermietung und Einstellungen. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
 - Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die Übersicht aller eingestellten Tische bleibt vollständig sichtbar.
-- SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
+- PostgreSQL speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
 - Einstellungen bündeln Vereinsgestaltung (FR-009), Grundpreis, Admin-Passwortwechsel und [Datensicherung mit Export und Import (FR-005)](Datensicherung.md). Eine geprüfte Sicherungsdatei kann den vollständigen Anwendungsstand auf einer neuen Installation wiederherstellen.
+
+## Spieler & Mannschaften (FR-007)
+
+Im eigenen Menü **Spieler & Mannschaften** Spieler mit Vorname, optionalem zweitem Namen und Nachname anlegen. Weitere personenbezogene Angaben werden nicht erfasst. Suche nach Name oder interner ID sowie 10/20/50/100 Einträge pro Seite stehen bereit. Gleichnamige Personen behalten unterschiedliche IDs; mögliche Doppeleinträge werden vor dem Speichern angezeigt. Eine zweite Person mit gleichem Namen ausdrücklich bestätigen.
+
+BSV-Mannschaften mit Namen und Spielerzuordnung anlegen oder bearbeiten. Die Mehrfachauswahl erfolgt mit Strg/Cmd; **Archiviert** entfernt einen Spieler oder eine Mannschaft aus der künftigen Vorauswahl und erhält alle historischen Daten. Gegner können ohne BSV-Mannschaft in den Stammdaten stehen; freie Namen ohne Stammdaten bleiben ebenfalls möglich.
+
+Unter **Spieltagsverwaltung → Teilnehmer & Mannschaften** für Liga-Spieltage BSV-Mannschaften auswählen; deren Mitglieder werden vorausgewählt. Je Spieler Teilnahme und gegebenenfalls die Mannschaft festlegen. Teilnehmer ohne Mannschaft können auch Gegner sein. Für Turniere einzelne Teilnehmer auswählen. Nicht mehr benötigte Teilnehmer auf **Nicht teilnehmen** setzen. Danach beim Planen der Begegnung zuerst die Veranstaltung und dann Spieler A/B aus den Teilnehmern wählen. Dieselbe interne Spieler-ID darf nicht auf beiden Seiten stehen.
+
+Bestehende Partien über **Partie bearbeiten** ausdrücklich einem Teilnehmer zuordnen. Gleiche Namen lösen keine automatische Zuordnung aus. Leere Zuordnung erhält freie Namen. Bei der erstmaligen Zuordnung werden der aktuelle vollständige Name und die für diesen Spieltag gewählte Mannschaft gespeichert. Spätere Stammdatenänderungen, Mannschaftswechsel oder Archivierungen ändern diese Momentaufnahme nicht. Die erneute Auswahl derselben Person erhält ihre historische Mannschaft; eine Korrektur der Zuordnung erfolgt bewusst durch Entfernen und erneutes Zuordnen. Ergebnisse lassen sich wie bisher mit den bestehenden Bestätigungen korrigieren.
+
+**Partien & Statistik** bei Spielern oder Mannschaften zeigt alle zugeordneten Partien einschließlich geplanter und laufender Spiele. Die Ergebniszahlen berücksichtigen ausschließlich abgeschlossene Partien: Anzahl, Siege, Niederlagen sowie gewonnene und verlorene Racks. Filter gelten für das Spieltagsdatum (Von/Bis einschließlich) und die Disziplin. Mannschaftswerte zählen zugeordnete Spielerseiten der Einzelpartien; bei zwei Spielern derselben Mannschaft zählen beide Seiten. Eine Mannschaftsgesamtwertung über einen Liga-Spieltag ist nicht enthalten. Die Daten sind Bestandteil der vollständigen Sicherung.
 
 ## Vereinsgestaltung (FR-009)
 

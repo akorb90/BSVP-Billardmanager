@@ -14,7 +14,7 @@ const adminUrl = new URL(process.env.DATABASE_URL); adminUrl.password = password
 const admin = new pg.Client({ connectionString: adminUrl.toString() });
 await admin.connect();
 const prefix = 'fr012_' + Date.now();
-const names = ['source', 'target', 'invalid'].map(n => prefix + '_' + n);
+const names = ['source', 'target', 'invalid', 'upgrade'].map(n => prefix + '_' + n);
 const url = name => { const u = new URL(process.env.DATABASE_URL); u.pathname = '/' + name; return u.toString(); };
 const dir = mkdtempSync(join(tmpdir(), 'fr012-'));
 const handles = new Set();
@@ -37,6 +37,12 @@ try {
     INSERT INTO audit VALUES(45,'2026-10-28 12:34:56','admin','fixture',9,'{"preserved":true}');
     UPDATE branding SET club_name='Migration Verein',primary_color='#147eb7',version=5;`);
   await sqlite.prepare('UPDATE branding SET logo=?').run('data:image/png;base64,' + readFileSync('./public/assets/bsv-logo.png').toString('base64'));
+  await sqlite.exec(`INSERT INTO players VALUES('p1','Anna','Maria','Altname',1,0),('p2','Ben','','Gegner',1,0);
+    INSERT INTO teams VALUES('t1','BSV I',1,0);
+    INSERT INTO team_players VALUES('t1','p1');
+    INSERT INTO event_teams VALUES(7,'t1');
+    INSERT INTO event_players VALUES(7,'p1','t1'),(7,'p2',NULL);
+    UPDATE matches SET player_a_id='p1',player_b_id='p2',team_a_id='t1',team_a_name='Historisches Team' WHERE id=9;`);
   const expected = JSON.parse(JSON.stringify(await (await service(sqlite)).export()));
   await close(sqlite);
   const original = readFileSync(path);
@@ -71,6 +77,20 @@ try {
   await futureBackups.preview(future, session);
   await futureBackups.restore({ backup: future, action: 'backup:restore', confirmation: 'DATEN WIEDERHERSTELLEN' }, session);
   assert.deepEqual((await futureBackups.export()).data.future_settings, future.data.future_settings);
+  // Upgrade an existing populated PostgreSQL v8 database without changing results.
+  let upgrade=await open({databaseUrl:url(names[3])});
+  await upgrade.exec(`INSERT INTO events VALUES(1,'Bestand','Liga','2026-10-28','open',0);
+    INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first) VALUES(1,1,'Alt A','Alt B','9-Ball',5,'a');
+    SET CONSTRAINTS ALL IMMEDIATE;
+    DROP TABLE players,teams,team_players,event_players,event_teams;
+    ALTER TABLE matches DROP COLUMN player_a_id,DROP COLUMN player_b_id,DROP COLUMN team_a_id,DROP COLUMN team_b_id,DROP COLUMN team_a_name,DROP COLUMN team_b_name;
+    UPDATE _schema SET version=8;`);
+  await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
+  assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a,'Alt A');
+  assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a_id,null);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,9);
+  assert.deepEqual(await upgrade.prepare('SELECT * FROM players').all(),[]);
+  await close(upgrade);
   // An incompatible source must roll back schema creation and must not mark migration complete.
   const badPath = join(dir, 'bad.sqlite'), bad = await open({ dbPath: badPath });
   await bad.exec('CREATE TABLE incompatible(id INTEGER PRIMARY KEY, value BLOB); INSERT INTO incompatible VALUES(1,zeroblob(3))');

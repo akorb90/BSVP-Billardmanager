@@ -132,7 +132,12 @@ try {
   assert.equal((await request('/api/events', event, { csrfValue: 'invalid' })).status, 403);
   assert.equal((await request('/api/events', event, { requestOrigin: 'https://example.invalid' })).status, 403);
   assert.equal((await request('/api/events', event)).status, 201);
-  assert.equal((await request('/api/matches', { event_id: 1, player_a: 'Test A', player_b: 'Test B', discipline: '9-Ball', target: 2, first: 'a',pin:'012345' })).status, 201);
+  const playerA=(await request('/api/players',{first_name:'Test',second_name:'',last_name:'A'})).body.id;
+  const playerB=(await request('/api/players',{first_name:'Test',second_name:'',last_name:'B'})).body.id;
+  const team=(await request('/api/teams',{name:'BSV Test',player_ids:[playerA]})).body.id;
+  assert.equal((await request('/api/events/1/participants',{version:0,player_ids:[playerA,playerB],team_ids:[team],assignments:{[playerA]:team}})).status,200);
+  assert.equal((await request('/api/matches',{event_id:1,player_a_id:playerA,player_b_id:playerA,discipline:'9-Ball',target:2,pin:'012345'})).status,400);
+  assert.equal((await request('/api/matches', { player_a_id:playerA,player_b_id:playerB,event_id: 1, player_a: 'Test A', player_b: 'Test B', discipline: '9-Ball', target: 2, first: 'a',pin:'012345' })).status, 201);
   assert.equal((await request('/api/matches/1/start',{lag_winner:'a',first:'a', table_no: 1, version: 0 })).status, 200);
   const kiosk = { admin:false,key:(await request('/api/tables/1/login',{pin:'012345'},{admin:false})).body.token };
   assert.equal((await request('/api/tables/2', undefined, kiosk)).status, 200);
@@ -194,6 +199,12 @@ try {
   assert.equal((await request('/api/matches/1/finish', { version: 3, action:'match:finish', confirmation:'SPIEL ABSCHLIESSEN' }, kiosk)).status, 200);
   assert.equal((await request('/api/tables/1', undefined, kiosk)).body.match, null);
   const completed=(await request('/api/admin')).body.matches[0];
+  assert.equal(completed.player_a_id,playerA);assert.equal(completed.team_a_name,'BSV Test');
+  assert.equal((await request('/api/players',{id:playerA,version:0,first_name:'Neuer',second_name:'',last_name:'Name',active:0})).status,200);
+  assert.equal((await request('/api/teams',{id:team,version:0,name:'BSV Umbenannt',player_ids:[],active:0})).status,200);
+  assert.equal((await request('/api/admin')).body.matches[0].team_a_name,'BSV Test');
+  assert.equal((await request('/api/admin')).body.matches[0].player_a,'Test A');
+  console.log('PASS: PostgreSQL player/team management, participant selection, self-match protection and historical snapshots');
   assert.equal((await request('/api/matches/1/edit',{...completed,a:0,b:2,player_b:'Korrigierter Spieler',event_version:(await request('/api/admin')).body.events[0].version,action:'match:edit',confirmation:'SPIEL ÄNDERN'})).status,200);
   const eventState=(await request('/api/admin')).body.events[0];
   assert.equal((await request('/api/events/1/close',{version:eventState.version,action:'event:close',confirmation:'EVENT ABSCHLIESSEN'})).status,200);

@@ -45,3 +45,9 @@ Die ursprüngliche `/data/billard.sqlite` bleibt unverändert als Rückfallstand
 Für eine Rückkehr zur vorherigen App-Version vor dem Umstieg den alten Image-Digest und die bisherigen Compose-Dateien sichern. App und PostgreSQL stoppen, alte Compose-Dateien und altes Image wieder einsetzen und das unveränderte SQLite-Volume verwenden. Dabei gehen alle nach der Umstellung entstandenen Änderungen verloren; vorher einen aktuellen PostgreSQL-Dump und JSON-Export extern sichern. Eine alte App darf niemals unbemerkt als vermeintlich aktueller Datenstand weiterlaufen.
 
 `docker compose down` erhält Volumes. **`docker compose down -v` löscht Datenbank und CA dauerhaft.**
+
+## Spieler und Mannschaften (Schema 9)
+
+Die Sicherung enthält automatisch Spieler, Mannschaften, aktuelle Spielerzuordnungen, Spieltagsteilnehmer, ausgewählte Mannschaften und die je Partie gespeicherten historischen Spieler-/Mannschaftszuordnungen einschließlich Namen. Archivierte Einträge und Änderungsprotokoll bleiben enthalten. Import und Vorschau prüfen IDs und Beziehungen; fehlende Tabellen oder widersprüchliche Zuordnungen werden abgewiesen. Sicherungen aus Schema 6/7/8 werden beim Import auf Schema 9 ergänzt: neue Stammdatenbereiche sind leer, alte Partien behalten ihre Namen ohne automatische Personenverknüpfung. Schema-9-Sicherungen benötigen diese oder eine kompatible neuere App-Version.
+
+Beim Update wird eine vorhandene PostgreSQL-Datenbank aus Schema 8 transaktional erweitert. Vorher die vollständige Anwendungssicherung herunterladen. Für eine Rückkehr zur älteren App die vor dem Update erstellte Datenbanksicherung in einer passenden Installation wiederherstellen; eine ältere App kann Schema 9 nicht öffnen. Installationsdateien, externe Sicherheitskonfiguration und HTTPS-Schlüssel weiterhin zusätzlich nach der oben dokumentierten Betriebssicherung aufbewahren.

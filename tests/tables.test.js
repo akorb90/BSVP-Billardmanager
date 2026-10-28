@@ -38,7 +38,7 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
         db.exec(`INSERT INTO ${name}_old SELECT * FROM ${name};DROP TABLE ${name};ALTER TABLE ${name}_old RENAME TO ${name};`);
         for(const row of indexes)db.exec(row.sql);
       }
-      db.exec('DROP TABLE table_settings;PRAGMA user_version=7;COMMIT');
+      db.exec('DROP TABLE players;DROP TABLE teams;DROP TABLE team_players;DROP TABLE event_players;DROP TABLE event_teams;ALTER TABLE matches DROP COLUMN player_a_id;ALTER TABLE matches DROP COLUMN player_b_id;ALTER TABLE matches DROP COLUMN team_a_id;ALTER TABLE matches DROP COLUMN team_b_id;ALTER TABLE matches DROP COLUMN team_a_name;ALTER TABLE matches DROP COLUMN team_b_name;DROP TABLE table_settings;PRAGMA user_version=7;COMMIT');
     } finally {db.close();}
     await start();
     assert.equal((await save(20,0)).status,401);await login();
@@ -61,7 +61,7 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
     const tablet=await call('/api/tables/19/login',{pin:'123456'},{Cookie:''});assert.equal(tablet.status,200);
     assert.equal((await call('/api/tables/19',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).body.match.table_no,19);
     const backup=(await call('/api/backups/export')).body;
-    assert.equal(backup.schema,8);assert.equal(backup.data.table_settings[0].table_count,20);
+    assert.equal(backup.schema,9);assert.equal(backup.data.table_settings[0].table_count,20);
     assert.equal(backup.data.audit.at(-1).action,'start');assert.ok(backup.data.audit.some(a=>a.action==='settings:tables'));
     await stop();await start('target.sqlite');await login();
     for(const change of [b=>b.data.table_settings=[],b=>b.data.table_settings[0].table_count=21,b=>b.data.table_settings[0].table_count=1,b=>delete b.data.table_settings]) {
@@ -87,7 +87,7 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
     assert.equal((await call('/api/rentals',{table_no:2,settings_version:0})).status,400);
     assert.equal((await call('/api/tables/2')).status,400);assert.equal((await call('/tisch/2')).status,400);
     assert.equal((await call('/api/tables/2/login',{pin:'123456'})).status,400);
-    const legacy=structuredClone(original);legacy.schema=7;delete legacy.data.table_settings;resign(legacy);
+    const legacy=structuredClone(original);legacy.schema=7;for(const t of ['players','teams','team_players','event_players','event_teams'])delete legacy.data[t];for(const m of legacy.data.matches)for(const k of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[k];delete legacy.data.table_settings;resign(legacy);
     assert.equal((await call('/api/backups/preview',{backup:legacy})).status,200);assert.equal((await restore(legacy)).status,200);await login();
     assert.equal((await call('/api/admin')).body.table_settings.table_count,8);
   } finally {if(server?.listening)await stop();rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

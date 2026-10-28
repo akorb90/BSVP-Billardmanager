@@ -2,6 +2,15 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-007: Spieler- und Mannschaftsverwaltung — 2026-10-28
+
+- Eigener Menüpunkt **Spieler & Mannschaften** mit durchsuchbarer Spielerliste, stabilen IDs, Doppelhinweisen, BSV-Mannschaften, Spielerzuordnung und Archivierung für die künftige Vorauswahl. Ausschließlich Vorname, optionaler zweiter Name und Nachname als personenbezogene Stammdaten.
+- Spieltagsteilnehmer für Liga und Turnier auswählen; Liga-Mannschaften mit Mitgliedervorauswahl. Begegnungen verwenden diese Teilnehmer und verhindern Selbstbegegnungen. Freie Namen bleiben möglich. Nachträgliche Stammdatenzuordnung erfolgt ausdrücklich über die Partiebearbeitung.
+- Namen und Mannschaftszuordnung werden pro Partie gespeichert. Umbenennung, Mannschaftswechsel und Archivierung verändern frühere Partien nicht. Spieler- und Mannschaftsansichten zeigen alle zugeordneten Partien sowie abgeschlossene Ergebnisse mit Anzahl, Siegen, Niederlagen und Racks; Zeitraum nach Spieltagsdatum und Disziplin filterbar. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien, keine Gesamtwertung eines Liga-Spieltags.
+- Schema 9 erweitert vorhandene Datenbanken transaktional; vollständige Sicherung, Vorschau und Wiederherstellung erfassen alle neuen Tabellen und historischen Zuordnungen. Ältere Sicherungen aus Schema 6/7/8 werden ohne automatische Personenverknüpfung übernommen. Separate Betriebssicherung bleibt erforderlich.
+- Prüfung: 34 automatisierte Tests erfolgreich, darunter Statistikfilter, Rechte, Pflichtfelder, Doppelhinweise, Selbstbegegnungsschutz, Historienerhalt, Archivierung, Neustart und vollständige Wiederherstellung in eine getrennte Datenbank. Erweiterter isolierter Docker-HTTPS-Test mit PostgreSQL-Stammdaten, Bestandsmigration von Schema 8, vollständiger SQLite-Übernahme und Wiederherstellung sämtlicher neuer Daten in eine getrennte PostgreSQL-Datenbank erfolgreich.
+- Deployment: vollständige Sicherung vor und nach Migration unter `backups/fr007-20261028/`. Lokalen Stack mit `docker compose -f compose.yaml -f compose.override.yaml up -d --build --wait` aktualisiert. Alle bisherigen Tabellen vollständig mit dem vorherigen Stand verglichen; neue Bereiche leer. Prüfsummen bestätigen unveränderte `.env` und Sicherheitskonfiguration. App, Datenbank und Proxy gesund; HTTPS über localhost und 127.0.0.1 mit geprüfter Zertifikatskette erreichbar. Stack bleibt aktiv.
+
 ## FR-012: PostgreSQL im eigenen Container — 2026-10-28
 
 - SQLite als laufende Datenbank durch PostgreSQL 17 im eigenen Compose-Dienst ersetzt. Eigenes persistentes Volume, internes Datenbanknetz, Healthcheck und Startabhängigkeit; kein veröffentlichter Datenbankport. Der interne Datenbankzugang wird aus der vorhandenen Sicherheitskonfiguration abgeleitet, ohne diese oder die Benutzerzugänge zu verändern. Der Treiber wird mit einer Lockdatei reproduzierbar installiert.

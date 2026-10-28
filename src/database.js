@@ -1,3 +1,4 @@
+import { playerSchema } from './players.js';
 import pg from 'pg';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DatabaseSync, backup } from 'node:sqlite';
@@ -7,7 +8,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { openLegacyDatabase } from './legacy-db.js';
 
-export const SCHEMA_VERSION = 8; // Logical JSON schema remains compatible with SQLite exports.
+export const SCHEMA_VERSION = 9; // Logical JSON schema is shared with legacy migration and versioned backups.
 export const quote = name => '"' + name.replaceAll('"', '""') + '"';
 const lock = 12012026;
 const numeric = value => {
@@ -87,7 +88,9 @@ export async function openDatabase({ dbPath, databaseUrl, legacyPath, config }) 
     await db.transaction(async () => {
       const installed = await db.prepare("SELECT to_regclass('public._schema') AS name").get();
       if (installed.name) {
-        if ((await db.prepare('SELECT version FROM _schema WHERE id=1').get())?.version !== SCHEMA_VERSION) throw new Error('Die Datenbank benötigt eine passende App-Version.');
+        const installedVersion=(await db.prepare('SELECT version FROM _schema WHERE id=1').get())?.version;
+        if(installedVersion===8) {await db.exec(playerSchema.replace(/\bINTEGER\b/g,'BIGINT'));await db.exec('UPDATE _schema SET version=9 WHERE id=1');}
+        else if (installedVersion !== SCHEMA_VERSION) throw new Error('Die Datenbank benötigt eine passende App-Version.');
         return;
       }
       if ((await db.tables()).length) throw new Error('PostgreSQL enthält unbekannte Tabellen; automatische Übernahme abgebrochen.');

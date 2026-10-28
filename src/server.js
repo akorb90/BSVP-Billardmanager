@@ -1,3 +1,4 @@
+import { playerService } from './players.js';
 import http from 'node:http';
 import { tableService } from './tables.js';
 import { backupService, BACKUP_LIMIT } from './backup.js';
@@ -49,6 +50,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
     if (body.action !== action || body.confirmation !== phrase) throw fail(400, 'Die Aktion muss mit dem angezeigten Text exakt bestätigt werden.');
   };
   const today = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Berlin'}).format(new Date());
+  const players=playerService({db,transaction,fail,text,log,openEvent,touchEvent});
   const eventFields = body => {
     const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
@@ -98,10 +100,11 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         if (!allowedOrigins.has(requestOrigin)) throw fail(403, 'Ungültiger Ursprung.');
         if (!req.headers['content-type']?.startsWith('application/json')) throw fail(415, 'JSON erforderlich.');
         const backupUpload = ['/api/backups/preview', '/api/backups/restore'].includes(url.pathname);
+        const participantUpload=/^\/api\/events\/\d+\/participants$/.test(url.pathname);
         const brandingUpload = url.pathname === '/api/settings/branding';
         if (backupUpload || brandingUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : participantUpload ? 128*1024 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
         const raw = Buffer.concat(chunks).toString('utf8');
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
@@ -172,10 +175,13 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
-      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: (await db.prepare('SELECT * FROM matches ORDER BY id DESC').all()).map(publicMatch) }); }
+      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...await players.state(), table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: (await db.prepare('SELECT * FROM matches ORDER BY id DESC').all()).map(publicMatch) }); }
       if (req.method === 'POST' && (url.pathname === '/api/rentals' || url.pathname.startsWith('/api/rentals/'))) {
         admin(); return json(res, url.pathname === '/api/rentals' ? 201 : 200, await rentals.handle(url.pathname,body));
       }
+      if(req.method==='POST' && ['/api/players','/api/teams'].includes(url.pathname)) {admin();return json(res,200,await players.save(url.pathname==='/api/players'?'player':'team',body));}
+      const participantRoute=/^\/api\/events\/(\d+)\/participants$/.exec(url.pathname);
+      if(req.method==='POST' && participantRoute) {admin();return json(res,200,await players.participants(Number(participantRoute[1]),body));}
       const pinRoute = /^\/api\/tables\/([1-9]|1[0-9]|20)\/login$/.exec(url.pathname);
       if (req.method==='POST' && pinRoute) {
         const number=await tables.activeNumber(Number(pinRoute[1]));
@@ -225,6 +231,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             await db.prepare("UPDATE events SET status='closed',version=version+1 WHERE id=?").run(id);
           } else {
             await db.prepare('DELETE FROM matches WHERE event_id=?').run(id);
+            await db.prepare('DELETE FROM event_players WHERE event_id=?').run(id);
+            await db.prepare('DELETE FROM event_teams WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM events WHERE id=?').run(id);
           }
           await log('admin','event:'+action,null,{before:event,matches:action==='edit'?undefined:matches,after:action==='edit'?eventFields(body):undefined});
@@ -236,7 +244,9 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || (body.first!==undefined && !['a','b'].includes(body.first))) throw fail(400, 'Ungültige Spielregel.');
         const id=await transaction(async () => {
           await openEvent(event); const pinHash=encodePin(body.pin); const id=await nextId('matches');
-          await db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a),text(body.player_b),body.discipline,target,body.first || 'a',pinHash);
+          await db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a || 'Teilnehmer',302),text(body.player_b || 'Teilnehmer',302),body.discipline,target,body.first || 'a',pinHash);
+          const links=await players.resolve(event,body);
+          await db.prepare('UPDATE matches SET player_a=?,player_b=?,player_a_id=?,player_b_id=?,team_a_id=?,team_b_id=?,team_a_name=?,team_b_name=? WHERE id=?').run(links.player_a,links.player_b,links.player_a_id,links.player_b_id,links.team_a_id,links.team_b_id,links.team_a_name,links.team_b_name,id);
           await touchEvent(event); return id;
         });
         return json(res, 201, { id });
@@ -270,7 +280,9 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
             if (status==='live') await tables.activeNumber(number);
             if (status==='live' && ((await rentals.occupied(number)) || (await db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)))) throw fail(409,'Dieser Tisch ist belegt.');
-            await db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
+            await db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a,302),text(body.player_b,302),body.discipline,target,body.first,a,b,status,number,id);
+            const links=await players.resolve(event,body,m);
+            await db.prepare('UPDATE matches SET player_a=?,player_b=?,player_a_id=?,player_b_id=?,team_a_id=?,team_b_id=?,team_a_name=?,team_b_name=? WHERE id=?').run(links.player_a,links.player_b,links.player_a_id,links.player_b_id,links.team_a_id,links.team_b_id,links.team_a_name,links.team_b_name,id);
             if(body.pin !== undefined && body.pin !== '') await db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
             await db.prepare('UPDATE matches SET auth_version=auth_version+1 WHERE id=?').run(id);
             const lag=body.lag_winner === undefined ? m.lag_winner : body.lag_winner;

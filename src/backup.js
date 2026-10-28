@@ -26,16 +26,21 @@ export async function backupService({ db, transaction, fail, log }) {
     }
   };
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || ![6,7].includes(backup.schema) || version!==8 || backup.checksum!==digest(backup.data)) return backup;
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8].includes(backup.schema) || version!==9 || backup.checksum!==digest(backup.data)) return backup;
     let data={...backup.data};
     if (backup.schema===6) {
       if (Object.hasOwn(data,'branding')) return backup;
       const {primary,...defaults}=DEFAULT_BRANDING;
       data.branding=[{id:1,...defaults,primary_color:primary}];
     }
-    if (Object.hasOwn(data,'table_settings')) return backup;
-    data.table_settings=[{id:1,table_count:8,version:0}];
-    return {...backup,schema:8,data,checksum:digest(data)};
+    if(backup.schema<8) {
+      if (Object.hasOwn(data,'table_settings')) return backup;
+      data.table_settings=[{id:1,table_count:8,version:0}];
+    }
+    for(const name of ['players','teams','team_players','event_players','event_teams']) {if(Object.hasOwn(data,name))return backup;data[name]=[];}
+    if(!Array.isArray(data.matches) || data.matches.some(m=>!m || typeof m!=='object' || ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'].some(k=>Object.hasOwn(m,k))))return backup;
+    data.matches=data.matches.map(m=>({...m,player_a_id:null,player_b_id:null,team_a_id:null,team_b_id:null,team_a_name:null,team_b_name:null}));
+    return {...backup,schema:9,data,checksum:digest(data)};
   };
   const validate = async backup => {
     backup=upgrade(backup);
@@ -54,6 +59,17 @@ export async function backupService({ db, transaction, fail, log }) {
               if (value === null) { if (field.notnull || field.pk) throw new Error('null'); }
               else if (field.type === 'INTEGER' ? !Number.isSafeInteger(value) : field.type === 'TEXT' ? typeof value !== 'string' : typeof value !== 'number' || !Number.isFinite(value)) throw new Error('type');
             }
+          }
+        }
+        const data=backup.data, has=(table,id)=>data[table].some(r=>r.id===id);
+        for(const r of data.team_players)if(!has('teams',r.team_id)||!has('players',r.player_id))throw new Error('team member');
+        for(const r of data.event_teams)if(!has('events',r.event_id)||!has('teams',r.team_id))throw new Error('event team');
+        for(const r of data.event_players)if(!has('events',r.event_id)||!has('players',r.player_id)||(r.team_id && !data.event_teams.some(t=>t.event_id===r.event_id&&t.team_id===r.team_id)))throw new Error('participant');
+        for(const m of data.matches) {
+          if(m.player_a_id && m.player_a_id===m.player_b_id)throw new Error('self match');
+          for(const side of ['a','b']) {
+            const p=m['player_'+side+'_id'],t=m['team_'+side+'_id'],n=m['team_'+side+'_name'];
+            if((p && !has('players',p))||(t && (!p||!has('teams',t)||typeof n!=='string'||!n.trim()))||(!t && n!==null))throw new Error('match association');
           }
         }
         await replace(backup.data);

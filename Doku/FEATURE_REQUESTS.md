@@ -2,7 +2,7 @@
 
 Dieses Dokument enthält ausschließlich offene oder in Umsetzung befindliche Feature Requests. Erfolgreich umgesetzte Anforderungen werden mit ihrer FR-Nummer, dem Umsetzungsdatum und dem Prüfstand in die [Release Notes](CHANGELOG.md) übernommen und hier entfernt. Bestehende FR-Nummern bleiben erhalten und werden nicht erneut vergeben.
 
-Empfohlene Reihenfolge: Spieler- und Mannschafts-Stammdaten mit Teilnehmerauswahl (FR-007) → Turnierverwaltung mit Tischzuweisung (FR-006) → statistische Auswertungen aus FR-007. Datensicherung (FR-005) ist umgesetzt, siehe [Release Notes](CHANGELOG.md). Das Regelwerk (FR-008) kann unabhängig davon umgesetzt werden. Zuschaueranzeige, Vorlagen und weiterführender Mannschaftsbetrieb bleiben Erweiterungsideen und benötigen eigene Feature Requests.
+Als nächster Ausbau folgt die Turnierverwaltung (FR-006) auf Basis der umgesetzten Spieler- und Mannschaftsverwaltung (FR-007). Datensicherung (FR-005) ist ebenfalls umgesetzt, siehe [Release Notes](CHANGELOG.md). Das Regelwerk (FR-008) kann unabhängig davon umgesetzt werden.
 
 ## FR-006: Turnierverwaltung mit Auslosung, Gruppenphase und KO-Baum
 
@@ -19,22 +19,6 @@ Anforderungen und Abnahmekriterien:
 - Generierte Begegnungen in die bestehende Tischzuweisung, Tablet-Erfassung und Spielhistorie integrieren. Turnierstand und Auslosung bleiben nach Neuladen und Neustart erhalten.
 
 Abhängigkeit: FR-007 liefert die Teilnehmerauswahl. FR-008 dient als Nachschlagewerk; daraus folgt keine automatische Umsetzung sämtlicher Verbandsregeln.
-
-## FR-007: Spieler- und Mannschaftsverwaltung mit Teilnehmerauswahl und Statistiken
-
-Spieler und Mannschaften zentral verwalten und bei Turnieren sowie Liga-Spieltagen wiederverwenden, damit Namen nicht für jede Begegnung neu eingegeben werden müssen. Zugeordnete Partien bilden die Grundlage für Spieler- und Mannschaftsstatistiken.
-
-Anforderungen und Abnahmekriterien:
-
-- Ausschließlich Vorname, zweiter Name und Nachname als personenbezogene Stammdaten erfassen. Vorname und Nachname sind Pflichtfelder; der zweite Name ist optional. Keine zusätzlichen Angaben wie Geburtsdatum, Kontakt- oder Verbandsdaten verlangen.
-- Mannschaften des BSV Pfaffenhofen mit Mannschaftsname und Spielerzuordnung anlegen und bearbeiten. Mannschaften für Liga-Spieltage auswählen; bei der Begegnungsplanung die zugeordneten Spieler zur Auswahl anbieten. Die Erfassung gegnerischer Spieler bleibt auch ohne Zuordnung zu einer BSV-Mannschaft möglich.
-- Alle ausdrücklich zugeordneten Partien in Spieler- und Mannschaftsübersichten erfassen. Abgeschlossene Partien nach Zeitraum und Disziplin auswerten; Anzahl, Siege, Niederlagen und gewonnene/verlorene Racks anzeigen. Geplante und laufende Partien nicht als abgeschlossene Ergebnisse zählen. Eine Mannschaftsgesamtwertung aus mehreren Einzelpartien ist ein eigener späterer Ausbau.
-- Spieler anlegen, bearbeiten und in einer durchsuchbaren Liste mit der bestehenden Seitennavigation verwalten. Eine interne stabile ID unterscheidet auch Personen mit identischen Namen; mögliche Doppeleinträge vor dem Anlegen anzeigen.
-- Teilnehmer für einen Turnier- oder Liga-Spieltag aus den Stammdaten auswählen. Bei der Begegnungsplanung Spieler A und B aus dieser Teilnehmerliste vorauswählen; dieselbe Person darf nicht gegen sich selbst antreten.
-- Vorhandene Partien ohne Stammdatenzuordnung bleiben lesbar und bearbeitbar. Eine nachträgliche Zuordnung muss ausdrücklich erfolgen und darf Personen nicht allein anhand gleicher Namen automatisch zusammenführen.
-- Namensänderungen, Mannschaftswechsel und das Entfernen eines Spielers oder einer Mannschaft aus der künftigen Vorauswahl dürfen gespeicherte historische Namen, Partien und Ergebnisse nicht verändern oder löschen. Für Mannschaftsauswertungen gilt die bei der jeweiligen Partie gespeicherte Mannschaftszuordnung; ein späterer Wechsel darf frühere Ergebnisse nicht einer anderen Mannschaft zuschlagen.
-- Spieler, Mannschaften und Teilnehmerzuordnungen dauerhaft speichern und beim Export/Import gemäß FR-005 berücksichtigen.
-- Einen eigenen Menüpunkt „Spieler & Mannschaften“ für Stammdaten, Zuordnungen und statistische Übersichten bereitstellen.
 
 ## FR-008: Aktuelles BBV-Verbandsregelwerk als Nachschlagewerk
 
