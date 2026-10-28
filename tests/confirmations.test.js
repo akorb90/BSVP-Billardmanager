@@ -10,7 +10,7 @@ import {createApp} from '../src/server.js';
 
 test('FR-002: exact confirmations, parent conflicts, closed corrections, deletion and audit',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'billard-confirm-')),dbPath=join(dir,'db.sqlite');
-  const server=createApp({dbPath,config:{adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))}});
+  const server=await createApp({dbPath,config:{adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   let cookie='',csrf='';
   const call=async(path,data,admin=true)=>{

@@ -23,17 +23,17 @@ export function validateBranding(value) {
 }
 
 export function brandingService({db,transaction,fail,log}) {
-  const get = () => db.prepare('SELECT id,club_name,primary_color AS "primary",background,surface,text,logo,version FROM branding WHERE id=1').get();
-  const publicState = () => {const {id,logo,...value}=get();return {...value,has_logo:logo!==null,logo_revision:createHash('sha256').update(logo||'default').digest('hex')};};
-  return {get,publicState,save(body) {
-    const before=get();
-    if (!Number.isSafeInteger(body.version) || body.version!==before.version) throw fail(409,'Die Vereinsgestaltung wurde inzwischen geändert. Bitte die Einstellungen neu laden.');
-    let value;
-    try {value=validateBranding({...body,logo:body.logo===undefined?before.logo:body.logo});} catch(error) {throw fail(400,error.message);}
-    transaction(()=>{
-      db.prepare('UPDATE branding SET club_name=?,primary_color=?,background=?,surface=?,text=?,logo=?,version=version+1 WHERE id=1').run(value.club_name,value.primary,value.background,value.surface,value.text,value.logo);
-      log('admin','settings:branding',null,{club_name:value.club_name,primary:value.primary,background:value.background,surface:value.surface,text:value.text,logo_changed:before.logo!==value.logo});
+  const get = async () => await db.prepare('SELECT id,club_name,primary_color AS "primary",background,surface,text,logo,version FROM branding WHERE id=1').get();
+  const publicState = async () => {const {id,logo,...value}=await get();return {...value,has_logo:logo!==null,logo_revision:createHash('sha256').update(logo||'default').digest('hex')};};
+  return {get,publicState,async save(body) {
+    return transaction(async () => {
+      const before=await get();
+      if (!Number.isSafeInteger(body.version) || body.version!==before.version) throw fail(409,'Die Vereinsgestaltung wurde inzwischen geändert. Bitte die Einstellungen neu laden.');
+      let value;
+      try {value=validateBranding({...body,logo:body.logo===undefined?before.logo:body.logo});} catch(error) {throw fail(400,error.message);}
+      await db.prepare('UPDATE branding SET club_name=?,primary_color=?,background=?,surface=?,text=?,logo=?,version=version+1 WHERE id=1').run(value.club_name,value.primary,value.background,value.surface,value.text,value.logo);
+      await log('admin','settings:branding',null,{club_name:value.club_name,primary:value.primary,background:value.background,surface:value.surface,text:value.text,logo_changed:before.logo!==value.logo});
+      return await publicState();
     });
-    return publicState();
   }};
 }

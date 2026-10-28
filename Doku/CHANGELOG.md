@@ -2,6 +2,14 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-012: PostgreSQL im eigenen Container — 2026-10-28
+
+- SQLite als laufende Datenbank durch PostgreSQL 17 im eigenen Compose-Dienst ersetzt. Eigenes persistentes Volume, internes Datenbanknetz, Healthcheck und Startabhängigkeit; kein veröffentlichter Datenbankport. Der interne Datenbankzugang wird aus der vorhandenen Sicherheitskonfiguration abgeleitet, ohne diese oder die Benutzerzugänge zu verändern. Der Treiber wird mit einer Lockdatei reproduzierbar installiert.
+- Asynchrone, parametrisierte Datenbankzugriffe und transaktionale Sperren erhalten Versionsprüfungen und verhindern doppelte Tischbelegung. Die erste Initialisierung übernimmt sämtliche SQLite-Tabellen aus einer konsistenten Kopie, migriert bei Bedarf die Kopie, vergleicht alle Zeilen und bestätigt den Abschluss atomar. Die Originaldatei bleibt unverändert erhalten und wird bei späteren Starts nicht erneut importiert.
+- Vollständiger JSON-Export, Datenprüfung und atomare Wiederherstellung für PostgreSQL; bisherige Sicherungen aus Schema 6/7/8 bleiben kompatibel. Tabellen und Spalten werden aus dem installierten Schema ermittelt. Einstellungen, Logo, Farben, Zugangsdaten-Hashes und Protokoll bleiben vollständig enthalten; fehlende Daten werden abgewiesen. Audit-IDs werden nach Wiederherstellung korrekt und transaktional fortgesetzt. PostgreSQL-Dump, zusätzliche Betriebssicherung und Rückkehr zum SQLite-Rückfallstand sind dokumentiert.
+- Prüfung: 32 automatisierte Tests erfolgreich. Isolierter Docker-HTTPS-Test mit Quellcode-Build sowie Betrieb ausschließlich mit fertigem Image erfolgreich. Zusätzliche Prüfungen für vollständige SQLite-Übernahme, unveränderten Altbestand, Neustart ohne erneute Übernahme, Restore in eine getrennte PostgreSQL-Datenbank, neue Tabellen, ungültige Importe, fehlgeschlagene Migration mit Rollback, konkurrierende Buchungen und Datenbankneustart mit automatischer Wiederverbindung.
+- Deployment: bisherige Daten unter `backups/fr012-20261028/` gesichert; bestehenden Stack mit lokalem Build und unveränderter Projektzuordnung aktualisiert. Alle zehn Anwendungstabellen mit der vorherigen Sicherung vollständig verglichen. App, PostgreSQL und Proxy gesund; HTTPS über localhost und 127.0.0.1 mit geprüfter Zertifikatskette erreichbar. Prüfsummen bestätigen unveränderte `.env`, Sicherheitskonfiguration, alte SQLite-Datei und Caddy-CA. Stack bleibt aktiv. Eine Veröffentlichung auf GitHub/GHCR ist damit nicht verbunden.
+
 ## FR-011: Einstellbare Tischanzahl — 2026-10-28
 
 - Unter **Einstellungen → Tischanzahl** lassen sich 1 bis 20 Tische speichern (Standard 8). Übersicht, Belegungszähler, Tischzuweisung, Vermietung und Tablet-Adressen übernehmen die Einstellung; auch zweistellige Tischnummern sind nutzbar.

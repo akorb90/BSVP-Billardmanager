@@ -1,7 +1,8 @@
 FROM node:24-alpine
 ENV NODE_ENV=production DATA_DIR=/data CONFIG_FILE=/run/secrets/app_config PORT=3000
 WORKDIR /app
-COPY --chown=node:node package.json ./
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node src ./src
 COPY --chown=node:node public ./public
 COPY --chown=node:node scripts/setup.js ./scripts/setup.js

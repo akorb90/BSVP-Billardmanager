@@ -10,7 +10,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
   const dir = mkdtempSync(join(tmpdir(), 'billard-backup-'));
   const config = { adminHash: 'salt:'+scryptSync('original-password','salt',64).toString('hex'), tables:Array(8).fill('x'.repeat(40)) };
   let server, base, cookie='', csrf='';
-  const start = async name => { server=createApp({dbPath:join(dir,name),config}); await new Promise(r=>server.listen(0,'127.0.0.1',r)); base=`http://127.0.0.1:${server.address().port}`; };
+  const start = async name => { server=await createApp({dbPath:join(dir,name),config}); await new Promise(r=>server.listen(0,'127.0.0.1',r)); base=`http://127.0.0.1:${server.address().port}`; };
   const stop = () => new Promise(r=>server.close(r));
   async function call(path, data, headers={}) {
     const res=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf,...headers},body:data?JSON.stringify(data):undefined});

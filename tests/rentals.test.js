@@ -25,7 +25,7 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
   const dir=mkdtempSync(join(tmpdir(),'billard-rentals-')),dbPath=join(dir,'db.sqlite');
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie,csrf,token='';
-  async function start(){server=createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function call(path,data,admin=true,headers={}){const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(admin?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token}),...headers},body:data?JSON.stringify(data):undefined});return{status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};}
   async function login(){const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
   const state=async()=>(await call('/api/admin')).body;

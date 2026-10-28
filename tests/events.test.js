@@ -11,7 +11,7 @@ const config={adminHash:`salt:${scryptSync('password','salt',64).toString('hex')
 test('Veranstaltungen und Partien bleiben nach bestätigtem Gesamtabschluss korrigierbar',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'billard-events-')), path=join(dir,'db.sqlite');
   let server,base,cookie,csrf,tabletToken;
-  async function start(){server=createApp({dbPath:path,config}); await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbPath:path,config}); await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function request(path,data,admin=true){
     if(data && admin && /\/(edit|delete|close)$/.test(path)) {
       const action=path.split('/').at(-1), entity=path.includes('/events/')?'event':'match';
@@ -103,7 +103,7 @@ test('Migration übernimmt bestehende Version-1-Daten und ist wiederholbar',asyn
       INSERT INTO matches VALUES(9,7,'Alt A','Alt B','8-Ball',5,'a',1,5,3,'finished',12);
       PRAGMA user_version=1;`); legacy.close();
     for(let i=0;i<2;i++){
-      const server=createApp({dbPath:path,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));await new Promise(r=>server.close(r));
+      const server=await createApp({dbPath:path,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));await new Promise(r=>server.close(r));
     }
     const db=new DatabaseSync(path);
     assert.equal(db.prepare('SELECT status FROM events WHERE id=7').get().status,'open');

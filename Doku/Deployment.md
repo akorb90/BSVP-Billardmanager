@@ -18,11 +18,15 @@ Der Setup-Dienst läuft nur bei explizitem Aufruf. Er erstellt die Sicherheitsko
 
 Bei `denied` oder `manifest unknown` zunächst die erfolgreiche Veröffentlichung, die öffentliche Sichtbarkeit und die Einstellung `BILLARD_IMAGE` prüfen. Ohne veröffentlichtes Image ist die [Bereitstellung aus Quellcode](Entwicklung.md#lokalen-stack-aus-quellcode-bauen) möglich.
 
+## PostgreSQL-Umstellung (FR-012)
+
+Die aktualisierte `compose.yaml` ist zwingend erforderlich: Sie ergänzt PostgreSQL 17 als Dienst `db`, ein internes Datenbanknetz, Healthcheck und das Volume `postgres_data`. Es wird kein Datenbankport veröffentlicht. App und Datenbank verwenden den SHA-256 der unveränderten vorhandenen `secrets/config.json` als internen Datenbankzugang; keine neuen Zugangsdaten erzeugen und die Datei nicht neu formatieren. Der Benutzerzugang bleibt unverändert. Der erste App-Start übernimmt den SQLite-Altbestand atomar in die leere Datenbank; spätere Starts verwenden ausschließlich PostgreSQL. Vorher die [vollständige Sicherung einschließlich Rückkehrstand](Datensicherung.md) erstellen. Bestehende `.env`, Projektzuordnung, SQLite- und Caddy-Volumes erhalten.
+
 ## Bestehende Installation umstellen
 
 1. Vollständige [Anwendungssicherung und zusätzliche Betriebssicherung](Datensicherung.md) erstellen. Den bisherigen Compose-Projektnamen mit `docker compose ls` bzw. `docker compose ps` feststellen.
 2. Im **gleichen Installationsordner** bleiben. `compose.yaml` und `Caddyfile` aus dem freigegebenen Paket prüfen und übernehmen; `.env`, `secrets` und vorhandene Volumes beibehalten. Keine Setup-Ausführung und kein Kopieren von `.env.example` über `.env`.
-3. Mit `docker compose -f compose.yaml pull` und `docker compose -f compose.yaml up -d --wait` auf das Image wechseln. Die bisherigen Dienst-, Netzwerk- und Volumennamen bleiben unverändert.
+3. Mit `docker compose -f compose.yaml pull` und `docker compose -f compose.yaml up -d --wait` auf das Image wechseln. Bestehende Dienst-, Netzwerk- und Volumennamen bleiben erhalten; PostgreSQL ergänzt einen Dienst, ein Netzwerk und ein Volume.
 4. `docker compose -f compose.yaml ps`, HTTPS `/health`, Anmeldung und vorhandene Daten prüfen. Der Stack bleibt aktiv.
 
 Ein anderer Ordner oder Compose-Projektname kann neue, leere Volumes erzeugen. Falls der ursprüngliche Betrieb mit `-p` oder `COMPOSE_PROJECT_NAME` erfolgte, diesen Namen weiterhin verwenden. Bestehende lokale `COMPOSE_FILE`-/Image-Anpassungen vor dem Wechsel prüfen. Ein leeres System nach dem Umstieg ist ein Grund, die Projektzuordnung zu prüfen und die bisherigen Volumes wieder einzubinden.

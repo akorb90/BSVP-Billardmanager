@@ -12,17 +12,36 @@ Nach erfolgreichem Import werden alle Admin- und Tablet-Sitzungen abgemeldet. Es
 
 ### Zusätzliche Sicherung der Installation und Datenvolumes
 
-Für eine direkte Volume-Sicherung ein kurzes Wartungsfenster nutzen; die App muss während Kopieren und Wiederherstellen gestoppt bleiben. Die SQLite-Hauptdatei **und** vorhandene WAL-/SHM-Dateien zusammen sichern, am einfachsten das gesamte `/data`-Verzeichnis:
+PostgreSQL speichert die laufenden Daten im Volume `postgres_data`. Eine konsistente zusätzliche Datenbanksicherung lässt sich mit `pg_dump` erstellen. Einen neuen, datierten Backup-Ordner verwenden; `backups/` ist von Git ausgeschlossen. Das Dump wird zuerst im Container erzeugt, damit PowerShell keine Binärdaten umkodiert:
+
+```powershell
+New-Item -ItemType Directory -Force backups/2026-10-28
+docker compose exec -T db pg_dump -U billard -d billard -Fc -f /tmp/billard.dump
+docker compose cp db:/tmp/billard.dump ./backups/2026-10-28/billard.dump
+docker compose exec -T db rm /tmp/billard.dump
+```
+
+Für die Wiederherstellung zuerst das aktuelle System separat sichern und die App stoppen. Das Dump ersetzt den Datenbestand der Zieldatenbank. Nur eine geprüfte Sicherung verwenden und den Vorgang vor dem ersten echten Spieltag in einer getrennten Installation testen:
 
 ```powershell
 docker compose stop app
-New-Item -ItemType Directory -Force backups
-docker compose cp app:/data ./backups/data
+docker compose cp ./backups/2026-10-28/billard.dump db:/tmp/billard.dump
+docker compose exec -T db pg_restore -U billard -d billard --clean --if-exists --single-transaction /tmp/billard.dump
+docker compose exec -T db rm /tmp/billard.dump
 docker compose start app
+docker compose ps
 ```
 
-Einen neuen, datierten Backup-Ordner pro Sicherung verwenden; `backups/` ist von Git ausgeschlossen. Zusätzlich `secrets/config.json`, `.env` und die Caddy-Volumes verschlüsselt sichern. Die Caddy-CA muss für weiterhin vertraute Tablet-Zertifikate erhalten bleiben.
+Bei einem Fehler die App gestoppt lassen, Ursache beheben und mit der zuvor erstellten Sicherung wiederherstellen. Anschließend HTTPS, Anmeldung, gespeicherte Ergebnisse und Tablet-Zugriff prüfen. Ein laufendes PostgreSQL-Datenvolume nicht als gewöhnlichen Dateiordner kopieren; dafür den gesamten Datenbankdienst sauber stoppen oder PostgreSQL-Backupwerkzeuge verwenden.
 
-Restore in eine frische Installation mit zuvor geprüfter Sicherung: Stack erstellen, App stoppen, Datenbankdateien aus dem gesicherten Datenverzeichnis in `/data` des App-Containers kopieren (`docker compose cp <Backup-Datei> app:/data/<Dateiname>`), Dateieigentümer bei Bedarf auf UID/GID 1000 korrigieren und App starten. Nicht mit alten WAL-Dateien einer anderen Sicherung mischen. Anschließend gespeicherte Ergebnisse und Kiosk-Zugriff prüfen. Diesen Restore-Ablauf vor dem ersten echten Spieltag testen.
+Zusätzlich **unverändert** `secrets/config.json`, `.env`, Installationsdateien und beide Caddy-Volumes verschlüsselt sichern. Der interne Datenbankzugang wird deterministisch aus dem SHA-256 der bestehenden Secrets-Datei abgeleitet; sie ist daher auch nach dem Umstieg erforderlich und darf nicht neu formatiert oder ersetzt werden. Beim Neuaufbau eines Datenbankvolumes muss dieselbe Datei verfügbar sein. Passwortänderungen in der Anwendung verändern diese Datei nicht. Externe Sicherheitskonfiguration und HTTPS-Schlüssel bleiben eine separate Betriebssicherung; diese ersetzt niemals den vollständigen Anwendungs-Export.
+
+### Übernahme bisheriger SQLite-Installationen (FR-012)
+
+Vor dem ersten Start der neuen Version die bisherige JSON-Sicherung und Betriebssicherung erstellen. Dieselbe Compose-Projektzuordnung sowie das vorhandene `billard_data`-Volume beibehalten. Beim ersten Start einer leeren PostgreSQL-Datenbank erstellt die App eine konsistente SQLite-Kopie einschließlich vorhandener WAL-Inhalte, führt nötige alte Schemamigrationen nur auf der Kopie aus und übernimmt sämtliche Tabellen in einer PostgreSQL-Transaktion. Jede übernommene Zeile wird verglichen. Erst danach wird die erfolgreiche Initialisierung vermerkt. Bei Fehlern wird die Transaktion zurückgerollt und die App startet nicht mit einem halbfertigen Datenbestand.
+
+Die ursprüngliche `/data/billard.sqlite` bleibt unverändert als Rückfallstand im alten Volume. Bei späteren Starts wird sie nicht erneut eingelesen. Ab dem Umstieg ist ausschließlich PostgreSQL aktuell; die SQLite-Datei enthält spätere Änderungen nicht. Bestehende JSON-Sicherungen der Schemaversionen 6, 7 und 8 bleiben importierbar. Das JSON-Datenschema bleibt Version 8. Interne PostgreSQL-Schemametadaten sind keine Anwendungsdaten; sämtliche Anwendungstabellen werden automatisch gesichert. Fehlen Tabellen oder Spalten im Upload, wird der Import abgewiesen.
+
+Für eine Rückkehr zur vorherigen App-Version vor dem Umstieg den alten Image-Digest und die bisherigen Compose-Dateien sichern. App und PostgreSQL stoppen, alte Compose-Dateien und altes Image wieder einsetzen und das unveränderte SQLite-Volume verwenden. Dabei gehen alle nach der Umstellung entstandenen Änderungen verloren; vorher einen aktuellen PostgreSQL-Dump und JSON-Export extern sichern. Eine alte App darf niemals unbemerkt als vermeintlich aktueller Datenstand weiterlaufen.
 
 `docker compose down` erhält Volumes. **`docker compose down -v` löscht Datenbank und CA dauerhaft.**

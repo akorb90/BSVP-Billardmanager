@@ -11,7 +11,7 @@ test('FR-009: Vereinsgestaltung, Rechte, Konflikte, Upload, Neustart und Sicheru
   const dir=mkdtempSync(join(tmpdir(),'billard-branding-'));
   const config={adminHash:'salt:'+scryptSync('test-password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie='',csrf='';
-  async function start(){server=createApp({dbPath:join(dir,'db.sqlite'),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbPath:join(dir,'db.sqlite'),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function call(path,data,headers={}){const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf,...headers},body:data?JSON.stringify(data):undefined});return{status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};}
   async function login(){const r=await call('/api/login',{password:'test-password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
   const logo='data:image/png;base64,'+readFileSync(new URL('../public/assets/bsv-logo.png',import.meta.url)).toString('base64');

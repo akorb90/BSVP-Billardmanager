@@ -35,6 +35,14 @@ writeFileSync(join(directory, 'compose.yaml'), `services:
       - type: bind
         source: ${JSON.stringify(join(directory, 'secrets').replaceAll('\\', '/'))}
         target: /setup/secrets
+  db:
+    volumes:
+      - type: bind
+        source: ${JSON.stringify(join(directory, 'secrets/config.json').replaceAll('\\', '/'))}
+        target: /run/secrets/app_config
+        read_only: true
+        bind:
+          create_host_path: false
   proxy:
     environment:
       BILLARD_HOST: localhost
@@ -98,6 +106,7 @@ try {
   await compose(['cp', 'proxy:/data/caddy/pki/authorities/local/root.crt', join(directory, 'root.crt')]);
   ca = readFileSync(join(directory, 'root.crt'));
   await ready();
+  await compose(['exec', '-T', 'app', 'node', '--input-type=module', '-e', readFileSync(join(root, 'tests/postgres.integration.js'), 'utf8')]);
   assert.equal((await request('/health', undefined, {hostname:'127.0.0.1'})).status,200);
   const ipLogin = await request('/api/login', {password}, {hostname:'127.0.0.1',requestOrigin:`https://127.0.0.1:${port}`});
   assert.equal(ipLogin.status,200);
@@ -110,6 +119,7 @@ try {
   for (const asset of ['/app.js', '/rental-pricing.js', '/style.css']) assert.equal((await request(asset)).status, 200);
   assert.equal((await request('/api/admin')).status, 401);
   await login();
+
   const brand=(await request('/api/branding',undefined,{admin:false})).body;
   const logo='data:image/png;base64,'+readFileSync(join(root,'public','assets','bsv-logo.png')).toString('base64');
   assert.equal((await request('/api/settings/branding',{...brand,club_name:'Docker Testverein',primary:'#8b3624',logo},{admin:false})).status,401);
@@ -143,6 +153,10 @@ try {
   assert.ok(inspection.HostConfig.SecurityOpt.includes('no-new-privileges:true'));
   assert.ok(Object.values(inspection.NetworkSettings.Ports || {}).every(value => value === null));
   assert.equal(await compose(['exec', '-T', 'app', 'id', '-u'], true), '1000');
+  const databaseContainer = await compose(['ps', '-q', 'db'], true);
+  const [databaseInspection] = JSON.parse(await docker(['inspect', databaseContainer], true));
+  assert.ok(Object.values(databaseInspection.NetworkSettings.Ports || {}).every(value => value === null));
+  assert.equal(Object.keys(databaseInspection.NetworkSettings.Networks).length, 1);
   console.log('PASS: non-root app, read-only root filesystem, dropped capabilities, no public app port');
 
   await compose(['restart', 'app']);
@@ -213,6 +227,16 @@ try {
   for(const name of Object.keys(backup.body.data)) if(name!=='audit') assert.deepEqual(imported.body.data[name],backup.body.data[name]);
   assert.equal(imported.body.data.audit.at(-1).action,'backup:restore');
   console.log('PASS: HTTPS backup download, upload preview, confirmed atomic restore and session revocation');
+  const competingRentals = await Promise.all([1, 2].map(() => request('/api/rentals', {table_no:3,settings_version:0})));
+  assert.deepEqual(competingRentals.map(r => r.status).sort(), [201, 409]);
+  const competingRental = competingRentals.find(r => r.status === 201).body;
+  const endedRental = (await request(`/api/rentals/${competingRental.id}/finish`, {version:0,ended_at:Date.now(),action:'rental:finish'})).body;
+  assert.equal((await request(`/api/rentals/${competingRental.id}/delete`, {version:endedRental.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})).status,200);
+  console.log('PASS: concurrent PostgreSQL bookings admit exactly one winner');  const persistedData = (await request('/api/backups/export')).body.data;
+  await compose(['restart', 'db']);
+  await ready();
+  assert.deepEqual((await request('/api/backups/export')).body.data, persistedData);
+  console.log('PASS: database restart preserves all application data and reconnects automatically');
   writeFileSync(join(directory, 'result.json'), JSON.stringify({ project, passed: true, testedAt: new Date().toISOString(), image: inspection.Image }, null, 2));
   console.log('All Docker smoke checks passed.');
 } catch (error) {

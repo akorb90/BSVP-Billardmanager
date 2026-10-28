@@ -1,6 +1,6 @@
 # BSVP Billardmanager
 
-Webanwendung für Spieltage, Ergebnisse und Tischvermietung an 1 bis 20 einstellbaren Billardtischen.
+Webanwendung für Spieltage, Ergebnisse und Tischvermietung an 1 bis 20 einstellbaren Billardtischen. Die Daten werden in einem eigenen PostgreSQL-Container gespeichert.
 
 ## Neu installieren
 
@@ -36,6 +36,8 @@ docker compose -f compose.yaml ps
 ```
 
 `pull` lädt die aktuelle Version; `up` übernimmt sie in den laufenden Stack. Daten, Zugangsdaten und HTTPS-Zertifikate bleiben in den bisherigen Volumes und Dateien erhalten. Nach dem Update erneut anmelden und [https://localhost/health](https://localhost/health) aufrufen. Kein `down -v` verwenden.
+
+**Beim ersten PostgreSQL-Update (FR-012):** Auch die neue `compose.yaml` übernehmen; ein reines Image-Update genügt nicht. Das vorhandene SQLite-Volume und die Sicherheitsdatei beibehalten. Die App übernimmt alle Daten einmalig und prüft sie; die alte Datei bleibt als Rückfallstand erhalten. Details zu Sicherung und Rückkehr: [Datensicherung](Doku/Datensicherung.md).
 
 Für Updates sind weder ein Git-Download noch ein lokaler Image-Build erforderlich. Änderungen an Installationsdateien werden in den [Release Notes](Doku/CHANGELOG.md) genannt. Für den Wechsel einer bisherigen Quellcode-Installation und feste Versionen siehe [Deployment](Doku/Deployment.md).
 

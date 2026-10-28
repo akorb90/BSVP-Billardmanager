@@ -11,7 +11,7 @@ test('PIN schützt Partien, widerruft Sitzungen und begrenzt Versuche persistent
   const dir=mkdtempSync(join(tmpdir(),'billard-pin-')),dbPath=join(dir,'db.sqlite');
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('old-key'.repeat(8))};
   let server,base,cookie,csrf;
-  async function start(){server=createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function call(path,data,token){
     if(data && /\/matches\/\d+\/edit$/.test(path)) {const snapshot=(await call('/api/admin')).body;const m=snapshot.matches.find(m=>m.id===Number(path.split('/')[3]));data={...data,event_version:snapshot.events.find(e=>e.id===m.event_id).version,action:'match:edit',confirmation:'SPIEL ÄNDERN'};}
 const response=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(token===undefined?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token})},body:data?JSON.stringify(data):undefined});return {status:response.status,body:await response.json(),cookie:response.headers.get('set-cookie')};}

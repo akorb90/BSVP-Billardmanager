@@ -4,6 +4,11 @@ services:
     restart: unless-stopped
     environment:
       APP_ORIGIN: https://${BILLARD_HOST:-localhost}
+      DATABASE_URL: postgres://billard@db:5432/billard
+      DATABASE_PASSWORD_CONFIG: /run/secrets/app_config
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - billard_data:/data
       - type: bind
@@ -21,6 +26,42 @@ services:
       - no-new-privileges:true
     networks:
       - backend
+      - database
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: billard
+      POSTGRES_DB: billard
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    # Reuse the existing security configuration; never generate or replace secrets.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export POSTGRES_PASSWORD="$$(sha256sum /run/secrets/app_config | cut -d ' ' -f1)"
+        exec docker-entrypoint.sh postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - type: bind
+        source: ./secrets/config.json
+        target: /run/secrets/app_config
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U billard -d billard]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - database
+    security_opt:
+      - no-new-privileges:true
     logging:
       options:
         max-size: "10m"
@@ -63,7 +104,10 @@ services:
       disable: true
 networks:
   backend:
+  database:
+    internal: true
 volumes:
   billard_data:
+  postgres_data:
   caddy_data:
   caddy_config:

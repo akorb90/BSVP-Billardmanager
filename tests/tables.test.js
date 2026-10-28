@@ -11,7 +11,7 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
   const dir=mkdtempSync(join(tmpdir(),'billard-tables-'));
   const config={adminHash:'salt:'+scryptSync('test-password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie='',csrf='';
-  async function start(name='source.sqlite') { server=createApp({dbPath:join(dir,name),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;cookie='';csrf=''; }
+  async function start(name='source.sqlite') { server=await createApp({dbPath:join(dir,name),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;cookie='';csrf=''; }
   const stop=()=>new Promise(r=>server.close(r));
   async function call(path,data,headers={}) { const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf,...headers},body:data?JSON.stringify(data):undefined});return {status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():await r.text(),cookie:r.headers.get('set-cookie')}; }
   async function login(){const r=await call('/api/login',{password:'test-password'});assert.equal(r.status,200);cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
