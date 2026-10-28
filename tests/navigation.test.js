@@ -40,6 +40,8 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
       if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
+      else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
+      else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
       else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, rental_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
       return { ok: status === 200, status, json: async () => body };
@@ -235,4 +237,27 @@ test('Rabattfeld und Einstellungen ersetzen Preisauswahl und Grundpreis im Vermi
   assert.match(settings.element('#app').innerHTML,/Neues Passwort wiederholen/);
   await settings.element('#app').listeners.submit({preventDefault(){},target:{id:'admin-password',entries:[['new_password','a'],['repeat_password','b']]}});
   assert.equal(settings.posts.length,0);
+});
+
+test('FR-005: Dateiprüfung, Vorschau, Abbruch und ausdrückliche Wiederherstellung im Frontend',async()=>{
+  const app=await frontend('/#einstellungen');
+  assert.match(app.element('#app').innerHTML,/href="\/api\/backups\/export" download/);
+  assert.match(app.element('#app').innerHTML,/id="backup-file"/);
+  const choose=async file=>app.element('#app').dispatch('change',{target:{id:'backup-file',dataset:{},files:[file]}});
+  await choose({size:51*1024*1024});assert.equal(app.posts.length,0);
+  assert.match(app.element('#message').textContent,/50 MiB/);
+  await choose({size:3,text:async()=>'{no'});assert.equal(app.posts.length,0);
+  assert.match(app.element('#message').textContent,/gültiges JSON/);
+  const file={name:'<sicherung>.json',size:200,text:async()=>JSON.stringify({format:'bsvp-billardmanager'})};
+  await choose(file);assert.equal(app.posts.length,1);assert.equal(app.posts[0].path,'/api/backups/preview');
+  assert.match(app.element('#warning-summary').innerHTML,/2 Spieltage, 3 Partien, 4 Vermietungen/);
+  assert.match(app.element('#warning-summary').innerHTML,/&lt;sicherung&gt;/);
+  assert.equal(app.element('#warning-save').disabled,true);
+  app.element('#warning-cancel').listeners.click();assert.equal(app.posts.length,1);
+  await choose(file);await app.element('#warning-save').listeners.click();assert.equal(app.posts.length,2);
+  const input=app.element('#warning-input');input.value='DATEN WIEDERHERSTELLEN';input.listeners.input();
+  await app.element('#warning-save').listeners.click();assert.equal(app.posts.length,3);
+  assert.equal(app.posts[2].path,'/api/backups/restore');assert.equal(app.posts[2].data.confirmation,'DATEN WIEDERHERSTELLEN');
+  assert.equal(app.element('#admin-nav').hidden,true);
+  assert.match(app.element('#message').textContent,/Admin-Passwort aus der Sicherung/);
 });

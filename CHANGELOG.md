@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-005: Datensicherung mit Export und Import — 2026-10-28
+
+- „Einstellungen → Datensicherung“ exportiert alle Anwendungsdaten und Einstellungen als konsistente, versionierte JSON-Datei mit SHA-256-Prüfsumme. Enthalten sind auch Zeitmessung, Vermietungen, ID-Zähler, Änderungsprotokoll sowie die gespeicherten Admin-Passwort- und Partien-PIN-Hashes. Dateilimit: 50 MiB. Sicherungen vertraulich außerhalb des Rechners aufbewahren.
+- Import prüft Format, Schemaversion, Prüfsumme, Datentypen, Datenbankbedingungen, Beziehungen und grundlegende Zustandskonsistenz in einer getrennten temporären Datenbank. Die Vorschau zeigt Sicherungsdatum und Datenumfang. Erst „DATEN WIEDERHERSTELLEN“ und ein weiterer Klick ersetzen alle Daten atomar. Ungültige Dateien sowie geänderte Daten oder eine abgelaufene Vorschau verhindern den Import ohne Datenverlust.
+- Eine erfolgreiche Wiederherstellung protokolliert den Vorgang, widerruft sämtliche Admin- und Tablet-Sitzungen und stellt das Passwort und die PINs aus der Sicherung wieder her. Laufende Zeiten zählen seit ihrem gespeicherten Start einschließlich Ausfallzeit weiter. README erläutert die Wiederherstellung auf einem neuen Laptop und die zusätzliche Sicherung von Installationsdateien und HTTPS-Zertifikaten; bestehende Secrets und Volumes bleiben erhalten.
+- Prüfung: 28 automatisierte Tests erfolgreich, einschließlich Import in eine frische Datenbank, beschädigter Dateien, Berechtigungen, CSRF/Origin, Datenkonflikten, Vorschau/Abbruch/Bestätigung, Passwort- und PIN-Übernahme, Sitzungssperre sowie Neustartpersistenz. Isolierter Docker-Integrationstest einschließlich Export/Import über HTTPS erfolgreich. Mit `docker compose up -d --build --wait` im bestehenden lokalen Stack bereitgestellt; App und Proxy gesund, HTTPS über localhost und 127.0.0.1 mit validierter Zertifikatskette geprüft.
+
 ## FR-004: Seitennavigation für Listen — 2026-10-28
 
 - Veranstaltungen, alle Begegnungen, laufende Partien, Ergebnisse und Buchungshistorie erhalten eine eigene Seitennavigation mit 10, 20, 50 oder 100 Einträgen; Standard sind 20. Zurück/Weiter, Eintragsbereich, Gesamtzahl und Seitenzahl zeigen die Position; an den Grenzen sind die Schaltflächen deaktiviert.

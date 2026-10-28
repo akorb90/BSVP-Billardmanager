@@ -275,7 +275,23 @@ function tickRentals() {
 function settingsDashboard() {
   const settings=state.rental_settings;
   root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
+  root.innerHTML += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
 }
+root.addEventListener('change', async e => {
+  if(e.target.id !== 'backup-file' || busy) return;
+  const file = e.target.files?.[0]; if(!file) return;
+  busy = true;
+  try {
+    if(file.size > 50*1024*1024) throw new Error('Die Sicherungsdatei darf höchstens 50 MiB groß sein.');
+    const backup = JSON.parse(await file.text());
+    const summary = await api('/api/backups/preview', {backup});
+    showWarning({phrase:'DATEN WIEDERHERSTELLEN',label:'Vorhandene Daten ersetzen',success:'Sicherung wiederhergestellt. Bitte mit dem Admin-Passwort aus der Sicherung anmelden.',summary:'<p><strong>Alle vorhandenen Anwendungsdaten werden ersetzt.</strong></p><p>Datei: '+esc(file.name)+' · Sicherungsstand: '+esc(new Date(summary.created_at).toLocaleString('de-DE'))+'</p><p>'+summary.events+' Spieltage, '+summary.matches+' Partien, '+summary.rentals+' Vermietungen; davon '+summary.active+' laufende Partien/Vermietungen.</p><p>Das damalige Admin-Passwort gilt wieder. Alle Sitzungen werden abgemeldet. Laufende Zeitmessungen rechnen die Zeit seit dem gespeicherten Start mit.</p>',valid:()=>true,run:async()=>{
+      await api('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});
+      drafts.clear();listPages.clear();csrf='';state=undefined;
+    }});
+  } catch(error) { message(error instanceof SyntaxError ? 'Die Datei enthält kein gültiges JSON.' : error.message); }
+  finally {busy=false;e.target.value='';}
+});
 function handlePasswordSubmit(form) {
   if(form.id!=='admin-password')return false;
   const data=Object.fromEntries(new FormData(form));
@@ -421,7 +437,7 @@ warningDialog.addEventListener('close',()=>{pendingWarning=undefined;warningInpu
 warningSave.addEventListener('click',async()=>{
   checkWarning();if(busy||!pendingWarning||(pendingWarning.phrase && warningInput.value!==pendingWarning.phrase))return;
   const pending=pendingWarning;busy=true;warningSave.disabled=true;
-  try {await pending.run();warningDialog.close();message('Aktion gespeichert und protokolliert.');}
+  try {await pending.run();warningDialog.close();message(pending.success || 'Aktion gespeichert und protokolliert.');}
   catch(error){pendingWarning=undefined;warningInput.value='';document.querySelector('#warning-error').textContent=error.message+' Bitte abbrechen und erneut öffnen.';}
   finally{busy=false;await refresh(true);}
 });

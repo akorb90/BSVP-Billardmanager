@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { backupService, BACKUP_LIMIT } from './backup.js';
 import { loadConfig } from './config.js';
 import { migrateRentals, rentalService } from './rentals.js';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -70,6 +71,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
   const rentals = rentalService({db, transaction, fail, integer, log});
+  const backups = backupService({db, transaction, fail, log});
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
   const getEvent = id => {
     const event = db.prepare('SELECT * FROM events WHERE id=?').get(id);
@@ -134,12 +136,29 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       if (req.method === 'POST') {
         if (!allowedOrigins.has(requestOrigin)) throw fail(403, 'Ungültiger Ursprung.');
         if (!req.headers['content-type']?.startsWith('application/json')) throw fail(415, 'JSON erforderlich.');
-        let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 8192) throw fail(413, 'Anfrage zu groß.'); }
+        const backupUpload = ['/api/backups/preview', '/api/backups/restore'].includes(url.pathname);
+        if (backupUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
+        const chunks = []; let size = 0;
+        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
+        const raw = Buffer.concat(chunks).toString('utf8');
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
       if (req.method === 'GET' && url.pathname === '/health') { db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
+      if (req.method === 'GET' && url.pathname === '/api/backups/export') {
+        admin();
+        const backup = backups.export();
+        res.setHeader('Content-Disposition', `attachment; filename="bsvp-sicherung-${backup.created_at.slice(0,10)}.json"`);
+        return json(res, 200, backup);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/backups/preview') { admin(); return json(res, 200, backups.preview(body.backup, session)); }
+      if (req.method === 'POST' && url.pathname === '/api/backups/restore') {
+        admin(); const result = backups.restore(body, session);
+        sessions.clear(); tabletSessions.clear(); attempts.clear();
+        res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+        return json(res, 200, result);
+      }
       if (req.method === 'POST' && url.pathname === '/api/login') {
         const key = req.socket.remoteAddress; const attempt = attempts.get(key) || { count: 0, until: now + 15 * 60_000 };
         if (attempt.count >= 10) throw fail(429, 'Zu viele Versuche. Bitte 15 Minuten warten.');

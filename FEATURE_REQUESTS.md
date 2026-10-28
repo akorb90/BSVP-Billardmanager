@@ -2,11 +2,7 @@
 
 Dieses Dokument enthält ausschließlich offene oder in Umsetzung befindliche Feature Requests. Erfolgreich umgesetzte Anforderungen werden mit ihrer FR-Nummer, dem Umsetzungsdatum und dem Prüfstand in die [Release Notes](CHANGELOG.md) übernommen und hier entfernt. Bestehende FR-Nummern bleiben erhalten und werden nicht erneut vergeben.
 
-Empfohlene Reihenfolge: Datensicherung (FR-005) → Spieler- und Mannschafts-Stammdaten mit Teilnehmerauswahl (FR-007) → Turnierverwaltung mit Tischzuweisung (FR-006) → statistische Auswertungen aus FR-007. Das Regelwerk (FR-008) kann unabhängig davon umgesetzt werden. Zuschaueranzeige, Vorlagen und weiterführender Mannschaftsbetrieb bleiben Erweiterungsideen und benötigen eigene Feature Requests.
-
-## FR-005: Datensicherung mit Export und Import
-
-Eine Export-/Importfunktion für alle Daten und Einstellungen bereitstellen, damit die Anwendung beispielsweise nach einem Laptop-Ausfall aus einer Sicherung wiederhergestellt werden kann.
+Empfohlene Reihenfolge: Spieler- und Mannschafts-Stammdaten mit Teilnehmerauswahl (FR-007) → Turnierverwaltung mit Tischzuweisung (FR-006) → statistische Auswertungen aus FR-007. Datensicherung (FR-005) ist umgesetzt, siehe [Release Notes](CHANGELOG.md). Das Regelwerk (FR-008) kann unabhängig davon umgesetzt werden. Zuschaueranzeige, Vorlagen und weiterführender Mannschaftsbetrieb bleiben Erweiterungsideen und benötigen eigene Feature Requests.
 
 ## FR-006: Turnierverwaltung mit Auslosung, Gruppenphase und KO-Baum
 

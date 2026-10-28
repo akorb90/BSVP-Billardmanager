@@ -28,9 +28,10 @@ Einstellungen:
 - Begegnungen einem von acht freien Tischen zuweisen; Doppelbelegung wird verhindert.
 - Feste Kiosk-Endpunkte `/tisch/1` bis `/tisch/8`, Punkte +/−, Wechselbreak und automatische Aktualisierung alle drei Sekunden.
 - Ergebnisse nach Erreichen des Spielziels zentral oder direkt am zugeordneten Tablet bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
-- Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung und Ergebnisse. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
+- Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Ergebnisse, Tischvermietung und Einstellungen. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
 - Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die feste Übersicht der acht Tische bleibt vollständig sichtbar.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
+- Einstellungen bündeln Grundpreis, Admin-Passwortwechsel und [Datensicherung mit Export und Import (FR-005)](#sicherung-und-wiederherstellung). Eine geprüfte Sicherungsdatei kann den vollständigen Anwendungsstand auf einer neuen Installation wiederherstellen.
 
 ## Tischvermietung
 
@@ -162,11 +163,23 @@ Die blau-schwarze Oberfläche orientiert sich an der [Vereinswebsite](https://ww
 - Compose-Secrets werden dateibasiert eingebunden. Sie sind kein verschlüsselter Tresor. Windows-Gerät/Backups mit BitLocker schützen und Zugriffsrechte pflegen.
 - Images sind auf Hauptversionen begrenzt. Vor produktiver Freigabe aktuelle Patchstände prüfen, Image-Digests pinnen und regelmäßig Updates/Scans durchführen. `docker compose build --pull` und `docker compose pull proxy` aktualisieren Images; anschließend neu starten und testen.
 - PIN-Wechsel über „Partie bearbeiten“; bereits angemeldete Tablets müssen sich danach erneut anmelden. Admin-Passwortwechsel unter „Einstellungen“ mit aktuellem Passwort und zweifacher Eingabe des neuen Passworts (12–128 Zeichen). Alle Admin-Sitzungen werden danach abgemeldet; Tablet-Sitzungen bleiben bestehen. Der neue scrypt-Hash wird im Datenvolume gespeichert. Die Secrets-Datei und die ursprüngliche Zugangsinformation werden nicht überschrieben; das neue Passwort im eigenen Passwortmanager sichern.
-- SQLite-Daten und Auditprotokoll enthalten Spielernamen. Aufbewahrungs-/Löschfristen des Vereins festlegen. Es gibt noch keine UI für Export oder Löschung.
+- SQLite-Daten, Auditprotokoll und Sicherungsdateien enthalten Spielernamen. Aufbewahrungs-/Löschfristen des Vereins festlegen. Export und Wiederherstellung stehen unter „Einstellungen → Datensicherung“ bereit.
 
 ## Sicherung und Wiederherstellung
 
-Für den Draft ein kurzes Wartungsfenster nutzen; die App muss während Kopieren und Wiederherstellen gestoppt bleiben. Die SQLite-Hauptdatei **und** vorhandene WAL-/SHM-Dateien zusammen sichern, am einfachsten das gesamte `/data`-Verzeichnis:
+### Export und Import in der Anwendung (FR-005)
+
+Unter **Einstellungen → Datensicherung → Sicherung herunterladen** erstellt die angemeldete Spielleitung eine konsistente JSON-Sicherung im laufenden Betrieb. Sie enthält sämtliche Anwendungsdaten: Veranstaltungen, Partien samt Spielständen, Tischzuweisung und Zeitmessung, Vermietungen, Grundpreis, ID-Zähler, PIN-Versuchslimits, Änderungsprotokoll sowie Admin-Passwort- und Partien-PIN-Hashes. Klartext-Passwörter und Sitzungstoken werden nicht exportiert. Die Datei ist nicht verschlüsselt: vertraulich auf einem anderen Gerät bzw. in einer geschützten externen Ablage aufbewahren.
+
+Zur Wiederherstellung die JSON-Datei auswählen (maximal 50 MiB). Nach Format-, Schema-, Prüfsummen- und Datenprüfung zeigt die Vorschau Sicherungsdatum, Anzahl der Spieltage, Partien, Vermietungen und laufenden Vorgänge. **Vorher den aktuellen Stand separat herunterladen.** Die Eingabe **DATEN WIEDERHERSTELLEN** und der anschließende Klick ersetzen sämtliche Anwendungsdaten gemeinsam in einer Datenbanktransaktion. Ein fehlerhafter Import lässt den vorhandenen Datenbestand unverändert. Werden während der Vorschau Daten geändert, wird die Wiederherstellung abgelehnt; die Datei muss erneut geprüft werden. Eine Vorschau gilt zehn Minuten und ist an die angemeldete Sitzung und die konkrete Sicherung gebunden.
+
+Nach erfolgreichem Import werden alle Admin- und Tablet-Sitzungen abgemeldet. Es gelten wieder das **Admin-Passwort und die Partien-PINs aus der Sicherung**; das damalige Admin-Passwort muss bekannt sein. Laufende Spiel- und Mietzeiten rechnen die seit ihrem gespeicherten Start verstrichene Zeit einschließlich Ausfallzeit mit. Wiederherstellungen erscheinen im Änderungsprotokoll. Sicherungen benötigen dieselbe Datenbankschema-Version; bei einem Versionswechsel die passende App-Version verwenden. Die SHA-256-Prüfsumme erkennt Beschädigungen, bestätigt aber nicht die Herkunft: ausschließlich eigene, vertrauenswürdige Sicherungen importieren.
+
+**Nach Laptop-Ausfall:** Anwendung gemäß Installationsanleitung einrichten, mit dem Zugang der neuen Installation anmelden und die externe JSON-Sicherung importieren. Danach mit dem Passwort aus der Sicherung anmelden, Datenstände prüfen und Tablets mit den gespeicherten PINs anmelden. Installationsbezogene Einstellungen (`.env`, `secrets/config.json`), Serveradresse, HTTPS-Zertifikate und Caddy-CA sind nicht Bestandteil der JSON-Anwendungsdaten. Diese zusätzlich verschlüsselt sichern. Auf einem neuen Laptop müssen Serveradresse/WLAN und Zertifikatsvertrauen eingerichtet oder die separat gesicherte CA wiederhergestellt werden. Die ungenutzten alten Tischschlüssel der Secrets-Datei gewähren keinen Zugriff und werden nicht importiert.
+
+### Zusätzliche Sicherung der Installation und Datenvolumes
+
+Für eine direkte Volume-Sicherung ein kurzes Wartungsfenster nutzen; die App muss während Kopieren und Wiederherstellen gestoppt bleiben. Die SQLite-Hauptdatei **und** vorhandene WAL-/SHM-Dateien zusammen sichern, am einfachsten das gesamte `/data`-Verzeichnis:
 
 ```powershell
 docker compose stop app

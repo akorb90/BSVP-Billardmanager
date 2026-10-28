@@ -174,6 +174,20 @@ try {
   assert.equal((await request('/api/admin')).body.matches.length,0);
   console.log('PASS: confirmed correction and cascading deletion after event closure; missing confirmation denied');
   console.log('PASS: volume survives container replacement; match finishes and table becomes available');
+  const backup = await request('/api/backups/export');
+  assert.equal(backup.status,200); assert.match(backup.headers['content-disposition'],/attachment/);
+  assert.equal(backup.body.data.events.length,0);
+  assert.equal((await request('/api/backups/export',undefined,{admin:false})).status,401);
+  assert.equal((await request('/api/backups/preview',{backup:backup.body},{csrfValue:'bad'})).status,403);
+  assert.equal((await request('/api/backups/preview',{backup:backup.body})).status,200);
+  assert.equal((await request('/api/backups/restore',{backup:backup.body,action:'backup:restore',confirmation:'wrong'})).status,400);
+  assert.equal((await request('/api/backups/restore',{backup:backup.body,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);
+  assert.equal((await request('/api/admin')).status,401);
+  await login();
+  const imported=await request('/api/backups/export');
+  for(const name of Object.keys(backup.body.data)) if(name!=='audit') assert.deepEqual(imported.body.data[name],backup.body.data[name]);
+  assert.equal(imported.body.data.audit.at(-1).action,'backup:restore');
+  console.log('PASS: HTTPS backup download, upload preview, confirmed atomic restore and session revocation');
   writeFileSync(join(directory, 'result.json'), JSON.stringify({ project, passed: true, testedAt: new Date().toISOString(), image: inspection.Image }, null, 2));
   console.log('All Docker smoke checks passed.');
 } catch (error) {
