@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes, scryptSync } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import https from 'node:https';
 import { resolve, join } from 'node:path';
@@ -14,31 +14,34 @@ const project = `bsvp-smoke-${randomBytes(6).toString('hex')}`;
 const port = Number(process.env.DOCKER_TEST_PORT || 18443);
 assert.ok(Number.isInteger(port) && port > 1024 && port < 65536);
 const origin = `https://localhost:${port}`;
-const password = randomBytes(24).toString('hex');
-const salt = randomBytes(16).toString('hex');
-const config = {
-  adminHash: `${salt}:${scryptSync(password, salt, 64).toString('hex')}`,
-  tables: Array.from({ length: 8 }, () => randomBytes(32).toString('hex')),
-};
-writeFileSync(join(directory, 'config.json'), JSON.stringify(config), { mode: 0o600 });
+let password;
+const image = process.env.DOCKER_TEST_IMAGE;
+mkdirSync(join(directory, 'secrets'));
 writeFileSync(join(directory, 'compose.yaml'), `services:
   app:
+    ${image ? `image: ${JSON.stringify(image)}` : ''}
     environment:
       APP_ORIGIN: ${origin}
     volumes:
       - type: bind
-        source: ${JSON.stringify(join(directory, 'config.json').replaceAll('\\', '/'))}
+        source: ${JSON.stringify(join(directory, 'secrets/config.json').replaceAll('\\', '/'))}
         target: /run/secrets/app_config
         read_only: true
         bind:
           create_host_path: false
+  setup:
+    ${image ? `image: ${JSON.stringify(image)}` : ''}
+    volumes:
+      - type: bind
+        source: ${JSON.stringify(join(directory, 'secrets').replaceAll('\\', '/'))}
+        target: /setup/secrets
   proxy:
     environment:
       BILLARD_HOST: localhost
     ports: !override
       - "127.0.0.1:${port}:443"
 `);
-const composeArgs = ['compose', '--project-name', project, '--env-file', join(root, '.env.example'), '-f', join(root, 'compose.yaml'), '-f', join(directory, 'compose.yaml')];
+const composeArgs = ['compose', '--project-name', project, '--env-file', join(root, '.env.example'), '-f', join(root, 'compose.yaml'), ...(!image ? ['-f', join(root, 'compose.override.yaml')] : []), '-f', join(directory, 'compose.yaml')];
 function docker(args, capture = false) {
   return new Promise((resolveCommand, reject) => {
     const child = spawn('docker', args, { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -82,7 +85,16 @@ async function login() {
 }
 try {
   console.log(`Building isolated Docker test stack ${project}`);
-  await compose(['up', '-d', '--build', '--wait', '--wait-timeout', '120']);
+  if (!image) await compose(['build', 'app']);
+  const setupOutput = await compose(['run', '--rm', '--no-deps', 'setup'], true);
+  password = setupOutput.match(/Admin-Passwort .*: (\S+)/)?.[1];
+  assert.ok(password, 'container setup generates an initial password');
+  const fingerprint = () => compose(['run', '--rm', '--no-deps', '--entrypoint', 'node', 'setup', '-e', "console.log(require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync('secrets/config.json')).digest('hex'))"], true);
+  const before = await fingerprint();
+  await assert.rejects(compose(['run', '--rm', '--no-deps', 'setup'], true));
+  assert.equal(await fingerprint(), before, 'rerun must preserve existing credentials');
+  console.log('PASS: container-only setup; rerun refuses to replace credentials');
+  await compose(['up', '-d', '--wait', '--wait-timeout', '120']);
   await compose(['cp', 'proxy:/data/caddy/pki/authorities/local/root.crt', join(directory, 'root.crt')]);
   ca = readFileSync(join(directory, 'root.crt'));
   await ready();

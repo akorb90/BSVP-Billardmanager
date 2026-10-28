@@ -1,6 +1,10 @@
-.git
-data
-secrets
-.env
-node_modules
-tests
+# Only application files and the one-shot setup enter the build context.
+**
+!Dockerfile
+!package.json
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/setup.js

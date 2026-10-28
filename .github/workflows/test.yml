@@ -1,7 +1,8 @@
-name: Verify draft
+name: Verify and publish
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -16,3 +17,61 @@ jobs:
       - run: node --check public/app.js
       - run: node --test
       - run: docker compose --env-file .env.example config --quiet
+      - run: docker compose --env-file .env.example -f compose.yaml config --quiet
+      - run: node scripts/docker-smoke.js
+      - name: Verify image-only deployment
+        run: node scripts/docker-smoke.js
+        env:
+          DOCKER_TEST_IMAGE: bsvp-billardmanager:local
+  publish:
+    needs: test
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Image name
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=long
+            type=ref,event=tag
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Installation files (no source or secrets)
+        uses: actions/upload-artifact@v4
+        with:
+          name: billardmanager-installation
+          include-hidden-files: true
+          path: |
+            compose.yaml
+            Caddyfile
+            .env.example
+            README.md
+            Doku/

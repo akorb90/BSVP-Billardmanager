@@ -1,6 +1,6 @@
 services:
   app:
-    build: .
+    image: ${BILLARD_IMAGE:-ghcr.io/akorb90/bsvp-billardmanager:latest}
     restart: unless-stopped
     environment:
       APP_ORIGIN: https://${BILLARD_HOST:-localhost}
@@ -47,6 +47,20 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  setup:
+    image: ${BILLARD_IMAGE:-ghcr.io/akorb90/bsvp-billardmanager:latest}
+    profiles: [setup]
+    entrypoint: [node, /app/scripts/setup.js]
+    working_dir: /setup
+    user: "0:0"
+    volumes:
+      - ./secrets:/setup/secrets
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true
 networks:
   backend:
 volumes:

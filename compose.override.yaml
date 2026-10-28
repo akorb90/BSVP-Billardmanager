@@ -1,0 +1,8 @@
+# Automatically used in the source checkout. Image installations use compose.yaml alone.
+services:
+  app:
+    image: bsvp-billardmanager:local
+    build: .
+  setup:
+    image: bsvp-billardmanager:local
+    build: .

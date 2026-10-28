@@ -2,6 +2,15 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-010: Dokumentation und Image-Deployment — 2026-10-28
+
+- README auf Ersteinrichtung und Updates reduziert. Bedienung, Betrieb/Sicherheit, vollständige Anwendungs- und Betriebssicherung, Entwicklung, Logoherkunft, Release Notes und offene Anforderungen unter `Doku/` strukturiert. Veraltete Angaben zu Schema und Backup-Kompatibilität berichtigt.
+- `compose.yaml` betreibt ein fertiges GHCR-Image; der Quellcode-Checkout ergänzt automatisch `compose.override.yaml` für lokale Builds. Einmaliger Setup-Container ermöglicht die Ersteinrichtung ohne Node.js auf dem Host, schützt bestehende Zugangsdaten und setzt unter Linux den Dateieigentümer für die App. Dienstnamen, Sicherheitsvorgaben und Datenvolumes bleiben erhalten.
+- GitHub Actions prüft Änderungen und veröffentlicht anschließend auf `main` bzw. `v…`-Tags Images für amd64/arm64 und ein Installationspaket ohne Secrets. Tags für `latest`, Commit und Version, Versionsbindung, Umstieg, Rückkehr sowie die einmalige GHCR-Freigabe sind dokumentiert. Der Build-Kontext enthält ausschließlich Anwendungs- und Setup-Dateien.
+- Prüfung: 30 automatisierte Tests; zwei isolierte Docker-HTTPS-Durchläufe mit Quellcode-Build bzw. ausschließlich fertigem lokalem Image, Container-Ersteinrichtung, unveränderten Zugangsdaten bei Setup-Wiederholung, Neustart/Containerersatz und vollständigem Backup-Export/Import erfolgreich. Beide Compose-Varianten validiert.
+- Deployment: bestehender lokaler Stack mit `docker compose up -d --build --wait` aktualisiert und aktiv belassen. App gesund, Proxy aktiv; HTTPS über localhost und 127.0.0.1 mit validierter Zertifikatskette geprüft. Hashvergleich bestätigt unveränderte `.env`, Sicherheitskonfiguration und CA; das bisherige Datenvolume wird weiterverwendet.
+- Noch extern zu prüfen: erster erfolgreicher GitHub-Publish-Lauf nach Übernahme nach `main`, GHCR-Paketsichtbarkeit und anonymer Registry-Pull. Lokale Tests bestätigen den Image-Betrieb, nicht die noch ausstehende Veröffentlichung oder den arm64-Lauf.
+
 ## Farbcodes und verbindliche Backup-Vollständigkeit — 2026-10-28
 
 - Unter jedem Farbwähler steht ein direkt editierbarer Hex-Farbcode. Gültige Codes und Farbwähler synchronisieren sich in beide Richtungen; unvollständige oder ungültige Codes verhindern das Speichern.
