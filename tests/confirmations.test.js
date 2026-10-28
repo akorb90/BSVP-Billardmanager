@@ -25,7 +25,7 @@ test('FR-002: exact confirmations, parent conflicts, closed corrections, deletio
   };
   try {
     const login=await call('/api/login',{password:'password'});cookie=login.cookie.split(';')[0];csrf=login.body.csrf;
-    await call('/api/events',{name:'Vergangen',kind:'Liga',date:'2000-01-01'});
+    await call('/api/events',{name:'Vergangen',kind:'Liga',date:'2000-01-01'});await call('/api/events/1/start',{version:0});
     let e=(await state()).events[0];
     const edit={...e,name:'Korrigiert',action:'event:edit',confirmation:'EVENT ÄNDERN'};
     await rejected('/api/events/1/edit',edit);

@@ -44,7 +44,7 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-26'},{origin:'https://evil.test'})).status,403);
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-99-99'})).status,400);
     assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-02-30'})).status,400);
-    assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-26'})).status,201);
+    assert.equal((await request('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-26'})).status,201);await request('/api/events/1/start',{version:0});
     for (let i=0;i<2;i++) assert.equal((await request('/api/matches',{event_id:1,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:2,first:'b',pin:'012345'})).status,201);
     assert.equal((await request('/api/matches/1/start',{lag_winner:'a',first:'b',table_no:1,version:0})).status,200);
     assert.equal((await request('/api/matches/2/start',{lag_winner:'a',first:'b',table_no:1,version:0})).status,409);

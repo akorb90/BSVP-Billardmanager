@@ -24,7 +24,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
     assert.equal((await call('/api/backups/export')).status,401);
     assert.equal((await call('/api/backups/preview',{backup:{}})).status,401);
     await login();
-    await call('/api/events',{name:'Vollständige Sicherung äöü 🎱',kind:'Liga',date:'2026-10-28'});
+    await call('/api/events',{name:'Vollständige Sicherung äöü 🎱',kind:'Liga',date:'2026-10-28'});await call('/api/events/1/start',{version:0});
     await call('/api/matches',{event_id:1,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:3,pin:'012345'});
     await call('/api/matches/1/start',{lag_winner:'a',first:'a',table_no:1,version:0});
     await call('/api/matches/1/score',{side:'a',delta:1,version:1});

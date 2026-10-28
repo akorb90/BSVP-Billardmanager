@@ -25,9 +25,9 @@ test('FR-007: identities, explicit participants, history, archive, restart and s
     assert.equal((await call('/api/players',person)).status,409);
     const b=await save('/api/players',{...person,allow_duplicate:true});assert.notEqual(a,b);
     const team=await save('/api/teams',{name:'BSV I',player_ids:[a]});
-    const event=(await call('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-28'})).body.id;
-    assert.equal((await call(`/api/events/${event}/participants`,{version:0,player_ids:[a,a],team_ids:[team]})).status,400);
-    await save(`/api/events/${event}/participants`,{version:0,player_ids:[a,b],team_ids:[team],assignments:{[a]:team}});
+    const event=(await call('/api/events',{name:'Liga',kind:'Liga',date:'2026-10-28'})).body.id;await call('/api/events/'+event+'/start',{version:0});
+    assert.equal((await call(`/api/events/${event}/participants`,{version:1,player_ids:[a,a],team_ids:[team]})).status,400);
+    await save(`/api/events/${event}/participants`,{version:1,player_ids:[a,b],team_ids:[team],assignments:{[a]:team}});
     const fields={event_id:event,player_a:'Freier Name',player_b:'Gegner',discipline:'9-Ball',target:3,pin:'012345'};
     assert.equal((await call('/api/matches',{...fields,player_a_id:a,player_b_id:a})).status,400);
     const mid=(await call('/api/matches',{...fields,player_a_id:a,player_b_id:b})).body.id;
@@ -55,7 +55,7 @@ test('FR-007: identities, explicit participants, history, archive, restart and s
     assert.equal((await call('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);await login();
     const restored=(await call('/api/backups/export')).body;
     for(const name of Object.keys(backup.data))if(name!=='audit')assert.deepEqual(restored.data[name],backup.data[name]);
-    const old=structuredClone(backup);old.schema=8;
+    const old=structuredClone(backup);delete old.data.event_match_slots;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;delete old.data.nuliga_entities;delete old.data.nuliga_sync;old.schema=8;
     for(const name of ['players','teams','team_players','event_players','event_teams'])delete old.data[name];
     for(const m of old.data.matches)for(const key of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[key];
     old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');
@@ -72,11 +72,33 @@ test('FR-007: statistics count only finished results and filter historical team,
     {event_id:1,player_a_id:'p',team_a_id:'old',status:'planned',a:0,b:0,discipline:'9-Ball'},
     {event_id:2,player_b_id:'p',team_b_id:'old',status:'finished',a:5,b:1,discipline:'8-Ball'}]};
   const root={innerHTML:''},filter={kind:'players',id:'p',from:'',to:'',discipline:''};
-  const ctx=vm.createContext({root,state,playerSearch:'',statsFilter:filter,esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
+  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',statsFilter:filter,esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
   vm.runInContext(block+';playersDashboard();',ctx);
   assert.match(root.innerHTML,/2 Ergebnisse · 1 Siege · 1 Niederlagen · Racks 6 : 7/);
   filter.from='2026-01-01';filter.discipline='9-Ball';vm.runInContext('playersDashboard()',ctx);
   assert.match(root.innerHTML,/1 Ergebnisse · 1 Siege · 0 Niederlagen · Racks 5 : 2/);
   filter.kind='teams';filter.id='old';vm.runInContext('playersDashboard()',ctx);
   assert.match(root.innerHTML,/1 Ergebnisse · 1 Siege · 0 Niederlagen · Racks 5 : 2/);
+});
+
+test('Separate registry lists show teams beside players and choose BSV statistics or nuLiga profiles',()=>{
+  const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+  const block=source.slice(source.indexOf('function playersDashboard()'),source.indexOf('let registryDialog;'));
+  const state={players:[{id:'own',first_name:'Anna',last_name:'BSV',active:1,is_bsv:true,nuliga_profile:'https://bbv-billard.liga.nu/profile?person=1'},{id:'away',first_name:'Ben',last_name:'Gast',active:1,is_bsv:false,nuliga_profile:'https://bbv-billard.liga.nu/profile?person=2'},{id:'manual',first_name:'Neu',last_name:'Manuell',active:1,is_bsv:false,nuliga_profile:null}],teams:[{id:'t1',name:'BSV Pfaffenhofen II',nuliga_profile:'https://bbv-billard.liga.nu/teamPortrait?teamtable=11'},{id:'t2',name:'Gegner I'}],team_players:[{team_id:'t1',player_id:'own'},{team_id:'t2',player_id:'away'}],events:[],matches:[]};
+  const root={innerHTML:''};
+  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',statsFilter:{kind:'players',id:'',from:'',to:'',discipline:''},esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
+  vm.runInContext(block+';playersDashboard();',ctx);
+  assert.match(root.innerHTML,/<h1>Spieler<\/h1>/);
+  assert.doesNotMatch(root.innerHTML,/Mannschaft anlegen/);
+  assert.match(root.innerHTML,/<th scope="row">Anna BSV<\/th><td>BSV Pfaffenhofen II<\/td>/);
+  assert.match(root.innerHTML,/data-stat="players" data-id="own"/);
+  assert.doesNotMatch(root.innerHTML,/data-stat="players" data-id="away"/);
+  assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/profile\?person=1" target="_blank"/);
+  assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/profile\?person=2" target="_blank"/);
+  assert.match(root.innerHTML,/Kein nuLiga-Profil zugeordnet/);
+  ctx.playerSearch='Gegner I';vm.runInContext('playersDashboard()',ctx);
+  assert.match(root.innerHTML,/<th scope="row">Ben Gast/);assert.doesNotMatch(root.innerHTML,/<th scope="row">Anna BSV/);
+  ctx.view='mannschaften';vm.runInContext('playersDashboard()',ctx);
+  assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/teamPortrait\?teamtable=11"/);assert.doesNotMatch(root.innerHTML,/data-stat="teams"|Partien &amp; Statistik|id="stats-filter"/);
+  assert.match(root.innerHTML,/<h1>Mannschaften<\/h1>/);assert.match(root.innerHTML,/Mannschaft anlegen/);assert.doesNotMatch(root.innerHTML,/Spieler anlegen|id="player-search"/);
 });

@@ -152,3 +152,31 @@ Validierung vor dem ersten Commit: lokale Node-Tests erfolgreich, JavaScript-Syn
 - Leere, von Docker angelegte `secrets/config.json`-Ordner werden beim Setup unter einem freien Sicherungsnamen erhalten; vorhandene Dateien und nicht leere Ordner werden nicht überschrieben.
 - Die Konfigurationsdatei wird schreibgeschützt ohne automatische Host-Pfaderstellung eingebunden. Startfehler nennen Setup und erneutes Compose-Deployment als Abhilfe.
 - Regressionstests prüfen Erstinstallation, Wiederholung, Ordner-Reparatur und Konfigurationsdiagnosen; der isolierte Docker-Smoke-Test nutzt dieselbe Einbindung.
+
+## 2026-10-28 – nuLiga-Synchronisierung
+
+- Aktuelle BSV-Ligen, sämtliche Mannschaften und gemeldete Spieler importieren; erneuter Abgleich ohne Duplikate.
+- Einstellungen mit Sync-Status und Auswahl zum Erhalten oder Überschreiben lokaler Änderungen.
+- Eigene Mannschaft und Gegner im Spieltag auswählen; Spieler mit Mannschaftsbezeichnung in der Partie auswählen.
+- Datenbankschema 10 mit Migration und vollständiger Sicherung der Importzuordnungen.
+
+- Spieler und Mannschaften in getrennten Listen; Mannschaften neben Spielernamen anzeigen.
+- nuLiga-Profillinks für importierte Spieler; lokale Statistikbuttons in der Spielerliste für BSV-Spieler.
+
+- Mannschaftsstatistikbuttons und lokale Statistikansicht im Mannschaftsbereich durch direkte nuLiga-Mannschaftslinks ersetzt.
+
+## 2026-10-28 – Geplante Spieltage und zweiter nuLiga-Sync
+
+- Eigenes Menü für manuelles Anlegen und Import aller kommenden BSV-Spieltage.
+- Expliziter Spieltagsstart öffnet die passende Übersicht für Teilnehmer, Einzelpartien und Tischzuweisung.
+- Importierte Spieltage belegen keine Tische und erzeugen keine Einzelpartien; gestartete Termine bleiben beim Sync unverändert.
+- Schema 11 sichert Planungszustände und Importinformationen vollständig; ältere Veranstaltungen bleiben nutzbar.
+
+## 2026-10-28 – Feste Spieltagsübersicht
+
+- Zehn definierte Partien in drei Runden, mit Spieler- und Tischauswahl je Partie.
+- Doppel mit zwei Spielern je Mannschaft; Aufstellungen speichern und Partien starten getrennt.
+- Spielziele vor jedem Start manuell festlegen, einschließlich 14/1 als Punktewertung bis 999.
+- Schutz vor Tisch- und Spielerkonflikten; vollständige Sicherung der Aufstellungen in Schema 12.
+
+- Spieltags-Sync auf BSV-Heimspiele begrenzt; alte Auswärtsimporte ohne Einzelpartien werden entfernt und protokolliert. Heimmannschaft steht stets links.

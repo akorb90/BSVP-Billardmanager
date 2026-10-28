@@ -51,3 +51,15 @@ Für eine Rückkehr zur vorherigen App-Version vor dem Umstieg den alten Image-D
 Die Sicherung enthält automatisch Spieler, Mannschaften, aktuelle Spielerzuordnungen, Spieltagsteilnehmer, ausgewählte Mannschaften und die je Partie gespeicherten historischen Spieler-/Mannschaftszuordnungen einschließlich Namen. Archivierte Einträge und Änderungsprotokoll bleiben enthalten. Import und Vorschau prüfen IDs und Beziehungen; fehlende Tabellen oder widersprüchliche Zuordnungen werden abgewiesen. Sicherungen aus Schema 6/7/8 werden beim Import auf Schema 9 ergänzt: neue Stammdatenbereiche sind leer, alte Partien behalten ihre Namen ohne automatische Personenverknüpfung. Schema-9-Sicherungen benötigen diese oder eine kompatible neuere App-Version.
 
 Beim Update wird eine vorhandene PostgreSQL-Datenbank aus Schema 8 transaktional erweitert. Vorher die vollständige Anwendungssicherung herunterladen. Für eine Rückkehr zur älteren App die vor dem Update erstellte Datenbanksicherung in einer passenden Installation wiederherstellen; eine ältere App kann Schema 9 nicht öffnen. Installationsdateien, externe Sicherheitskonfiguration und HTTPS-Schlüssel weiterhin zusätzlich nach der oben dokumentierten Betriebssicherung aufbewahren.
+
+### nuLiga-Daten (Schema 10)
+
+Die Anwendungssicherung umfasst alle Spieler, Mannschaften, Kader, Spieltagsteilnehmer sowie nuLiga-Kennungen, Quellstände zur Erkennung lokaler Änderungen, Zeitpunkt und Ergebnis des letzten Abgleichs. Diese Tabellen werden automatisch exportiert und beim Import auf gültige Zuordnungen geprüft. Nach Wiederherstellung erkennt die Synchronisierung bereits importierte Einträge wieder. Sicherungen der Schemata 6–9 werden automatisch ergänzt; ältere Sicherungen enthalten noch keine nuLiga-Zuordnungen. Die separate Betriebssicherung von Installation, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt zusätzlich erforderlich.
+
+### Spieltagsplanung und Termin-Sync (Schema 11)
+
+Die Sicherung enthält zusätzlich den Planungs-/Startzustand jedes Spieltags, die stabilen Quellkennungen, importierte Heim- und Gastmannschaften, Uhrzeiten und Ligadaten sowie Zeitpunkt und Ergebnis des Spieltagsabgleichs. Export, Prüfung und Wiederherstellung übernehmen diese Tabellen vollständig. Ältere Sicherungen der Schemata 6–10 ergänzen vorhandene Veranstaltungen als bereits gestartet, damit bestehende Partien und Spielstände unverändert weitergeführt werden können. Die separate Betriebssicherung bleibt zusätzlich erforderlich.
+
+### Feste Spieltagspartien und Doppel (Schema 12)
+
+Alle zehn Partienplätze, gespeicherte Einzel- und Doppelaufstellungen, Tischwünsche, Spielziele, Versionsstände und Verknüpfungen zu gestarteten Partien gehören zur vollständigen Anwendungssicherung. Bei der Prüfung werden Spieler, Spieltage und Partieverknüpfungen auf Konsistenz kontrolliert. Schemata 6–11 erhalten leere Partienplätze, ohne bestehende Partien oder Ergebnisse umzuschreiben. Die separate Betriebssicherung bleibt erforderlich.

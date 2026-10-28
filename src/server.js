@@ -1,4 +1,7 @@
+import {leagueService} from './league.js';
+import {scheduleService} from './schedule.js';
 import { playerService } from './players.js';
+import { nuLigaService } from './nuliga.js';
 import http from 'node:http';
 import { tableService } from './tables.js';
 import { backupService, BACKUP_LIMIT } from './backup.js';
@@ -11,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { changeScore, breaker } from './domain.js';
 import { brandingService, LOGO_LIMIT } from './branding.js';
 
-export async function createApp({ dbPath, databaseUrl, legacyPath, config, origin = 'http://localhost:3000' }) {
+export async function createApp({ dbPath, databaseUrl, legacyPath, config, origin = 'http://localhost:3000', collectNuLiga, collectNuLigaSchedule }) {
   const allowedOrigins = new Set([new URL(origin).origin]);
   const localOrigin = new URL(origin);
   for (const hostname of ['localhost', '127.0.0.1']) {
@@ -43,6 +46,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
   const openEvent = async id => {
     const event = await getEvent(id);
     if (event.status !== 'open') throw fail(409, 'Diese Veranstaltung ist endgültig abgeschlossen.');
+    const plan=await db.prepare('SELECT started FROM event_planning WHERE event_id=?').get(id);
+    if(plan && !plan.started)throw fail(409,'Bitte den Spieltag zuerst starten.');
     return event;
   };
   const touchEvent = async id => await db.prepare('UPDATE events SET version=version+1 WHERE id=?').run(id);
@@ -51,6 +56,9 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
   };
   const today = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Berlin'}).format(new Date());
   const players=playerService({db,transaction,fail,text,log,openEvent,touchEvent});
+  const nuliga=nuLigaService({db,transaction,fail,log,collect:collectNuLiga});
+  const schedule=scheduleService({db,transaction,fail,log,nextId,collect:collectNuLigaSchedule});
+  const eventState=async()=>{const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null};});};
   const eventFields = body => {
     const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
@@ -62,6 +70,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
     const salt=randomBytes(16).toString('hex');
     return salt+':'+scryptSync(pin,salt,64).toString('hex');
   };
+  const league=leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin});
   const authorizedTablet = (auth,m) => auth && m && m.status==='live' && auth.id===m.id && auth.table===m.table_no && auth.revision===m.auth_version;
   const liveAt = async number => await db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.table_no=? AND m.status='live'").get(number);
   const server = http.createServer(async (req, res) => {
@@ -111,6 +120,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
       if (req.method === 'GET' && url.pathname === '/health') { await db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
+      if (req.method === 'POST' && url.pathname === '/api/settings/nuliga-schedule') {admin();return json(res,200,await schedule.sync());}
+      if (req.method === 'POST' && url.pathname === '/api/settings/nuliga') { admin(); return json(res,200,await nuliga.sync(body)); }
       if (req.method === 'POST' && url.pathname === '/api/settings/tables') { admin(); return json(res,200,await tables.save(body)); }
       if (req.method === 'GET' && url.pathname === '/api/branding') return json(res,200,await branding.publicState());
       if (req.method === 'POST' && url.pathname === '/api/settings/branding') {admin();return json(res,200,await branding.save(body));}
@@ -175,11 +186,13 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
-      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...await players.state(), table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: (await db.prepare('SELECT * FROM matches ORDER BY id DESC').all()).map(publicMatch) }); }
+      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...await players.state(), nuliga:await nuliga.state(), nuliga_schedule:await schedule.state(), event_match_slots:await league.state(), table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await eventState(), matches: (await db.prepare('SELECT * FROM matches ORDER BY id DESC').all()).map(publicMatch) }); }
       if (req.method === 'POST' && (url.pathname === '/api/rentals' || url.pathname.startsWith('/api/rentals/'))) {
         admin(); return json(res, url.pathname === '/api/rentals' ? 201 : 200, await rentals.handle(url.pathname,body));
       }
       if(req.method==='POST' && ['/api/players','/api/teams'].includes(url.pathname)) {admin();return json(res,200,await players.save(url.pathname==='/api/players'?'player':'team',body));}
+      const slotRoute=/^\/api\/events\/(\d+)\/slots\/(\d+)$/.exec(url.pathname);
+      if(req.method==='POST'&&slotRoute){admin();return json(res,200,await league.save(Number(slotRoute[1]),Number(slotRoute[2]),body));}
       const participantRoute=/^\/api\/events\/(\d+)\/participants$/.exec(url.pathname);
       if(req.method==='POST' && participantRoute) {admin();return json(res,200,await players.participants(Number(participantRoute[1]),body));}
       const pinRoute = /^\/api\/tables\/([1-9]|1[0-9]|20)\/login$/.exec(url.pathname);
@@ -211,21 +224,26 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
       }
       if (req.method === 'POST' && url.pathname === '/api/events') {
         admin(); const {name,kind,date} = eventFields(body);
-        const id = await transaction(async () => { const id=await nextId('events'); await db.prepare('INSERT INTO events(id,name,kind,date) VALUES(?,?,?,?)').run(id,name,kind,date); return id; });
+        const id = await transaction(async () => { const id=await nextId('events'); await db.prepare('INSERT INTO events(id,name,kind,date) VALUES(?,?,?,?)').run(id,name,kind,date);await db.prepare('INSERT INTO event_planning VALUES(?,0,NULL,?)').run(id,'{}');await log('admin','event:create',null,{id,name,kind,date,phase:'planned'}); return id; });
         return json(res, 201, { id });
       }
-      const eventRoute = /^\/api\/events\/(\d+)\/(edit|delete|close)$/.exec(url.pathname);
+      const eventRoute = /^\/api\/events\/(\d+)\/(edit|delete|close|start)$/.exec(url.pathname);
       if (req.method === 'POST' && eventRoute) {
         admin(); const id=Number(eventRoute[1]), action=eventRoute[2];
         await transaction(async () => {
           const event=await getEvent(id);
           if (body.version !== event.version) throw fail(409, 'Die Veranstaltung oder ihre Partien wurden geändert. Bitte neu prüfen.');
-          if (action !== 'edit' || event.status === 'closed' || event.date < today()) confirm(body, 'event:'+action, {edit:'EVENT ÄNDERN',delete:'EVENT LÖSCHEN',close:'EVENT ABSCHLIESSEN'}[action]);
+          if (action!=='start' && (action !== 'edit' || event.status === 'closed' || event.date < today())) confirm(body, 'event:'+action, {edit:'EVENT ÄNDERN',delete:'EVENT LÖSCHEN',close:'EVENT ABSCHLIESSEN'}[action]);
           const matches=await db.prepare('SELECT * FROM matches WHERE event_id=? ORDER BY id').all(id);
-          if (action === 'edit') {
+          if(action==='start'){
+            const plan=await db.prepare('SELECT * FROM event_planning WHERE event_id=?').get(id);
+            if(event.status!=='open'||!plan||plan.started)throw fail(409,'Spieltag wurde bereits gestartet oder abgeschlossen.');
+            await db.prepare('UPDATE event_planning SET started=1 WHERE event_id=?').run(id);await league.initialize(id);await touchEvent(id);
+          } else if (action === 'edit') {
             const {name,kind,date}=eventFields(body);
             await db.prepare('UPDATE events SET name=?,kind=?,date=?,version=version+1 WHERE id=?').run(name,kind,date,id);
           } else if (action === 'close') {
+            await openEvent(id);
             if (event.status === 'closed') throw fail(409, 'Die Veranstaltung ist bereits abgeschlossen.');
             if (matches.some(m=>m.status !== 'finished')) throw fail(409, 'Zuerst alle Partien abschließen oder nicht gespielte Partien löschen.');
             await db.prepare("UPDATE events SET status='closed',version=version+1 WHERE id=?").run(id);
@@ -233,6 +251,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             await db.prepare('DELETE FROM matches WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM event_players WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM event_teams WHERE event_id=?').run(id);
+            await db.prepare('DELETE FROM event_match_slots WHERE event_id=?').run(id);
+            await db.prepare('DELETE FROM event_planning WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM events WHERE id=?').run(id);
           }
           await log('admin','event:'+action,null,{before:event,matches:action==='edit'?undefined:matches,after:action==='edit'?eventFields(body):undefined});
@@ -240,8 +260,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/matches') {
-        admin(); const event = integer(body.event_id, 1, 1e9), target = integer(body.target, 1, 99);
-        if (!['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || (body.first!==undefined && !['a','b'].includes(body.first))) throw fail(400, 'Ungültige Spielregel.');
+        admin(); const event = integer(body.event_id, 1, 1e9), target = integer(body.target, 1, body.discipline==='14/1'?999:99);
+        if (!['8-Ball','9-Ball','10-Ball','14/1'].includes(body.discipline) || (body.first!==undefined && !['a','b'].includes(body.first))) throw fail(400, 'Ungültige Spielregel.');
         const id=await transaction(async () => {
           await openEvent(event); const pinHash=encodePin(body.pin); const id=await nextId('matches');
           await db.prepare('INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?)').run(id,event,text(body.player_a || 'Teilnehmer',302),text(body.player_b || 'Teilnehmer',302),body.discipline,target,body.first || 'a',pinHash);
@@ -267,22 +287,26 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
           }
           const tick=Date.now();
           if (action === 'delete') {
+            await db.prepare('UPDATE event_match_slots SET match_id=NULL,version=version+1 WHERE match_id=?').run(id);
             await db.prepare('DELETE FROM matches WHERE id=?').run(id);
           } else if (action === 'edit') {
             const event=integer(body.event_id,1,Number.MAX_SAFE_INTEGER);
+            const fixed=await db.prepare('SELECT * FROM event_match_slots WHERE match_id=?').get(id);
+            if(fixed&&(event!==m.event_id||body.discipline!==m.discipline||body.player_a_id!==m.player_a_id||body.player_b_id!==m.player_b_id||body.status==='planned'))throw fail(409,'Aufstellung und Disziplin dieser Spieltagspartie sind gesperrt. Zum Neuaufstellen die Partie zuerst bestätigt löschen.');
             if (parent.status === 'closed') {
               if (event !== m.event_id || body.status !== 'finished') throw fail(409, 'Korrekturen erhalten den Gesamtabschluss. Verschieben oder Wiederaufnehmen ist nicht möglich.');
             } else await openEvent(event);
             if (event !== m.event_id && body.destination_version !== (await getEvent(event)).version) throw fail(409, 'Die Zielveranstaltung wurde geändert. Bitte erneut prüfen.');
-            const target=integer(body.target,1,99), a=integer(body.a,0,target), b=integer(body.b,0,target);
+            const target=integer(body.target,1,body.discipline==='14/1'?999:99), a=integer(body.a,0,target), b=integer(body.b,0,target);
             const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,20);
-            if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
+            if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball','14/1'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
             if (status==='live') await tables.activeNumber(number);
             if (status==='live' && ((await rentals.occupied(number)) || (await db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)))) throw fail(409,'Dieser Tisch ist belegt.');
             await db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a,302),text(body.player_b,302),body.discipline,target,body.first,a,b,status,number,id);
             const links=await players.resolve(event,body,m);
             await db.prepare('UPDATE matches SET player_a=?,player_b=?,player_a_id=?,player_b_id=?,team_a_id=?,team_b_id=?,team_a_name=?,team_b_name=? WHERE id=?').run(links.player_a,links.player_b,links.player_a_id,links.player_b_id,links.team_a_id,links.team_b_id,links.team_a_name,links.team_b_name,id);
+            if(fixed)await db.prepare('UPDATE event_match_slots SET target=?,table_no=?,version=version+1 WHERE match_id=?').run(target,number,id);
             if(body.pin !== undefined && body.pin !== '') await db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
             await db.prepare('UPDATE matches SET auth_version=auth_version+1 WHERE id=?').run(id);
             const lag=body.lag_winner === undefined ? m.lag_winner : body.lag_winner;

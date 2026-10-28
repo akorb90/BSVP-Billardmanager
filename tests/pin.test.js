@@ -21,7 +21,7 @@ const response=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'
   const fields={event_id:1,player_a:'A',player_b:'B',discipline:'8-Ball',target:2,first:'a'};
   try{
     await start(); await login();
-    await call('/api/events',{name:'PIN-Test',date:'2026-10-26',kind:'Liga'});
+    await call('/api/events',{name:'PIN-Test',date:'2026-10-26',kind:'Liga'});await call('/api/events/1/start',{version:0});
     for(const pin of [undefined,123456,'12345','1234567','abcdef','１２３４５６']) assert.equal((await call('/api/matches',{...fields,pin})).status,400);
     assert.equal((await call('/api/matches',{...fields,pin:'012345'})).status,201);
     await call('/api/matches',{...fields,pin:'654321'});

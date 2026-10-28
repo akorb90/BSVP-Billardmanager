@@ -16,7 +16,7 @@ test('Vorbereitung ist Pflicht, Timer bleiben erhalten und stoppen beim Abschlus
 const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(admin?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token})},body:data?JSON.stringify(data):undefined});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};}
  async function login(){const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
  try{
- await start();await login();await call('/api/events',{name:'Test',kind:'Liga',date:'2026-10-26'});
+ await start();await login();await call('/api/events',{name:'Test',kind:'Liga',date:'2026-10-26'});await call('/api/events/1/start',{version:0});
  assert.equal((await call('/api/matches',{event_id:1,player_a:'A',player_b:'B',discipline:'8-Ball',target:2,pin:'012345'})).status,201);
  let r=await call('/api/matches/1/start',{table_no:1,version:0});assert.equal(r.status,200);assert.equal(r.body.started_at,null);
  assert.equal((await call('/api/matches/1/begin',{lag_winner:'a',first:'b',version:1},false)).status,403);

@@ -193,3 +193,7 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 #message{color:white}
 
 .branding-color input[type="text"]{padding:12px;font-family:ui-monospace,Consolas,monospace}.branding-color label:last-child{margin-bottom:0}
+
+.registry-list{overflow-x:auto;margin-top:20px}.registry-list table{width:100%;border-collapse:collapse;text-align:left}.registry-list th,.registry-list td{padding:14px 12px;border-bottom:1px solid var(--primary);vertical-align:top}.registry-list th[scope="row"]{min-width:160px}.registry-list td:nth-child(2){min-width:180px}.registry-actions{min-width:260px}.registry-actions button,.registry-actions .button{display:inline-block;margin:0 6px 8px 0}.registry-actions .muted{display:block}
+
+.league-board>h2{margin-bottom:8px}.league-round{margin:28px 0}.league-round>h3{padding:12px 0;border-bottom:2px solid var(--primary)}.league-partie{margin:16px 0}.league-partie h4{margin:0;font-size:20px}.league-partie h5{font-size:16px;margin:4px 0 12px}.league-partie fieldset{border:0;padding:0;margin:0}.league-lineup{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.league-partie .dialog-actions{margin-top:12px}.league-score{display:flex;align-items:center;justify-content:space-between;gap:15px;font-size:18px}.league-score strong{white-space:nowrap}@media(max-width:800px){.league-lineup{grid-template-columns:1fr}.league-partie .section-title{flex-wrap:wrap;gap:10px}.league-score{flex-wrap:wrap}}

@@ -1,4 +1,7 @@
+import {migrateLeague} from './league.js';
+import {scheduleSchema} from './schedule-schema.js';
 import { playerSchema } from './players.js';
+import { nuligaSchema } from './nuliga-schema.js';
 // SQLite is retained only for legacy migration and isolated compatibility tests.
 import { DatabaseSync } from 'node:sqlite';
 import { migrateTables } from './tables.js';
@@ -13,7 +16,7 @@ export function openLegacyDatabase(dbPath, config) {
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 9) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 12) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -61,5 +64,8 @@ export function openLegacyDatabase(dbPath, config) {
   if (schema < 8) migrateTables(db);
   db.prepare("INSERT OR IGNORE INTO entity_ids(name,value) VALUES('rentals',(SELECT COALESCE(MAX(id),0) FROM rentals))").run();
   if (schema < 9) db.exec('BEGIN IMMEDIATE;'+playerSchema+'PRAGMA user_version=9; COMMIT;');
+  if (schema < 10) db.exec('BEGIN IMMEDIATE;'+nuligaSchema+'PRAGMA user_version=10; COMMIT;');
+  if (schema < 11) db.exec('BEGIN IMMEDIATE;'+scheduleSchema+'PRAGMA user_version=11; COMMIT;');
+  if(schema<12)migrateLeague(db);
   return db;
 }

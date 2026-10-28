@@ -31,7 +31,7 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
   const state=async()=>(await call('/api/admin')).body;
   try {
     await start(); await login();
-    await call('/api/events',{name:'Test',kind:'Liga',date:'2026-10-27'});
+    await call('/api/events',{name:'Test',kind:'Liga',date:'2026-10-27'});await call('/api/events/1/start',{version:0});
     await call('/api/matches',{event_id:1,player_a:'A',player_b:'B',discipline:'8-Ball',target:1,pin:'012345'});
     await call('/api/matches/1/start',{table_no:8,version:0});
     token=(await call('/api/tables/8/login',{pin:'012345'},false)).body.token;

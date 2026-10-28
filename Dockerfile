@@ -6,6 +6,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node src ./src
 COPY --chown=node:node public ./public
 COPY --chown=node:node scripts/setup.js ./scripts/setup.js
+COPY --chown=node:node scripts/nuliga-sync.js ./scripts/nuliga-sync.js
 RUN mkdir /data && chown node:node /data
 USER node
 EXPOSE 3000

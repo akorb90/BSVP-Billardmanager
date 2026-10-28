@@ -6,5 +6,6 @@ export function changeScore(match, side, delta) {
   return next;
 }
 export function breaker(match) {
+  if(match.discipline==='14/1')return null;
   return (match.a + match.b) % 2 === 0 ? match.first : (match.first === 'a' ? 'b' : 'a');
 }

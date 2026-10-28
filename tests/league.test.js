@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {scryptSync,createHash} from 'node:crypto';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createApp} from '../src/server.js';
+
+test('Ten fixed games save lineups without starting, support doubles and 14/1, protect occupancy and restore all identities',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'league-')),config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
+  let server,base,cookie='',csrf='';
+  const start=async file=>{server=await createApp({dbPath:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;};
+  const call=async(path,body,auth=true)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(auth?{Cookie:cookie,'X-CSRF-Token':csrf}:{})},body:body?JSON.stringify(body):undefined});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')};};
+  const ok=async(path,body)=>{const r=await call(path,body);assert.ok([200,201].includes(r.status),JSON.stringify(r.data));return r.data;};
+  const login=async()=>{const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.data.csrf;};
+  const state=()=>ok('/api/admin');
+  try {
+    await start('source.sqlite');await login();
+    const people=[];for(const name of ['Anna','Ada','Ben','Bert'])people.push((await ok('/api/players',{first_name:name,last_name:'Test'})).id);
+    const home=(await ok('/api/teams',{name:'BSV Pfaffenhofen',player_ids:people.slice(0,2)})).id,away=(await ok('/api/teams',{name:'Gegner',player_ids:people.slice(2)})).id;
+    const event=(await ok('/api/events',{name:'Fester Spieltag',kind:'Liga',date:'2026-11-07'})).id;
+    const route=slot=>'/api/events/'+event+'/slots/'+slot;
+    const lineup={version:0,player_a_id:people[0],player_b_id:people[2],table_no:1,target:3};
+    assert.equal((await call(route(1),lineup)).status,409);
+    await ok('/api/events/'+event+'/start',{version:0});
+    assert.equal((await state()).event_match_slots.length,10);assert.equal((await state()).matches.length,0);
+    await ok('/api/events/'+event+'/participants',{version:1,team_ids:[home,away],player_ids:people,assignments:{[people[0]]:home,[people[1]]:home,[people[2]]:away,[people[3]]:away}});
+    assert.equal((await call(route(1),lineup,false)).status,401);
+    await ok(route(1),lineup);assert.equal((await state()).matches.length,0);
+    assert.equal((await call(route(1),lineup)).status,409);
+    assert.equal((await call(route(4),{...lineup,target:null,start:true,pin:'012345'})).status,400);
+    assert.equal((await call(route(5),{...lineup,player_a2_id:people[0],player_b2_id:people[3]})).status,400);
+    assert.equal((await call(route(5),{...lineup,player_a2_id:people[3],player_b2_id:people[1]})).status,400);
+    const double={...lineup,player_a2_id:people[1],player_b2_id:people[3],target:1,start:true,pin:'012345'};
+    const created=await ok(route(5),double);let snapshot=await state(),m=snapshot.matches.find(m=>m.id===created.match_id);
+    assert.equal(m.discipline,'9-Ball');assert.equal(m.player_a,'Anna Test / Ada Test');assert.equal(m.team_a_name,'BSV Pfaffenhofen');assert.equal(m.setup_done,0);assert.equal(m.started_at,null);
+    assert.equal((await call(route(6),{...double,table_no:2})).status,409,'players cannot be started on two tables');
+    assert.equal((await call(route(5),{...double,version:1})).status,409);
+    await ok('/api/matches/'+m.id+'/begin',{version:m.version,lag_winner:'a',first:'a'});
+    await ok('/api/matches/'+m.id+'/score',{version:1,side:'a',delta:1});await ok('/api/matches/'+m.id+'/finish',{version:2,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'});
+    const straight=await ok(route(4),{...lineup,target:125,start:true,pin:'012345'});m=(await state()).matches.find(m=>m.id===straight.match_id);assert.equal(m.discipline,'14/1');assert.equal(m.target,125);assert.equal(m.breaker,null);
+    snapshot=await state();const correction={...m,target:150,event_version:snapshot.events.find(e=>e.id===event).version};
+    await ok('/api/matches/'+m.id+'/edit',correction);assert.equal((await state()).event_match_slots.find(s=>s.slot===4).target,150);
+    snapshot=await state();m=snapshot.matches.find(x=>x.id===m.id);assert.equal((await call('/api/matches/'+m.id+'/edit',{...m,discipline:'8-Ball',event_version:snapshot.events.find(e=>e.id===event).version})).status,409);
+    const backup=await ok('/api/backups/export');assert.equal(backup.data.event_match_slots.find(s=>s.slot===5).player_a2_id,people[1]);
+    const bad=structuredClone(backup);bad.data.event_match_slots.find(s=>s.slot===5).player_b2_id='missing';bad.checksum=createHash('sha256').update(JSON.stringify(bad.data)).digest('hex');assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
+    await new Promise(r=>server.close(r));await start('target.sqlite');await login();await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
+    const restored=await ok('/api/backups/export');for(const name of Object.keys(backup.data))if(name!=='audit')assert.deepEqual(restored.data[name],backup.data[name]);
+    const old=structuredClone(backup);old.schema=11;delete old.data.event_match_slots;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
+  }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
+});

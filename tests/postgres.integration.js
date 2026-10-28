@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from './src/database.js';
 import { backupService } from './src/backup.js';
+import { nuLigaService } from './src/nuliga.js';
 
 const config = { adminHash: 'salt:' + scryptSync('integration-password', 'salt', 64).toString('hex'), tables: Array(8).fill('k'.repeat(40)) };
 const password = createHash('sha256').update(readFileSync(process.env.DATABASE_PASSWORD_CONFIG)).digest('hex');
@@ -43,6 +44,13 @@ try {
     INSERT INTO event_teams VALUES(7,'t1');
     INSERT INTO event_players VALUES(7,'p1','t1'),(7,'p2',NULL);
     UPDATE matches SET player_a_id='p1',player_b_id='p2',team_a_id='t1',team_a_name='Historisches Team' WHERE id=9;`);
+  const syncFixture={players:[{source_id:'555',first_name:'Import',second_name:'',last_name:'Spieler'}],teams:[{source_id:'666',name:'Importierter Gegner',player_ids:['555']}],leagues:[{name:'Testliga'}]};
+  const sync=nuLigaService({db:sqlite,transaction:fn=>sqlite.transaction(fn),log:async()=>{},fail:(status,message)=>Object.assign(new Error(message),{status}),collect:async()=>syncFixture});
+  assert.equal((await sync.sync()).created,2);
+  assert.equal((await sync.sync()).created,0);
+  await sqlite.prepare('INSERT INTO event_planning VALUES(7,1,?,?)').run('existing-source',JSON.stringify({source:{time:'14:00'}}));
+  await sqlite.prepare('INSERT INTO nuliga_schedule_sync VALUES(1,?,?)').run('2026-10-28T12:00:00Z',JSON.stringify({found:1,created:1}));
+  await sqlite.prepare('INSERT INTO event_match_slots(event_id,slot,match_id,player_a_id,player_b_id,table_no,target) VALUES(7,2,9,?,?,12,5)').run('p1','p2');
   const expected = JSON.parse(JSON.stringify(await (await service(sqlite)).export()));
   await close(sqlite);
   const original = readFileSync(path);
@@ -51,6 +59,7 @@ try {
   assert.deepEqual((await backups.export()).data, expected.data);
   assert.deepEqual(readFileSync(path), original, 'legacy database remains unchanged');
   await source.prepare("INSERT INTO events VALUES(8,'Postgres only','Turnier','2026-10-29','open',0)").run();
+  await source.prepare("INSERT INTO event_planning VALUES(8,1,NULL,'{}')").run();
   await source.prepare("UPDATE entity_ids SET value=8 WHERE name='events'").run();
   await close(source);
   source = await open({ databaseUrl: url(names[0]), legacyPath: path });
@@ -82,13 +91,13 @@ try {
   await upgrade.exec(`INSERT INTO events VALUES(1,'Bestand','Liga','2026-10-28','open',0);
     INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first) VALUES(1,1,'Alt A','Alt B','9-Ball',5,'a');
     SET CONSTRAINTS ALL IMMEDIATE;
-    DROP TABLE players,teams,team_players,event_players,event_teams;
+    DROP TABLE event_match_slots;DROP TABLE event_planning;DROP TABLE nuliga_schedule_sync;DROP TABLE nuliga_entities;DROP TABLE nuliga_sync;DROP TABLE players,teams,team_players,event_players,event_teams;
     ALTER TABLE matches DROP COLUMN player_a_id,DROP COLUMN player_b_id,DROP COLUMN team_a_id,DROP COLUMN team_b_id,DROP COLUMN team_a_name,DROP COLUMN team_b_name;
     UPDATE _schema SET version=8;`);
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a,'Alt A');
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,9);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,12);
   assert.deepEqual(await upgrade.prepare('SELECT * FROM players').all(),[]);
   await close(upgrade);
   // An incompatible source must roll back schema creation and must not mark migration complete.

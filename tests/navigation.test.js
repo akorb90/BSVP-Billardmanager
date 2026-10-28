@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
-async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
+async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
   const posts=[];
   const elements = new Map();
   const element = id => {
@@ -43,7 +43,8 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
-      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
+      else if (/^\/api\/events\/\d+\/start$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
+      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
       return { ok: status === 200, status, json: async () => body };
     },
@@ -300,4 +301,25 @@ test('FR-011: Tischanzahl steuert Übersicht, Auswahl, Vermietung, Einstellungen
   }
   const tablet=await frontend('/tisch/20',{admin:false,tablet:true});
   assert.match(tablet.element('#app').innerHTML,/TISCH 20/);
+});
+
+test('Spieltagsplanung starts a day explicitly and opens only that day for match creation',async()=>{
+  const events=[{id:1,name:'Kommender Spieltag',kind:'Liga',date:'2026-11-07',status:'open',phase:'planned',version:0},{id:2,name:'Anderer Spieltag',kind:'Liga',date:'2026-11-08',status:'open',phase:'started',version:0}];
+  events[0].schedule={home:'BSV Pfaffenhofen',home_source_id:'11'};
+  const app=await frontend('/#planung',{events,players:[{id:'p1',first_name:'Anna',last_name:'BSV',active:1}],teams:[{id:'away',name:'Gegner'},{id:'home',name:'BSV Pfaffenhofen',nuliga_profile:'https://bbv-billard.liga.nu/teamPortrait?teamtable=11'}],event_teams:[{event_id:1,team_id:'away'},{event_id:1,team_id:'home'}]});
+  assert.match(app.element('#app').innerHTML,/Spieltag anlegen|Spieltage synchronisieren/);
+  assert.match(app.element('#app').innerHTML,/data-event-start="1"/);
+  assert.doesNotMatch(app.element('#app').innerHTML,/id="match"|Tisch zuweisen/);
+  const button={dataset:{eventStart:'1'},hasAttribute:()=>false};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
+  // mutate completes after the click handler dispatches its asynchronous work.
+  await app.refresh(true);
+  assert.equal(app.location.hash,'#spieltage/1');
+  assert.match(app.element('#app').innerHTML,/<h1>Kommender Spieltag<\/h1>/);
+  assert.equal([...app.element('#app').innerHTML.matchAll(/class="panel league-partie"/g)].length,10);assert.match(app.element('#app').innerHTML,/14\/1/);assert.equal([...app.element('#app').innerHTML.matchAll(/name="player_a2_id"/g)].length,2);
+  assert.match(app.element('#app').innerHTML,/data-participants="1"/);
+  assert.doesNotMatch(app.element('#app').innerHTML,/Anderer Spieltag/);
+  assert.ok(app.element('#app').innerHTML.indexOf('<h5>Heim · BSV Pfaffenhofen')<app.element('#app').innerHTML.indexOf('<h5>Gast · Gegner'));
+  const form={id:'league-slot-1-1',elements:{}};
+  await app.element('#app').dispatch('change',{target:{dataset:{},name:'player_a_id',value:'p1',closest:()=>form}});
 });

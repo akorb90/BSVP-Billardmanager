@@ -23,7 +23,7 @@ const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://
   const state=async()=>(await request('/api/admin')).body;
   const event=async id=>(await state()).events.find(e=>e.id===id);
   const match=async id=>(await state()).matches.find(m=>m.id===id);
-  const createEvent=async name=>(await request('/api/events',{name,kind:'Liga',date:'2026-10-26'})).body.id;
+  const createEvent=async name=>{const id=(await request('/api/events',{name,kind:'Liga',date:'2026-10-26'})).body.id;assert.equal((await request('/api/events/'+id+'/start',{version:0})).status,200);return id;};
   const createMatch=async id=>(await request('/api/matches',{event_id:id,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:1,first:'a',pin:'012345'})).body.id;
   try{
     await start(); await login();
@@ -86,7 +86,7 @@ const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://
     assert.equal((await event(eid)).status,'closed');
     assert.equal((await match(mid)).b,1);
     const db=new DatabaseSync(path);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version,9);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version,12);
     const deleted=db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get();
     assert.equal(JSON.parse(deleted.detail).matches[0].id,movable);
     db.close();

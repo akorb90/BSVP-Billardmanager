@@ -26,7 +26,7 @@ export async function backupService({ db, transaction, fail, log }) {
     }
   };
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8].includes(backup.schema) || version!==9 || backup.checksum!==digest(backup.data)) return backup;
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11].includes(backup.schema) || version!==12 || backup.checksum!==digest(backup.data)) return backup;
     let data={...backup.data};
     if (backup.schema===6) {
       if (Object.hasOwn(data,'branding')) return backup;
@@ -37,10 +37,18 @@ export async function backupService({ db, transaction, fail, log }) {
       if (Object.hasOwn(data,'table_settings')) return backup;
       data.table_settings=[{id:1,table_count:8,version:0}];
     }
+    if(backup.schema<9) {
     for(const name of ['players','teams','team_players','event_players','event_teams']) {if(Object.hasOwn(data,name))return backup;data[name]=[];}
     if(!Array.isArray(data.matches) || data.matches.some(m=>!m || typeof m!=='object' || ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'].some(k=>Object.hasOwn(m,k))))return backup;
     data.matches=data.matches.map(m=>({...m,player_a_id:null,player_b_id:null,team_a_id:null,team_b_id:null,team_a_name:null,team_b_name:null}));
-    return {...backup,schema:9,data,checksum:digest(data)};
+    }
+    if(backup.schema<10)for(const name of ['nuliga_entities','nuliga_sync']) {if(Object.hasOwn(data,name))return backup;data[name]=[];}
+    if(backup.schema<11){
+    if(Object.hasOwn(data,'event_planning')||Object.hasOwn(data,'nuliga_schedule_sync'))return backup;
+    data.event_planning=data.events.map(e=>({event_id:e.id,started:1,source_id:null,metadata:'{}'}));data.nuliga_schedule_sync=[];
+    }
+    if(Object.hasOwn(data,'event_match_slots')||!Array.isArray(data.events))return backup;data.event_match_slots=data.events.flatMap(e=>Array.from({length:10},(_,i)=>({event_id:e.id,slot:i+1,match_id:null,player_a_id:null,player_a2_id:null,player_b_id:null,player_b2_id:null,table_no:null,target:null,version:0})));
+    return {...backup,schema:12,data,checksum:digest(data)};
   };
   const validate = async backup => {
     backup=upgrade(backup);
@@ -72,6 +80,21 @@ export async function backupService({ db, transaction, fail, log }) {
             if((p && !has('players',p))||(t && (!p||!has('teams',t)||typeof n!=='string'||!n.trim()))||(!t && n!==null))throw new Error('match association');
           }
         }
+        for(const r of data.nuliga_entities) {
+          if(!has(r.kind==='player'?'players':'teams',r.local_id)||!/^\d+$/.test(r.source_id))throw new Error('nuliga identity');
+          const snapshot=JSON.parse(r.snapshot);
+          if(!snapshot || snapshot.active!==1 || (r.kind==='player' ? typeof snapshot.first_name!=='string'||typeof snapshot.second_name!=='string'||typeof snapshot.last_name!=='string' : typeof snapshot.name!=='string'||!Array.isArray(snapshot.player_ids)||snapshot.player_ids.some(id=>!has('players',id))))throw new Error('nuliga snapshot');
+        }
+        for(const r of data.nuliga_sync) {const summary=JSON.parse(r.summary);if(!Number.isFinite(Date.parse(r.synced_at))||!Number.isSafeInteger(summary.players)||!Number.isSafeInteger(summary.teams)||!Array.isArray(summary.leagues))throw new Error('nuliga sync');}
+        for(const slot of data.event_match_slots){
+          if(!has('events',slot.event_id))throw Error('slot event');
+          const ids=['player_a_id','player_a2_id','player_b_id','player_b2_id'].map(k=>slot[k]).filter(Boolean);
+          if(new Set(ids).size!==ids.length||ids.some(id=>!has('players',id))||(![5,6].includes(slot.slot)&&(slot.player_a2_id||slot.player_b2_id)))throw Error('slot participants');
+          if(slot.match_id){const m=data.matches.find(m=>m.id===slot.match_id);if(!m||m.event_id!==slot.event_id||m.player_a_id!==slot.player_a_id||m.player_b_id!==slot.player_b_id||m.discipline!==['8-Ball','9-Ball','10-Ball','14/1','9-Ball','10-Ball','8-Ball','9-Ball','10-Ball','14/1'][slot.slot-1]||([5,6].includes(slot.slot)&&(!slot.player_a2_id||!slot.player_b2_id)))throw Error('slot match');}
+        }
+        for(const e of data.events)if(!data.event_planning.some(p=>p.event_id===e.id))throw Error('missing planning state');
+        for(const p of data.event_planning){if(!has('events',p.event_id))throw Error('planned event');const meta=JSON.parse(p.metadata);if(!meta||typeof meta!=='object'||Array.isArray(meta))throw Error('planning metadata');if(!p.started&&(data.matches.some(m=>m.event_id===p.event_id)||data.events.some(e=>e.id===p.event_id&&e.status==='closed')))throw Error('unstarted matches');}
+        for(const r of data.nuliga_schedule_sync){const summary=JSON.parse(r.summary);if(!Number.isFinite(Date.parse(r.synced_at))||!summary||!Number.isSafeInteger(summary.found))throw Error('schedule sync');}
         await replace(backup.data);
         if (db.dialect === 'postgres') await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         else if ((await db.prepare('PRAGMA foreign_key_check').all()).length) throw new Error('foreign key');

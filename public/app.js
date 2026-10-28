@@ -18,8 +18,9 @@ function applyBranding() {
 }
 const navigation = document.querySelector('#admin-nav');
 
-const views = { spieler: ['Spieler & Mannschaften', 'Stammdaten, Teilnehmer und Statistiken'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
-let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
+const views = { planung:['Spieltage planen','Spieltage anlegen und synchronisieren'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1) : 'uebersicht';
+let selectedEventId=Number(location.hash.split('/')[1])||null;
 const drafts = new Map();
 const listPages = new Map();
 function paginate(items, key, label) {
@@ -71,7 +72,7 @@ async function api(path, data) {
   const headers = {};
   if (table) headers.Authorization = `Bearer ${sessionStorage.getItem(`tablet-session:${table}`) || ''}`;
   if (data) { headers['Content-Type'] = 'application/json'; headers['X-CSRF-Token'] = csrf; }
-  const res = await fetch(path, { method: data ? 'POST' : 'GET', headers, body: data ? JSON.stringify(data) : undefined, signal: AbortSignal.timeout(8000) });
+  const res = await fetch(path, { method: data ? 'POST' : 'GET', headers, body: data ? JSON.stringify(data) : undefined, signal: AbortSignal.timeout(path.startsWith('/api/settings/nuliga')?180000:8000) });
   const result = await res.json();
   if (!res.ok) { const error = new Error(result.error); error.status = res.status; throw error; }
   if(result.server_now) clockOffset=result.server_now-Date.now();
@@ -85,7 +86,9 @@ function login() {
   connection.textContent = 'Vereinsverwaltung'; connection.className = ''; document.querySelector('#logout').hidden = true;
 }
 function dashboard() {
-  if(view==='spieler') {adminNavigation(true);playersDashboard();return;}
+  if(view==='planung'){adminNavigation(true);planningDashboard();return;}
+  if(view==='spieltage'){adminNavigation(true);matchdayDashboard();return;}
+  if(['spieler','mannschaften'].includes(view)) {adminNavigation(true);playersDashboard();return;}
   if(view==='einstellungen') { adminNavigation(true); settingsDashboard(); return; }
   if(view==='vermietung') { adminNavigation(true); rentalDashboard(); return; }
   const live = state.matches.filter(m => m.status === 'live');
@@ -98,10 +101,10 @@ function dashboard() {
       const m = live.find(m => m.table_no === i + 1);
       const r = (state.rentals || []).find(r=>r.table_no===i+1 && r.status==='active');
       if(r) return `<a href="/#vermietung" class="table-card occupied"><strong>TISCH ${i+1}</strong><h3>Vermietet</h3>${rentalRunning(r)}<small>Zur Tischvermietung ↗</small></a>`;
-      return `<a href="/tisch/${i+1}" class="table-card ${m ? 'occupied' : ''}"><div><strong>TISCH ${String(i+1).padStart(2,'0')}</strong><span class="dot ${m ? 'active' : ''}"></span></div>${m ? `<p>${esc(m.discipline)} · Race to ${m.target}</p><div class="mini-score"><span>${esc(m.player_a)}</span><b>${m.a}</b></div><div class="mini-score"><span>${esc(m.player_b)}</span><b>${m.b}</b></div>${timers(m)}<small>● Break: ${m.setup_done ? esc(m[m.breaker === 'a' ? 'player_a' : 'player_b']) : 'Noch offen'}</small>` : '<div class="free">Bereit für die nächste Partie</div><small>Frei verfügbar ↗</small>'}</a>`;
+      return `<a href="/tisch/${i+1}" class="table-card ${m ? 'occupied' : ''}"><div><strong>TISCH ${String(i+1).padStart(2,'0')}</strong><span class="dot ${m ? 'active' : ''}"></span></div>${m ? `<p>${esc(m.discipline)} · ${m.discipline==='14/1'?'Spielziel':'Race to'} ${m.target}${m.discipline==='14/1'?' Punkte':''}</p><div class="mini-score"><span>${esc(m.player_a)}</span><b>${m.a}</b></div><div class="mini-score"><span>${esc(m.player_b)}</span><b>${m.b}</b></div>${timers(m)}<small>● Break: ${m.discipline==='14/1'?'14/1 Punktewertung':m.setup_done ? esc(m[m.breaker === 'a' ? 'player_a' : 'player_b']) : 'Noch offen'}</small>` : '<div class="free">Bereit für die nächste Partie</div><small>Frei verfügbar ↗</small>'}</a>`;
     }).join('')}</section></section>
     <section class="planning" ${view === 'spieltage' ? '' : 'hidden'}><div class="panel"><p class="eyebrow">01 · VERANSTALTUNG</p><h2>Spieltag anlegen</h2><form id="event"><label>Name<input name="name" maxlength="100" placeholder="z. B. Bezirksliga · 3. Spieltag" required></label><div class="form-row"><label>Format<select name="kind"><option>Liga</option><option>Turnier</option></select></label><label>Datum<input name="date" type="date" required></label></div><button class="primary">Veranstaltung anlegen</button></form></div>
-    <div class="panel"><p class="eyebrow">02 · BEGEGNUNG</p><h2>Die nächste Partie</h2><form id="match"><label>Veranstaltung<select name="event_id" required><option value="">Bitte auswählen</option>${state.events.filter(e=>e.status === 'open').map(e => `<option value="${e.id}">${esc(e.date)} · ${esc(e.name)} (${esc(e.kind)})</option>`).join('')}</select></label>${participantSelectors(null)}<div class="form-row"><label>Spieler A<input name="player_a" maxlength="302" required></label><label>Spieler B<input name="player_b" maxlength="302" required></label></div><div class="form-row"><label>Disziplin<select name="discipline"><option>8-Ball</option><option>9-Ball</option><option>10-Ball</option></select></label><label>Gewinnspiele<input name="target" type="number" value="5" min="1" max="99" required></label></div><label>Tablet-PIN (6 Ziffern)<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label><button class="primary" ${state.events.some(e=>e.status === 'open') ? '' : 'disabled'}>Begegnung planen</button></form></div></section>
+    <div class="panel"><p class="eyebrow">02 · BEGEGNUNG</p><h2>Die nächste Partie</h2><form id="match"><label>Veranstaltung<select name="event_id" required><option value="">Bitte auswählen</option>${state.events.filter(e=>e.status === 'open').map(e => `<option value="${e.id}">${esc(e.date)} · ${esc(e.name)} (${esc(e.kind)})</option>`).join('')}</select></label>${participantSelectors(null)}<div class="form-row"><label>Spieler A<input name="player_a" maxlength="302" required></label><label>Spieler B<input name="player_b" maxlength="302" required></label></div><div class="form-row"><label>Disziplin<select name="discipline"><option>8-Ball</option><option>9-Ball</option><option>10-Ball</option></select></label><label>Gewinnspiele<input name="target" type="number" value="5" min="1" max="999" required></label></div><label>Tablet-PIN (6 Ziffern)<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label><button class="primary" ${state.events.some(e=>e.status === 'open') ? '' : 'disabled'}>Begegnung planen</button></form></div></section>
     <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div>${eventPage?.controls || ''}<div class="event-list">${eventPage ? eventPage.items.map(eventCard).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>' : ''}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Alle Begegnungen' : 'Laufende Partien'}</h2><span>${visibleMatches.length} Partien</span></div>${matchPage.controls}<section id="matches">${matchRows(matchPage.items)}</section>`;
 }
 function matchRows(matches) {
@@ -128,7 +131,7 @@ function kiosk() {
   if (!current) { root.innerHTML = `<div class="waiting"><p class="eyebrow">TISCH ${String(table).padStart(2,'0')}</p><img class="waiting-logo" src="/api/branding/logo" alt="BSV Pfaffenhofen"><h1>Bereit, wenn ihr es seid.</h1><p>Die nächste Begegnung erscheint hier automatisch,<br>sobald sie in der Verwaltung gestartet wird.</p></div>`; return; }
   if(!current.setup_done) { preparation(current); return; }
   const m = current, done = Math.max(m.a,m.b) === m.target;
-  root.innerHTML = `<div class="score-heading"><span class="pill">TISCH ${String(table).padStart(2,'0')}</span><p>${esc(m.event_name)}</p><h2>${esc(m.discipline)} <span class="muted">/</span> Race to ${m.target}</h2>${timers(m)}</div><section class="scoreboard">${['a','b'].map(side => `<article class="player ${m.breaker === side && !done ? 'breaking' : ''}"><div class="break-label">${m.breaker === side && !done ? '● NÄCHSTES BREAK' : '&nbsp;'}</div><h1>${esc(m[side === 'a' ? 'player_a' : 'player_b'])}</h1><div class="points">${m[side]}</div><div class="score-controls"><button data-side="${side}" data-delta="-1" aria-label="Punkt bei Spieler ${side.toUpperCase()} zurücknehmen" ${m[side] === 0 || busy ? 'disabled' : ''}>−</button><button class="primary" data-side="${side}" data-delta="1" ${done || busy ? 'disabled' : ''}>+ Punkt</button></div></article>`).join('')}</section><p class="score-note">${done ? 'Spielziel erreicht · Endstand prüfen und Spiel abschließen.' : 'Wechselbreak · Nach jedem abgeschlossenen Rack wechselt das Anstoßrecht.'}</p><div class="finish-bar">${finishButton(m)}${!done ? '<small>Verfügbar, sobald das Spielziel erreicht ist.</small>' : ''}</div>`;
+  root.innerHTML = `<div class="score-heading"><span class="pill">TISCH ${String(table).padStart(2,'0')}</span><p>${esc(m.event_name)}</p><h2>${esc(m.discipline)} <span class="muted">/</span> Race to ${m.target}</h2>${timers(m)}</div><section class="scoreboard">${['a','b'].map(side => `<article class="player ${m.breaker === side && !done ? 'breaking' : ''}"><div class="break-label">${m.breaker === side && !done ? '● NÄCHSTES BREAK' : '&nbsp;'}</div><h1>${esc(m[side === 'a' ? 'player_a' : 'player_b'])}</h1><div class="points">${m[side]}</div><div class="score-controls"><button data-side="${side}" data-delta="-1" aria-label="Punkt bei Spieler ${side.toUpperCase()} zurücknehmen" ${m[side] === 0 || busy ? 'disabled' : ''}>−</button><button class="primary" data-side="${side}" data-delta="1" ${done || busy ? 'disabled' : ''}>+ Punkt</button></div></article>`).join('')}</section><p class="score-note">${done ? 'Spielziel erreicht · Endstand prüfen und Spiel abschließen.' : m.discipline==='14/1'?'14/1 · Punktewertung bis zum eingestellten Spielziel.':'Wechselbreak · Nach jedem abgeschlossenen Rack wechselt das Anstoßrecht.'}</p><div class="finish-bar">${finishButton(m)}${!done ? '<small>Verfügbar, sobald das Spielziel erreicht ist.</small>' : ''}</div>`;
 }
 async function refresh(initial = false) {
   try {
@@ -170,6 +173,9 @@ async function mutate(fn) {
 root.addEventListener('submit', e => {
   e.preventDefault(); if(handlePlayersSubmit(e.target))return; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
+    if(form.id.startsWith('league-slot-')){const payload={...data,version:Number(form.dataset.version),table_no:data.table_no?Number(data.table_no):null,target:data.target?Number(data.target):null,start:e.submitter?.value==='start'};await api('/api/events/'+form.dataset.event+'/slots/'+form.dataset.slot,payload);drafts.delete(form.id);message(payload.start?'Partie dem Tisch zugewiesen.':'Aufstellung gespeichert.');}
+    if(form.id==='nuliga-schedule-sync'){message('Spieltage werden abgerufen …');const result=await api('/api/settings/nuliga-schedule',{});message(result.created+' Spieltage neu angelegt, '+result.updated+' aktualisiert, '+result.removed+' Auswärtsspieltage entfernt. Alle neuen Spieltage sind geplant.');}
+    if (form.id === 'nuliga-sync') { message('nuLiga wird abgerufen …'); const result=await api('/api/settings/nuliga',{overwrite:data.overwrite==='yes'}); drafts.delete(form.id); message('Synchronisiert: '+result.teams+' Mannschaften und '+result.players+' Spieler. '+result.created+' neu, '+result.updated+' aktualisiert; '+result.preserved+' lokale Anpassungen erhalten.'); }
     if (form.id === 'table-settings') { await api('/api/settings/tables',{table_count:Number(data.table_count),version:Number(data.version)}); drafts.delete(form.id); form.remove(); message('Tischanzahl gespeichert.'); }
     if (form.id === 'tablet-login') { const result=await api(`/api/tables/${table}/login`,data); sessionStorage.setItem(`tablet-session:${table}`,result.token); form.reset(); }
     if (form.id === 'login') {
@@ -183,6 +189,7 @@ root.addEventListener('submit', e => {
 });
 root.addEventListener('click', e => {
   const button = e.target.closest('button'); if (!button) return;
+  if(button.dataset.eventStart&&!busy){const event=state.events.find(e=>e.id===Number(button.dataset.eventStart));mutate(async()=>{await api('/api/events/'+event.id+'/start',{version:event.version});selectedEventId=event.id;drafts.delete('match');view='spieltage';history.replaceState(null,'','/#spieltage/'+event.id);});return;}
   if(button.id==='table-settings-reload') { mutate(async()=>{drafts.delete('table-settings');root.querySelector('#table-settings')?.remove();}); return; }
   if(button.dataset.lag && current && !busy) { setupChoice={id:current.id,version:current.version,lag:button.dataset.lag}; preparation(current); }
   if(button.hasAttribute('data-setup-back') && current && !busy) { setupChoice=undefined; preparation(current); }
@@ -196,7 +203,9 @@ root.addEventListener('click', e => {
 });
 window.addEventListener('hashchange', () => {
   if (table) return;
-  saveDrafts(); view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
+  saveDrafts(); const previousEventId=selectedEventId; view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
+  selectedEventId=Number(location.hash.split('/')[1])||null;
+  if(previousEventId!==selectedEventId)drafts.delete('match');
   if (state) { dashboard(); restoreDrafts(); }
 });
 document.querySelector('#logout').addEventListener('click', () => mutate(() => api('/api/logout', {})));
@@ -204,9 +213,59 @@ document.querySelector('#logout').addEventListener('click', () => mutate(() => a
 
 const adminDialog = document.querySelector('#admin-dialog');
 let pendingAdmin;
+function scheduleSyncForm() {
+  const sync=state.nuliga_schedule;
+  return '<h2>nuLiga-Spieltage synchronisieren</h2><p>Übernimmt kommende Heimspiele der BSV-Mannschaften als geplante Spieltage. Einzelpartien und Tische werden erst nach dem manuellen Start zugewiesen.</p><p>'+(sync?'Letzter Abgleich: '+esc(new Date(sync.synced_at).toLocaleString('de-DE'))+' · '+sync.found+' kommende Spieltage.':'Noch kein Spieltagsabgleich.')+'</p><form id="nuliga-schedule-sync"><button>Jetzt Spieltage synchronisieren</button></form>';
+}
+function planningDashboard() {
+  const planned=state.events.filter(e=>e.phase==='planned').sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  const page=paginate(planned,'planned-events','Geplante Spieltage');
+  root.innerHTML='<div class="page-title"><h1>Spieltage planen</h1></div><section class="planning"><div class="panel"><h2>Spieltag anlegen</h2><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Der Spieltag bleibt bis zum manuellen Start geplant.</p><button class="primary">Spieltag anlegen</button></form></div><div class="panel">'+scheduleSyncForm()+'</div></section><section><h2>Geplante Spieltage</h2>'+page.controls+page.items.map(eventCard).join('')+'</section>';
+}
+function matchdayDashboard() {
+  const events=state.events.filter(e=>e.phase!=='planned');
+  const selected=events.find(e=>e.id===selectedEventId);
+  const eventPage=paginate(events,'events','Spieltage');
+  const matches=state.matches.filter(m=>!selected||m.event_id===selected.id);
+  const page=paginate(matches,'matches-spieltage','Partien');
+  root.innerHTML='<div class="page-title"><div><h1>'+(selected?esc(selected.name):'Spieltagsübersicht')+'</h1><p>'+(selected?esc(selected.date):'Gestarteten Spieltag öffnen oder einen Spieltag unter „Spieltage planen“ anlegen und starten.')+'</p></div></div>';
+  if(!selected) {root.innerHTML+='<section><h2>Spieltage</h2>'+eventPage.controls+eventPage.items.map(eventCard).join('')+'</section>';}
+  else {
+    root.innerHTML+='<p><a href="/#spieltage">Alle Spieltage</a></p>'+eventCard(selected);
+    root.innerHTML+=leagueBoard(selected);
+  }
+  const linked=new Set((state.event_match_slots||[]).filter(s=>s.event_id===selected?.id).map(s=>s.match_id));
+  const additional=matches.filter(m=>!linked.has(m.id));
+  if(!selected||additional.length)root.innerHTML+='<section><h2>'+(selected?'Weitere Partien':'Partien')+'</h2>'+(!selected?page.controls:'')+matchRows(selected?additional:page.items)+'</section>';
+}
+function leagueBoard(event) {
+  const format=['8-Ball','9-Ball','10-Ball','14/1','9-Ball','10-Ball','8-Ball','9-Ball','10-Ball','14/1'];
+  const teams=state.event_teams.filter(t=>t.event_id===event.id).map(t=>state.teams.find(team=>team.id===t.team_id)).filter(Boolean);
+  const participants=state.event_players.filter(p=>p.event_id===event.id);
+  const existing=(state.event_match_slots||[]).find(s=>s.event_id===event.id&&s.player_a_id);
+  const firstTeam=teams.find(t=>event.schedule?.home_source_id&&t.nuliga_profile?.endsWith('teamtable='+event.schedule.home_source_id))?.id||teams.find(t=>t.name===event.schedule?.home)?.id||participants.find(p=>p.player_id===existing?.player_a_id)?.team_id;
+  teams.sort((a,b)=>Number(b.id===firstTeam)-Number(a.id===firstTeam)||Number(/^BSV Pfaffenhofen/.test(b.name))-Number(/^BSV Pfaffenhofen/.test(a.name)));
+  const choose=(label,name,id,side)=>selectField(label,name,id||'',[['','Spieler auswählen'],...state.players.filter(p=>participants.some(ep=>ep.player_id===p.id&&(!teams[side]||ep.team_id===teams[side].id))&&(p.active||p.id===id)).map(p=>[p.id,fullName(p)])]);
+  let html='<section class="league-board"><h2>Spielplan · 10 Partien</h2><p>Aufstellungen und Tischwünsche speichern. „Partie starten“ belegt den Tisch; die Zeitmessung beginnt nach der Vorbereitung am Tablet. Spielziele vor dem Start eintragen.</p>';
+  for(const [round,title] of [[1,'1. Runde · Vier Einzel'],[2,'2. Runde · Zwei Doppel'],[3,'3. Runde · Vier Einzel']]) {
+    html+='<section class="league-round"><h3>'+title+'</h3>';
+    for(let i=0;i<10;i++) {
+      const doubles=i===4||i===5;if((i<4?1:i<6?2:3)!==round)continue;
+      const slot=(state.event_match_slots||[]).find(s=>s.event_id===event.id&&s.slot===i+1)||{version:0};
+      const match=state.matches.find(m=>m.id===slot.match_id),locked=!!match||event.status==='closed';
+      const occupied=n=>state.matches.some(m=>m.status==='live'&&m.table_no===n&&m.id!==slot.match_id)||(state.rentals||[]).some(r=>r.status==='active'&&r.table_no===n);
+      html+='<article class="panel league-partie"><div class="section-title"><h4>'+(i+1)+'. '+(doubles?'Doppel':'Einzel')+' · '+format[i]+'</h4><span class="pill">'+(match?labels[match.status]:'Aufstellung offen')+'</span></div><form id="league-slot-'+event.id+'-'+(i+1)+'" data-event="'+event.id+'" data-slot="'+(i+1)+'" data-version="'+slot.version+'"><fieldset '+(locked?'disabled':'')+'><div class="league-lineup"><div><h5>'+'Heim · '+esc(teams[0]?.name||'Mannschaft 1')+'</h5>'+choose('Spieler 1','player_a_id',slot.player_a_id,0)+(doubles?choose('Spieler 2','player_a2_id',slot.player_a2_id,0):'')+'</div><div><h5>'+'Gast · '+esc(teams[1]?.name||'Mannschaft 2')+'</h5>'+choose('Spieler 1','player_b_id',slot.player_b_id,1)+(doubles?choose('Spieler 2','player_b2_id',slot.player_b2_id,1):'')+'</div><div>'+selectField('Tisch','table_no',slot.table_no??'',[['','Tisch auswählen'],...Array.from({length:tableCount()},(_,n)=>[n+1,'Tisch '+(n+1)+(occupied(n+1)?' · belegt':'')])])+'<label>Spielziel ('+(format[i]==='14/1'?'Punkte':'Gewinnspiele')+')<input name="target" type="number" min="1" max="'+(format[i]==='14/1'?999:99)+'" value="'+(slot.target??'')+'"></label>'+(locked?'':'<label>Tablet-PIN zum Starten<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>')+'</div></div></fieldset>'+(locked?'':'<div class="dialog-actions"><button type="submit" value="save">Aufstellung speichern</button><button type="submit" value="start" class="primary">Partie starten</button></div>')+'</form>';
+      if(match)html+='<p class="league-score">'+esc(match.player_a)+' <strong>'+match.a+' : '+match.b+'</strong> '+esc(match.player_b)+'</p>'+timers(match)+(match.status==='live'?'<a class="button" href="/tisch/'+match.table_no+'">Tisch öffnen ↗</a>'+finishButton(match):'')+matchAdminActions(match);
+      html+='</article>';
+    }
+    html+='</section>';
+  }
+  return html+'</section>';
+}
 function eventCard(event) {
   const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
-  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3>${esc(event.name)}</h3><p>${esc(event.date)} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
+  if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3>'+esc(event.name)+'</h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions"><button class="primary" data-event-start="'+event.id+'">Spieltag starten</button><button data-entity="event" data-action="edit" data-id="'+event.id+'">Spieltag bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">Spieltag löschen</button></div></article>';
+  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
 }
 function matchAdminActions(m) {
   return `<div class="entity-actions"><button data-entity="match" data-action="edit" data-id="${m.id}">Partie bearbeiten</button><button data-entity="match" data-action="delete" data-id="${m.id}">Partie löschen</button></div>`;
@@ -233,7 +292,7 @@ root.addEventListener('click',e=>{
   } else if(action==='edit') {
     content=participantSelectors(item)+'<p>Abgeschlossene Partien sind nach Warnbestätigung korrigierbar. Nach Gesamtabschluss bleiben Status und Veranstaltungszuordnung erhalten.</p>'+selectField('Veranstaltung','event_id',item.event_id,state.events.filter(e=>e.id===item.event_id || (state.events.find(v=>v.id===item.event_id)?.status==='open' && e.status==='open')).map(e=>[e.id,e.name]))+
       '<div class="form-row">'+field('Spieler A','player_a',item.player_a,'text','maxlength="302"')+field('Spieler B','player_b',item.player_b,'text','maxlength="302"')+'</div>'+
-      '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field('Gewinnspiele','target',item.target,'number','min="1" max="99"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
+      '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball','14/1'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field(item.discipline==='14/1'?'Spielziel (Punkte)':'Gewinnspiele','target',item.target,'number','min="1" max="999"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
       '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="99"')+field('Punkte B','b',item.b,'number','min="0" max="99"')+'</div>'+
       '<div class="form-row">'+selectField('Status','status',item.status,state.events.find(e=>e.id===item.event_id)?.status==='closed'?[['finished','Abgeschlossen']]:Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:Math.max(tableCount(),item.table_no || 0)},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
       '<label>'+ (item.pin_set ? 'Neue Tablet-PIN (leer lassen zum Beibehalten)' : 'Tablet-PIN nachtragen') +'<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>'+
@@ -334,8 +393,11 @@ function tableCount() { return state?.table_settings?.table_count ?? 8; }
 function settingsDashboard() {
   const settings=state.rental_settings;
   root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
+  root.innerHTML += '<section class="panel">'+scheduleSyncForm()+'</section>';
   const tables=state.table_settings || {table_count:8,version:0};
   root.innerHTML += '<section class="panel"><h2>Tischanzahl</h2><form id="table-settings" data-version="'+tables.version+'"><input type="hidden" name="version" value="'+tables.version+'">'+field('Anzahl der Tische','table_count',tables.table_count,'number','min="1" max="20" step="1" required')+'<p>1 bis 20 Tische. Belegte Tische müssen vor einer Verringerung abgeschlossen werden. Historische Partien und Buchungen bleiben erhalten.</p><button>Tischanzahl speichern</button> <button type="button" id="table-settings-reload">Änderungen verwerfen / Neu laden</button></form></section>';
+  const sync=state.nuliga;
+  root.innerHTML += '<section class="panel"><h2>nuLiga synchronisieren</h2><p>Importiert alle aktuellen Mannschaften des BSV Pfaffenhofen sowie alle Mannschaften und gemeldeten Spieler ihrer Ligen von <a href="https://bbv-billard.liga.nu/" target="_blank" rel="noopener">nuLiga Bayern</a>.</p><p>'+ (sync?'Letzter erfolgreicher Abgleich: '+esc(new Date(sync.synced_at).toLocaleString('de-DE'))+' · '+sync.teams+' Mannschaften · '+sync.players+' Spieler.<br>'+sync.leagues.map(l=>esc(l.championship+' · '+l.name)).join('<br>'):'Noch kein Abgleich durchgeführt.')+'</p><form id="nuliga-sync">'+selectField('Umgang mit lokalen Änderungen','overwrite','no',[['no','Lokale Änderungen erhalten'],['yes','Importierte Namen und Kader mit nuLiga überschreiben']])+'<p>Manuell angelegte Einträge bleiben erhalten. Importierte Spieler und Mannschaften können in den Listen Spieler und Mannschaften bearbeitet werden. Gespeicherte Partien behalten ihre Namen und Zuordnungen. Nicht mehr gelieferte Einträge bleiben erhalten. Der Abruf kann einige Minuten dauern.</p><button class="primary">Jetzt synchronisieren</button></form></section>';
   root.innerHTML += brandingForm();
   root.innerHTML += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
 }
@@ -462,15 +524,16 @@ rentalSave.addEventListener('click',async()=>{
 
 function fullName(p) {return [p.first_name,p.second_name,p.last_name].filter(Boolean).join(' ');}
 function multiSelect(label,name,items,selected=[]) {return '<label>'+label+'<select multiple size="6" name="'+name+'">'+items.map(([id,title])=>'<option value="'+esc(id)+'" '+(selected.includes(id)?'selected':'')+'>'+esc(title)+'</option>').join('')+'</select></label>';}
+function participantLabel(p,eventId) { const ep=state.event_players.find(ep=>ep.player_id===p.id&&ep.event_id===eventId); const team=state.teams.find(t=>t.id===ep?.team_id); return fullName(p)+(team?' · '+team.name:''); }
 function participantSelectors(m) {
-  return '<p>Stammdatenzuordnung ausdrücklich auswählen. Ohne Zuordnung bleiben freie Namen möglich.</p><div class="form-row">'+['a','b'].map(side=>selectField('Teilnehmer '+side.toUpperCase(),'player_'+side+'_id',m?.['player_'+side+'_id']??'',[['','Ohne Stammdatenzuordnung'],...(state.players||[]).filter(p=>p.id===m?.['player_'+side+'_id'] || (p.active && (state.event_players||[]).some(ep=>ep.player_id===p.id && (!m || ep.event_id===m.event_id)))).map(p=>[p.id,fullName(p)+' · ID '+p.id])])).join('')+'</div>';
+  return '<p>Stammdatenzuordnung ausdrücklich auswählen. Ohne Zuordnung bleiben freie Namen möglich.</p><div class="form-row">'+['a','b'].map(side=>selectField('Teilnehmer '+side.toUpperCase(),'player_'+side+'_id',m?.['player_'+side+'_id']??'',[['','Ohne Stammdatenzuordnung'],...(state.players||[]).filter(p=>p.id===m?.['player_'+side+'_id'] || (p.active && (state.event_players||[]).some(ep=>ep.player_id===p.id && (!m || ep.event_id===m.event_id)))).map(p=>[p.id,participantLabel(p,m?.event_id)])])).join('')+'</div>';
 }
 function updateParticipantOptions(form) {
   const eventId=Number(form.elements.event_id.value);
   for(const side of ['a','b']) {
     const select=form.elements['player_'+side+'_id'];if(!select)continue;
     const previous=select.value;
-    select.innerHTML='<option value="">Ohne Stammdatenzuordnung</option>'+(state.players||[]).filter(p=>p.active && state.event_players.some(ep=>ep.player_id===p.id&&ep.event_id===eventId)).map(p=>'<option value="'+esc(p.id)+'">'+esc(fullName(p)+' · ID '+p.id)+'</option>').join('');
+    select.innerHTML='<option value="">Ohne Stammdatenzuordnung</option>'+(state.players||[]).filter(p=>p.active && state.event_players.some(ep=>ep.player_id===p.id&&ep.event_id===eventId)).map(p=>'<option value="'+esc(p.id)+'">'+esc(participantLabel(p,eventId))+'</option>').join('');
     select.value=[...select.options].some(o=>o.value===previous)?previous:'';
   }
 }
@@ -478,21 +541,30 @@ root.addEventListener('change',e=>{
   const form=e.target.closest?.('form');if(!form)return;
   if(form.id==='match' && e.target.name==='event_id')updateParticipantOptions(form);
   if(/^player_[ab]_id$/.test(e.target.name) && e.target.value) {
-    const p=state.players.find(p=>p.id===e.target.value);form.elements[e.target.name.replace('_id','')].value=fullName(p);
+    const p=state.players.find(p=>p.id===e.target.value),nameField=form.elements[e.target.name.replace('_id','')];if(nameField)nameField.value=fullName(p);
   }
 });
 let playerSearch='',statsFilter={kind:'players',id:'',from:'',to:'',discipline:''};
 function playersDashboard() {
   const players=state.players||[], teams=state.teams||[], q=playerSearch.toLocaleLowerCase('de');
-  const page=paginate(players.filter(p=>(fullName(p)+' '+p.id).toLocaleLowerCase('de').includes(q)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')),'players','Spieler');
+  const page=paginate(players.filter(p=>(fullName(p)+' '+p.id+' '+state.team_players.filter(tp=>tp.player_id===p.id).map(tp=>teams.find(t=>t.id===tp.team_id)?.name||'').join(' ')).toLocaleLowerCase('de').includes(q)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')),'players','Spieler');
   const teamPage=paginate([...teams].sort((a,b)=>a.name.localeCompare(b.name,'de')),'teams','Mannschaften');
   const f=statsFilter, entity=(f.kind==='players'?players:teams).find(x=>x.id===f.id);
-  const matches=state.matches.filter(m=>['a','b'].some(side=>m[(f.kind==='players'?'player_':'team_')+side+'_id']===f.id) && f.id);
+  const belongs=(m,side)=>f.kind==='players'?[m['player_'+side+'_id'],(state.event_match_slots||[]).find(s=>s.match_id===m.id)?.['player_'+side+'2_id']].includes(f.id):m['team_'+side+'_id']===f.id;
+  const matches=state.matches.filter(m=>f.id&&['a','b'].some(side=>belongs(m,side)));
   const filtered=matches.filter(m=>{const date=state.events.find(e=>e.id===m.event_id)?.date;return (!f.from||date>=f.from)&&(!f.to||date<=f.to)&&(!f.discipline||m.discipline===f.discipline);});
   let wins=0,losses=0,won=0,lost=0,count=0;
-  for(const m of filtered.filter(m=>m.status==='finished'))for(const side of ['a','b'])if(m[(f.kind==='players'?'player_':'team_')+side+'_id']===f.id){const other=side==='a'?'b':'a';count++;wins+=Number(m[side]>m[other]);losses+=Number(m[side]<m[other]);won+=m[side];lost+=m[other];}
+  for(const m of filtered.filter(m=>m.status==='finished'))for(const side of ['a','b'])if(belongs(m,side)){const other=side==='a'?'b':'a';count++;wins+=Number(m[side]>m[other]);losses+=Number(m[side]<m[other]);won+=m[side];lost+=m[other];}
   const mp=paginate(filtered,'player-matches','Zugeordnete Partien');
-  root.innerHTML='<div class="page-title"><h1>Spieler &amp; Mannschaften</h1></div><section class="panel"><h2>Spieler</h2><button data-registry="player">Spieler anlegen</button><form id="player-search"><label>Spieler suchen (Name oder ID)<input name="q" value="'+esc(playerSearch)+'"></label><button>Suchen</button></form>'+page.controls+page.items.map(p=>'<article class="event-card"><h3>'+esc(fullName(p))+'</h3><p>ID '+esc(p.id)+' · '+(p.active?'Aktiv':'Archiviert')+'</p><button data-registry="player" data-id="'+esc(p.id)+'">Bearbeiten</button> <button data-stat="players" data-id="'+esc(p.id)+'">Partien &amp; Statistik</button></article>').join('')+'</section><section class="panel"><h2>BSV-Mannschaften</h2><button data-registry="team">Mannschaft anlegen</button>'+teamPage.controls+teamPage.items.map(t=>'<article class="event-card"><h3>'+esc(t.name)+'</h3><p>'+(t.active?'Aktiv':'Archiviert')+' · '+state.team_players.filter(tp=>tp.team_id===t.id).map(tp=>esc(fullName(players.find(p=>p.id===tp.player_id)))).join(', ')+'</p><button data-registry="team" data-id="'+esc(t.id)+'">Bearbeiten</button> <button data-stat="teams" data-id="'+esc(t.id)+'">Partien &amp; Statistik</button></article>').join('')+'</section><section class="panel"><h2>Partien &amp; Statistik'+(entity?' · '+esc(entity.name||fullName(entity)):'')+'</h2><p>Zeitraum nach Spieltagsdatum. Nur abgeschlossene Partien zählen als Ergebnisse. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien.</p><form id="stats-filter">'+selectField('Übersicht','kind',f.kind,[['players','Spieler'],['teams','Mannschaften']])+selectField('Eintrag','id',f.id,[['','Bitte auswählen'],...(f.kind==='players'?players:teams).map(p=>[p.id,(p.name||fullName(p))+' · ID '+p.id])])+'<div class="form-row"><label>Von<input type="date" name="from" value="'+esc(f.from)+'"></label><label>Bis<input type="date" name="to" value="'+esc(f.to)+'"></label></div>'+selectField('Disziplin','discipline',f.discipline,[['','Alle'],...['8-Ball','9-Ball','10-Ball'].map(d=>[d,d])])+'<button>Auswerten</button></form><p><strong>'+count+' Ergebnisse · '+wins+' Siege · '+losses+' Niederlagen · Racks '+won+' : '+lost+'</strong></p>'+mp.controls+matchRows(mp.items)+'</section>';
+  const teamView=view==='mannschaften';
+  const playerRows=page.items.map(p=>{
+    const memberships=state.team_players.filter(tp=>tp.player_id===p.id).map(tp=>teams.find(t=>t.id===tp.team_id)?.name).filter(Boolean);
+    const profile=p.nuliga_profile?'<a class="button" href="'+esc(p.nuliga_profile)+'" target="_blank" rel="noopener noreferrer">nuLiga-Profil ↗</a>':'<span class="muted">Kein nuLiga-Profil zugeordnet</span>';
+    return '<tr><th scope="row">'+esc(fullName(p))+'</th><td>'+memberships.map(esc).join(', ')+'</td><td>'+(p.active?'Aktiv':'Archiviert')+'</td><td class="registry-actions"><button data-registry="player" data-id="'+esc(p.id)+'">Bearbeiten</button> '+(p.is_bsv?'<button data-stat="players" data-id="'+esc(p.id)+'">Partien &amp; Statistik</button> ':'')+profile+'</td></tr>';
+  }).join('');
+  const teamRows=teamPage.items.map(t=>'<tr><th scope="row">'+esc(t.name)+'</th><td>'+state.team_players.filter(tp=>tp.team_id===t.id).map(tp=>esc(fullName(players.find(p=>p.id===tp.player_id)))).join(', ')+'</td><td>'+(t.active?'Aktiv':'Archiviert')+'</td><td class="registry-actions"><button data-registry="team" data-id="'+esc(t.id)+'">Bearbeiten</button> '+(t.nuliga_profile?'<a class="button" href="'+esc(t.nuliga_profile)+'" target="_blank" rel="noopener noreferrer">nuLiga-Mannschaft ↗</a>':'<span class="muted">Kein nuLiga-Profil zugeordnet</span>')+'</td></tr>').join('');
+  root.innerHTML='<div class="page-title"><h1>'+(teamView?'Mannschaften':'Spieler')+'</h1></div><section class="panel"><button data-registry="'+(teamView?'team':'player')+'">'+(teamView?'Mannschaft':'Spieler')+' anlegen</button>'+(teamView?'':'<form id="player-search"><label>Spieler suchen (Name, Mannschaft oder ID)<input name="q" value="'+esc(playerSearch)+'"></label><button>Suchen</button></form>')+(teamView?teamPage.controls:page.controls)+'<div class="registry-list"><table><thead><tr><th>'+(teamView?'Mannschaft':'Spieler')+'</th><th>'+(teamView?'Spieler':'Mannschaft')+'</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>'+(teamView?teamRows:playerRows)+'</tbody></table></div></section>';
+  if(!teamView)root.innerHTML += '<section class="panel"><h2>Partien &amp; Statistik'+(entity?' · '+esc(entity.name||fullName(entity)):'')+'</h2><p>Zeitraum nach Spieltagsdatum. Nur abgeschlossene Partien zählen als Ergebnisse. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien.</p><form id="stats-filter">'+selectField('Übersicht','kind',f.kind,[['players','Spieler'],['teams','Mannschaften']])+selectField('Eintrag','id',f.id,[['','Bitte auswählen'],...(f.kind==='players'?players:teams).map(p=>[p.id,(p.name||fullName(p))+' · ID '+p.id])])+'<div class="form-row"><label>Von<input type="date" name="from" value="'+esc(f.from)+'"></label><label>Bis<input type="date" name="to" value="'+esc(f.to)+'"></label></div>'+selectField('Disziplin','discipline',f.discipline,[['','Alle'],...['8-Ball','9-Ball','10-Ball'].map(d=>[d,d])])+'<button>Auswerten</button></form><p><strong>'+count+' Ergebnisse · '+wins+' Siege · '+losses+' Niederlagen · Racks '+won+' : '+lost+'</strong></p>'+mp.controls+matchRows(mp.items)+'</section>';
 }
 let registryDialog;
 function openRegistry(title,content) {
@@ -502,8 +574,9 @@ function openRegistry(title,content) {
   registryDialog.onchange=e=>{
     if(e.target.id==='participant-team-add') {
       const form=e.target.form, selected=[...e.target.selectedOptions].map(o=>o.value);
+      for(const select of form.querySelectorAll('select[name^="assignment:"]'))if(!['exclude','none'].includes(select.value)&&!selected.includes(select.value))select.value='exclude';
       for(const tp of state.team_players.filter(tp=>selected.includes(tp.team_id))) {
-        const select=form.elements['assignment:'+tp.player_id];if(select && select.value==='exclude')select.value=tp.team_id;
+        const select=form.elements['assignment:'+tp.player_id];if(select && (select.value==='exclude'||!selected.includes(select.value)))select.value=tp.team_id;
       }
     }
   };
@@ -522,12 +595,12 @@ root.addEventListener('click',e=>{
     const kind=b.dataset.registry, item=(kind==='player'?state.players:state.teams).find(p=>p.id===b.dataset.id);
     const identity='<input type="hidden" name="id" value="'+esc(item?.id||'')+'"><input type="hidden" name="version" value="'+(item?.version??0)+'">';
     let fields=kind==='player'?field('Vorname','first_name',item?.first_name||'','text','maxlength="100"')+'<label>Zweiter Name (optional)<input name="second_name" maxlength="100" value="'+esc(item?.second_name||'')+'"></label>'+field('Nachname','last_name',item?.last_name||'','text','maxlength="100"')+'<p id="duplicate-warning" role="status"></p>'+(!item?selectField('Bei gleichem Namen','allow_duplicate','no',[['no','Doppeleintrag verhindern'],['yes','Ausdrücklich als andere Person anlegen']]):''):field('Mannschaftsname','name',item?.name||'','text','maxlength="100"')+multiSelect('Spielerzuordnung (Mehrfachauswahl mit Strg/Cmd)','player_ids',state.players.map(p=>[p.id,fullName(p)+' · ID '+p.id]),state.team_players.filter(tp=>tp.team_id===item?.id).map(tp=>tp.player_id));
-    openRegistry(kind==='player'?'Spieler verwalten':'BSV-Mannschaft verwalten','<form id="registry-'+kind+'">'+identity+fields+selectField('Künftige Vorauswahl','active',item?.active??1,[[1,'Aktiv'],[0,'Archiviert']])+'<p>Historische Namen, Zuordnungen und Ergebnisse bleiben erhalten.</p><button>Speichern</button></form>');
+    openRegistry(kind==='player'?'Spieler verwalten':'Mannschaft verwalten','<form id="registry-'+kind+'">'+identity+fields+selectField('Künftige Vorauswahl','active',item?.active??1,[[1,'Aktiv'],[0,'Archiviert']])+'<p>Historische Namen, Zuordnungen und Ergebnisse bleiben erhalten.</p><button>Speichern</button></form>');
   }
   if(b.dataset.participants) {
     const event=state.events.find(e=>e.id===Number(b.dataset.participants)), selected=state.event_teams.filter(t=>t.event_id===event.id).map(t=>t.team_id);
     const teams=state.teams.filter(t=>t.active), players=state.players.filter(p=>p.active);
-    openRegistry('Teilnehmer · '+event.name,'<form id="registry-participants"><input type="hidden" name="event_id" value="'+event.id+'"><input type="hidden" name="version" value="'+event.version+'">'+(event.kind==='Liga'?multiSelect('BSV-Mannschaften auswählen; Mitglieder werden vorausgewählt','team_ids',teams.map(t=>[t.id,t.name]),selected).replace('<select ','<select id="participant-team-add" '):'')+'<p>Je Spieler: nicht teilnehmen, ohne BSV-Mannschaft (auch Gegner) oder zugeordnete Mannschaft. Vorhandene Partien behalten ihre gespeicherte Zuordnung.</p>'+players.map(p=>{const ep=state.event_players.find(ep=>ep.event_id===event.id&&ep.player_id===p.id);return selectField(esc(fullName(p)+' · ID '+p.id),'assignment:'+p.id,ep?ep.team_id||'none':'exclude',[['exclude','Nicht teilnehmen'],['none','Teilnehmen ohne Mannschaft'],...teams.filter(t=>state.team_players.some(tp=>tp.team_id===t.id&&tp.player_id===p.id)).map(t=>[t.id,t.name])]);}).join('')+'<button>Teilnehmer speichern</button></form>');
+    openRegistry('Teilnehmer · '+event.name,'<form id="registry-participants"><input type="hidden" name="event_id" value="'+event.id+'"><input type="hidden" name="version" value="'+event.version+'">'+(event.kind==='Liga'?multiSelect('Mannschaften auswählen; Mitglieder werden vorausgewählt','team_ids',teams.map(t=>[t.id,t.name]),selected).replace('<select ','<select id="participant-team-add" '):'')+'<p>Je Spieler: nicht teilnehmen, ohne Mannschaft (auch Gegner) oder zugeordnete Mannschaft. Vorhandene Partien behalten ihre gespeicherte Zuordnung.</p>'+players.map(p=>{const ep=state.event_players.find(ep=>ep.event_id===event.id&&ep.player_id===p.id);return selectField(esc(fullName(p)+' · ID '+p.id),'assignment:'+p.id,ep?ep.team_id||'none':'exclude',[['exclude','Nicht teilnehmen'],['none','Teilnehmen ohne Mannschaft'],...teams.filter(t=>state.team_players.some(tp=>tp.team_id===t.id&&tp.player_id===p.id)).map(t=>[t.id,t.name])]);}).join('')+'<button>Teilnehmer speichern</button></form>');
   }
 });
 function handlePlayersSubmit(form) {
