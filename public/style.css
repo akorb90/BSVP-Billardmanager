@@ -1,4 +1,9 @@
 @font-face{font-family:System;src:local('Segoe UI')}
+.pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin:16px 0 24px;padding:16px;background:#101924;border:1px solid #26394d;border-radius:8px}
+.pagination label{margin:0}
+.pagination select{width:auto;min-width:100px}
+.pagination>span{font-size:13px;color:#a9bdd0;font-variant-numeric:tabular-nums}
+.pagination-buttons{display:flex;gap:8px;flex-wrap:wrap}
 .rental-history{overflow-x:auto;margin-top:24px}
 .rental-history table{width:100%;border-collapse:collapse;font-size:13px}
 .rental-history th,.rental-history td{text-align:left;padding:12px;border-bottom:1px solid #354b61;vertical-align:top}
