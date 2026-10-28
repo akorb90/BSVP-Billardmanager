@@ -56,3 +56,12 @@ Anforderungen und Abnahmekriterien:
 
 Einstellungsmenü erweitern um Logo Upload, eigenen Vereinsnamen und Farbschema Editierung.
 So soll der Manager auch für andere Vereine nutzbar werden.
+
+
+## FR-010 Dokumentation und Deployment überarbeiten
+
+Die Readme Datei muss auf das wesentliche reduziert werden um eine Instanz der Anwendung frisch bereitzustellen oder mit der aktuellen Version von Github zu aktualiseren.
+Im gleichen Zuge soll auch das gesamte Deployment vereinfacht werden.
+Prüfung ob image auf repository geladen werden kann, sodass am ausführenden client nur noch ein docker pull notwendig ist um die Version zu aktualisieren.
+
+Restliche Dokumentation in Doku Ordner abgelegt und sinnvoll strukturiert werden.
