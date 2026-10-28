@@ -1,5 +1,6 @@
 # Arbeitsweise für diesen Checkout
 
+- Weitere Arbeit erfolgt ausschließlich auf `main`; keine neuen Arbeitsbranches anlegen.
 - Vor jedem Commit die Änderungen dem Benutzer beschreiben.
 - Nach Änderungen relevante Prüfungen ausführen und die neue Variante mit `docker compose up -d --build --wait` in den bestehenden lokalen Stack deployen.
 - Den Stack danach aktiv lassen: Der Benutzer möchte Änderungen unmittelbar live prüfen.

@@ -2,6 +2,12 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-004: Seitennavigation für Listen — 2026-10-28
+
+- Veranstaltungen, alle Begegnungen, laufende Partien, Ergebnisse und Buchungshistorie erhalten eine eigene Seitennavigation mit 10, 20, 50 oder 100 Einträgen; Standard sind 20. Zurück/Weiter, Eintragsbereich, Gesamtzahl und Seitenzahl zeigen die Position; an den Grenzen sind die Schaltflächen deaktiviert.
+- Seitenauswahl und Größe bleiben pro Liste während der Sitzung bei Menüwechseln und automatischen Aktualisierungen erhalten. Größenwechsel beginnt auf Seite 1; nach Löschungen wird eine entfallene letzte Seite auf die letzte verfügbare Seite begrenzt. Formularentwürfe bleiben erhalten. Die feste Übersicht der acht Tische und Formularauswahlen bleiben vollständig.
+- Prüfung: 22 automatisierte Tests erfolgreich, einschließlich Seitengrößen, Blättern, leerer Listen, Löschungen, unabhängiger Listen und Aktualisierungen. Browserprüfung mit 105 separaten Beispieleinträgen. Im bestehenden lokalen Stack mit `docker compose up -d --build --wait` bereitgestellt; App gesund, Proxy aktiv und HTTPS über localhost sowie 127.0.0.1 mit validierter Zertifikatskette geprüft.
+
 ## Rabattfeld und Einstellungen — 2026-10-27
 
 - Preisauswahl-Dropdown entfernt; neue Vermietungen erhalten ein eigenes Rabattfeld (0–100 %) und eine sofortige Stundenpreisvorschau. Buchungskorrekturen bieten Stundenpreis und optionalen Rabatt als getrennte Felder, ohne Dropdown.

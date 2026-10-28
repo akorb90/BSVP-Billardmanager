@@ -49,6 +49,76 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
   return { ...app, element, links, location, window, posts, setAdmin(value) { admin = value; } };
 }
 
+async function pageClick(app, key, step) {
+  const button = { id: key + (step === 1 ? '-next' : '-previous'), dataset: { pageList: key, pageStep: String(step) } };
+  await app.element('#app').dispatch('click', { target: { closest: selector => selector === 'button[data-page-list]' ? button : null } });
+}
+async function pageSize(app, key, size) {
+  await app.element('#app').dispatch('change', { target: { id: key + '-size', dataset: { pageSize: key }, value: String(size) } });
+}
+function listFixtures(count = 105) {
+  return {
+    events: Array.from({ length: count }, (_, i) => ({ id: i + 1, name: 'Spieltag ' + (i + 1), status: 'closed' })),
+    matches: Array.from({ length: count }, (_, i) => ({ id: i + 1, event_id: i + 1, status: 'finished', player_a: 'Anna ' + (i + 1), player_b: 'Ben', a: 5, b: 2, target: 5 })),
+    rentals: Array.from({ length: count }, (_, i) => ({ id: i + 1, table_no: 1, status: 'finished', started_at: 1000, ended_at: 61000, duration_ms: 60000, billed_minutes: 1, hourly_cents: 900, base_cents: 900, total_cents: 15, adjustment_percent: 0 }))
+  };
+}
+test('FR-004: alle Listen begrenzen Einträge, blättern und erlauben jede Seitengröße', async () => {
+  for (const [view, key, row] of [
+    ['ergebnisse', 'matches-ergebnisse', /class="match-row"/g],
+    ['spieltage', 'matches-spieltage', /class="match-row"/g],
+    ['spieltage', 'events', /class="event-card"/g],
+    ['vermietung', 'rentals', /<tr><td>/g],
+  ]) {
+    const fixtures = listFixtures();
+    const app = await frontend('/#' + view, fixtures);
+    const markup = () => app.element('#app').innerHTML;
+    const count = () => [...markup().matchAll(row)].length;
+    assert.equal(count(), 20);
+    assert.match(markup(), /1–20 von 105 · Seite 1 von 6/);
+    assert.match(markup(), new RegExp(`id="${key}-previous"[^>]*disabled`));
+    await pageClick(app, key, 1);
+    assert.match(markup(), /21–40 von 105 · Seite 2 von 6/);
+    await app.refresh(true);
+    assert.match(markup(), /21–40 von 105 · Seite 2 von 6/);
+    await pageClick(app, key, -1);
+    assert.match(markup(), /1–20 von 105 · Seite 1 von 6/);
+    for (const size of [10, 20, 50, 100]) {
+      await pageSize(app, key, size);
+      assert.equal(count(), size);
+      assert.match(markup(), new RegExp(`id="${key}-size"[^]*?<option value="${size}" selected`));
+    }
+    await pageClick(app, key, 1);
+    assert.equal(count(), 5);
+    assert.match(markup(), /101–105 von 105 · Seite 2 von 2/);
+    assert.match(markup(), new RegExp(`id="${key}-next"[^>]*disabled`));
+    await pageSize(app, key, 7);
+    assert.equal(count(), 5);
+    // Deletion during polling clamps an obsolete last page; empty lists stay usable.
+    fixtures.events.splice(0); fixtures.matches.splice(0); fixtures.rentals.splice(0);
+    await app.refresh(true);
+    assert.equal(count(), 0);
+    assert.match(markup(), /0–0 von 0 · Seite 1 von 1/);
+    assert.equal(app.posts.length, 0);
+  }
+});
+test('FR-004: Veranstaltungen und Begegnungen behalten unabhängige Seiten beim Ansichtswechsel', async () => {
+  const fixtures = listFixtures(25);
+  fixtures.matches.unshift({ ...fixtures.matches[0], id: 1000, status: 'live' });
+  const app = await frontend('/#spieltage', fixtures);
+  await pageClick(app, 'events', 1);
+  assert.match(app.element('#app').innerHTML, /21–25 von 25 · Seite 2 von 2/);
+  assert.match(app.element('#app').innerHTML, /1–20 von 26 · Seite 1 von 2/);
+  app.location.hash = '#ergebnisse'; await app.window.dispatch('hashchange');
+  assert.equal([...app.element('#app').innerHTML.matchAll(/class="match-row"/g)].length, 20);
+  assert.match(app.element('#app').innerHTML, /1–20 von 25/);
+  app.location.hash = '#spieltage'; await app.window.dispatch('hashchange');
+  assert.match(app.element('#app').innerHTML, /21–25 von 25 · Seite 2 von 2/);
+  app.location.hash = '#uebersicht'; await app.window.dispatch('hashchange');
+  assert.equal([...app.element('#app').innerHTML.matchAll(/class="match-row"/g)].length, 1);
+  assert.match(app.element('#app').innerHTML, /1–1 von 1 · Seite 1 von 1/);
+});
+
 test('Mietabschluss ohne Texteingabe; Löschung und Grundpreis mit exakter Bestätigung',async()=>{
   const rentals=[{id:1,table_no:2,status:'active',version:0,started_at:Date.now()-61000,hourly_cents:900}];
   const app=await frontend('/#vermietung',{rentals});
