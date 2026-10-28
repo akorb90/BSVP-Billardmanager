@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { loadConfig } from './config.js';
 import { migrateRentals, rentalService } from './rentals.js';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -327,7 +328,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   mkdirSync(process.env.DATA_DIR || 'data', { recursive: true });
-  const config = JSON.parse(readFileSync(process.env.CONFIG_FILE || 'secrets/config.json', 'utf8'));
+  const config = loadConfig(process.env.CONFIG_FILE || 'secrets/config.json');
   const server = createApp({ dbPath: `${process.env.DATA_DIR || 'data'}/billard.sqlite`, config, origin: process.env.APP_ORIGIN || 'http://localhost:3000' });
   server.listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Billardmanager hört auf Port ' + (process.env.PORT || 3000)));
   for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => server.close());

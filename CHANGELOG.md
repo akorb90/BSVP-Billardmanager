@@ -88,3 +88,8 @@ Erster Draft für Liga-Spieltage und Turniere, noch ohne Tischgebühren.
 - Automatisierte Domain-/API-Tests und GitHub-Actions-Prüfungen.
 
 Validierung vor dem ersten Commit: lokale Node-Tests erfolgreich, JavaScript-Syntaxprüfung und Compose-Konfigurationsprüfung erfolgreich. Browserdurchlauf mit flüchtigen Testdaten: Anmeldung, Veranstaltung, Begegnung, Tischstart, Punkt und Breakwechsel erfolgreich; Tischansicht bei 1280×720 visuell geprüft. Docker-Image-Build und HTTPS-/Volume-Betrieb noch nicht ausgeführt, da Docker Desktop Engine auf dem Entwicklungsgerät nicht läuft. Tests auf echten Tablets und Restore-Probe stehen vor produktivem Einsatz aus.
+# Docker Desktop: fehlende Sicherheitskonfiguration
+
+- Leere, von Docker angelegte `secrets/config.json`-Ordner werden beim Setup unter einem freien Sicherungsnamen erhalten; vorhandene Dateien und nicht leere Ordner werden nicht überschrieben.
+- Die Konfigurationsdatei wird schreibgeschützt ohne automatische Host-Pfaderstellung eingebunden. Startfehler nennen Setup und erneutes Compose-Deployment als Abhilfe.
+- Regressionstests prüfen Erstinstallation, Wiederholung, Ordner-Reparatur und Konfigurationsdiagnosen; der isolierte Docker-Smoke-Test nutzt dieselbe Einbindung.

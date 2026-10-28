@@ -50,11 +50,19 @@ Voraussetzung: Node.js 24 LTS und Docker Desktop mit **Linux-Containern** (WSL 2
 ```powershell
 npm run setup
 Copy-Item .env.example .env
-docker compose up -d --build
+docker compose up -d --build --wait
 docker compose ps
 ```
 
 `setup` erzeugt ein zufälliges Admin-Passwort und acht Tischschlüssel. Das Passwort wird einmal ausgegeben: im Passwortmanager speichern. `secrets/config.json` wird niemals überschrieben. Diese Datei und `.env` sind von Git und Docker-Build-Kontext ausgeschlossen. Unter Windows den Zugriff auf `secrets` über NTFS-Berechtigungen auf die betreuenden Administratoren begrenzen; `mode: 0600` allein setzt dort keine verlässlichen ACLs.
+
+### Docker-Startfehler: EISDIR / config.json ist ein Ordner
+
+Wird Compose vor `npm run setup` gestartet, kann Docker Desktop den fehlenden Dateipfad `secrets/config.json` als leeren Ordner anlegen. Die App kann diesen Ordner nicht als JSON lesen (`EISDIR`). Die Konfiguration wird jetzt schreibgeschützt mit `create_host_path: false` eingebunden; fehlende Host-Dateien sollen damit bereits beim Containerstart auffallen.
+
+Im Repository `npm run setup` ausführen. Ein leerer `config.json`-Ordner wird unter einem freien Namen `config.json.directory-backup[-N]` erhalten und eine neue Konfigurationsdatei angelegt. Nicht leere Ordner und vorhandene Dateien bleiben unverändert; deren Inhalt zuerst prüfen und gegebenenfalls die vorhandene Sicherheitskonfiguration wiederherstellen. Niemals bestehende Zugangsdaten ersetzen oder Datenvolumes löschen, um diesen Fehler zu beheben.
+
+Danach `docker compose up -d --build --wait` ausführen. Ein bloßer Neustart des alten Containers übernimmt die korrigierte Einbindung nicht. Falls Windows das Umbenennen des leeren Ordners wegen der laufenden Einbindung verweigert, zuerst `docker compose stop app` ausführen und Setup wiederholen. Das neue Admin-Passwort sicher aufbewahren.
 
 Standardmäßig ist ausschließlich `https://localhost` erreichbar. Caddy erstellt eine interne Zertifizierungsstelle. Deren Stammzertifikat muss vor Browsernutzung als vertrauenswürdig installiert werden:
 

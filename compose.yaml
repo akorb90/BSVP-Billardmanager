@@ -4,10 +4,14 @@ services:
     restart: unless-stopped
     environment:
       APP_ORIGIN: https://${BILLARD_HOST:-localhost}
-    secrets:
-      - app_config
     volumes:
       - billard_data:/data
+      - type: bind
+        source: ./secrets/config.json
+        target: /run/secrets/app_config
+        read_only: true
+        bind:
+          create_host_path: false
     read_only: true
     tmpfs:
       - /tmp
@@ -49,6 +53,3 @@ volumes:
   billard_data:
   caddy_data:
   caddy_config:
-secrets:
-  app_config:
-    file: ./secrets/config.json

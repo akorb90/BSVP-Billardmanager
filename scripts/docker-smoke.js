@@ -25,14 +25,18 @@ writeFileSync(join(directory, 'compose.yaml'), `services:
   app:
     environment:
       APP_ORIGIN: ${origin}
+    volumes:
+      - type: bind
+        source: ${JSON.stringify(join(directory, 'config.json').replaceAll('\\', '/'))}
+        target: /run/secrets/app_config
+        read_only: true
+        bind:
+          create_host_path: false
   proxy:
     environment:
       BILLARD_HOST: localhost
     ports: !override
       - "127.0.0.1:${port}:443"
-secrets:
-  app_config:
-    file: ${JSON.stringify(join(directory, 'config.json').replaceAll('\\', '/'))}
 `);
 const composeArgs = ['compose', '--project-name', project, '--env-file', join(root, '.env.example'), '-f', join(root, 'compose.yaml'), '-f', join(directory, 'compose.yaml')];
 function docker(args, capture = false) {
