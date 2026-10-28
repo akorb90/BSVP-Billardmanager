@@ -15,7 +15,7 @@ ALTER TABLE matches ADD COLUMN team_b_name TEXT;
 `;
 export const playerName = p => [p.first_name,p.second_name,p.last_name].filter(Boolean).join(' ');
 
-export function playerService({db,transaction,fail,text,log,openEvent,touchEvent}) {
+export function playerService({db,transaction,fail,text,log,openEvent,getEvent,touchEvent}) {
   const all = name => db.prepare(`SELECT * FROM ${name}`).all();
   const get = async (table,id) => {const row=await db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id);if(!row)throw fail(400,'Spieler oder Mannschaft nicht gefunden.');return row;};
   const ids = value => {if(!Array.isArray(value)||value.length>200||value.some(v=>typeof v!=='string')||new Set(value).size!==value.length)throw fail(400,'Bitte eindeutige Einträge auswählen (maximal 200).');return value;};
@@ -31,18 +31,19 @@ export function playerService({db,transaction,fail,text,log,openEvent,touchEvent
     },
     async save(kind,body) {return transaction(async()=>{
       const table=kind==='player'?'players':'teams', before=body.id?await get(table,body.id):null;
+      if(before?.event_id)throw fail(400,'Gastspieler können nur in ihrem Spieltag verwendet werden.');
       if(before && before.version!==body.version)throw fail(409,'Eintrag wurde geändert. Bitte neu öffnen.');
       const id=before?.id || randomUUID(), active=body.active===undefined?1:body.active;
       if(![0,1].includes(active))throw fail(400,'Ungültiger Auswahlstatus.');
       if(kind==='player') {
         const first=text(body.first_name), last=text(body.last_name), second=body.second_name===''||body.second_name===undefined?'':text(body.second_name);
-        const duplicates=(await all('players')).filter(p=>p.id!==id && playerName(p).toLocaleLowerCase('de')===playerName({first_name:first,second_name:second,last_name:last}).toLocaleLowerCase('de'));
+        const duplicates=(await all('players')).filter(p=>!p.event_id && p.id!==id && playerName(p).toLocaleLowerCase('de')===playerName({first_name:first,second_name:second,last_name:last}).toLocaleLowerCase('de'));
         if(!before && duplicates.length && body.allow_duplicate!==true)throw fail(409,'Möglicher Doppeleintrag: '+duplicates.map(p=>playerName(p)+' · ID '+p.id).join(', ')+'. Bitte ausdrücklich als andere Person bestätigen.');
         if(before)await db.prepare('UPDATE players SET first_name=?,second_name=?,last_name=?,active=?,version=version+1 WHERE id=?').run(first,second,last,active,id);
         else await db.prepare('INSERT INTO players(id,first_name,second_name,last_name,active) VALUES(?,?,?,?,?)').run(id,first,second,last,active);
       } else {
         const name=text(body.name), members=ids(body.player_ids);
-        for(const pid of members)await get('players',pid);
+        for(const pid of members)if((await get('players',pid)).event_id)throw fail(400,'Gastspieler gehören nur zu ihrem Spieltag.');
         if(before)await db.prepare('UPDATE teams SET name=?,active=?,version=version+1 WHERE id=?').run(name,active,id);
         else await db.prepare('INSERT INTO teams(id,name,active) VALUES(?,?,?)').run(id,name,active);
         await db.prepare('DELETE FROM team_players WHERE team_id=?').run(id);
@@ -51,28 +52,49 @@ export function playerService({db,transaction,fail,text,log,openEvent,touchEvent
       await log('admin',kind+':save',null,{before,after:await get(table,id)});return {id};
     });},
     async participants(eventId,body) {return transaction(async()=>{
-      const event=await openEvent(eventId);
+      const event=body.start===true?await getEvent(eventId):await openEvent(eventId);
       if(event.version!==body.version)throw fail(409,'Spieltag wurde geändert. Bitte neu öffnen.');
+      if(body.start===true){
+        const plan=await db.prepare('SELECT * FROM event_planning WHERE event_id=?').get(eventId);
+        if(event.status!=='open'||!plan||plan.started)throw fail(409,'Spieltag wurde bereits gestartet oder abgeschlossen.');
+      }
       const players=ids(body.player_ids), teams=ids(body.team_ids);
+      if(event.kind==='Liga'&&body.start===true&&teams.length!==2)throw fail(400,'Bitte zwei unterschiedliche Mannschaften auswählen.');
       if(event.kind!=='Liga' && teams.length)throw fail(400,'Mannschaften sind für Liga-Spieltage vorgesehen.');
-      for(const id of players)if(!(await get('players',id)).active)throw fail(400,'Archivierte Spieler sind nicht mehr auswählbar.');
+      for(const id of players){const p=await get('players',id);if(!p.active||(p.event_id&&p.event_id!==eventId))throw fail(400,'Bitte aktive Spieler dieses Spieltags auswählen.');}
       for(const id of teams)if(!(await get('teams',id)).active)throw fail(400,'Archivierte Mannschaften sind nicht mehr auswählbar.');
       const assignments=body.assignments || {};
+      const guests=body.guests??[];
+      if(!Array.isArray(guests)||guests.length>20)throw fail(400,'Maximal 20 Gastspieler pro Vorgang.');
+      for(const guest of guests){
+        if(!guest||!teams.includes(guest.team_id))throw fail(400,'Gastspieler einer ausgewählten Mannschaft zuordnen.');
+        const name=text(guest.name,100),parts=name.split(/\s+/),first=parts.shift(),last=parts.join(' ')||'Gast';
+        const id=randomUUID();
+        await db.prepare('INSERT INTO players(id,first_name,last_name,event_id) VALUES(?,?,?,?)').run(id,first,last,eventId);
+        players.push(id);assignments[id]=guest.team_id;
+      }
+      const slots=await db.prepare('SELECT * FROM event_match_slots WHERE event_id=?').all(eventId);
+      for(const slot of slots)for(const key of ['player_a_id','player_a2_id','player_b_id','player_b2_id'])if(slot[key]&&!players.includes(slot[key]))throw fail(409,'Spieler ist bereits einer Partie zugeordnet. Zuerst die Aufstellung anpassen.');
       await db.prepare('DELETE FROM event_players WHERE event_id=?').run(eventId);
       await db.prepare('DELETE FROM event_teams WHERE event_id=?').run(eventId);
       for(const id of teams)await db.prepare('INSERT INTO event_teams VALUES(?,?)').run(eventId,id);
       for(const id of players) {
         const team=assignments[id] || null;
-        if(team && (!teams.includes(team)||!await db.prepare('SELECT 1 FROM team_players WHERE team_id=? AND player_id=?').get(team,id)))throw fail(400,'Mannschaft und Spielerzuordnung passen nicht zusammen.');
+        if(team && (!teams.includes(team)||((await get('players',id)).event_id!==eventId&&!await db.prepare('SELECT 1 FROM team_players WHERE team_id=? AND player_id=?').get(team,id))))throw fail(400,'Mannschaft und Spielerzuordnung passen nicht zusammen.');
         await db.prepare('INSERT INTO event_players VALUES(?,?,?)').run(eventId,id,team);
       }
-      await touchEvent(eventId);await log('admin','event:participants',null,{event_id:eventId,players,teams,assignments});return {ok:true};
+      if(body.start===true){
+        await db.prepare('UPDATE event_planning SET started=1 WHERE event_id=?').run(eventId);
+        for(let slot=1;slot<=10;slot++)await db.prepare('INSERT INTO event_match_slots(event_id,slot) VALUES(?,?) ON CONFLICT(event_id,slot) DO NOTHING').run(eventId,slot);
+      }
+      await touchEvent(eventId);await log('admin','event:participants',null,{event_id:eventId,players,teams,assignments,guests,start:body.start===true});return {ok:true};
     });},
     async resolve(eventId,body,previous={}) {
       const result={};
       for(const side of ['a','b']) {
         const key='player_'+side+'_id', id=Object.hasOwn(body,key)?body[key]||null:previous[key]||null;
         result[key]=id;
+        if(id){const p=await get('players',id);if(p.event_id&&p.event_id!==eventId)throw fail(400,'Gastspieler gehören nur zu ihrem Spieltag.');}
         if(id && id===previous[key]) {result['player_'+side]=text(body['player_'+side]??previous['player_'+side],302);result['team_'+side+'_id']=previous['team_'+side+'_id'];result['team_'+side+'_name']=previous['team_'+side+'_name'];continue;}
         if(id) {
           const p=await get('players',id), participation=await db.prepare('SELECT * FROM event_players WHERE event_id=? AND player_id=?').get(eventId,id);

@@ -26,7 +26,7 @@ export async function backupService({ db, transaction, fail, log }) {
     }
   };
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11].includes(backup.schema) || version!==12 || backup.checksum!==digest(backup.data)) return backup;
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11,12].includes(backup.schema) || version!==13 || backup.checksum!==digest(backup.data)) return backup;
     let data={...backup.data};
     if (backup.schema===6) {
       if (Object.hasOwn(data,'branding')) return backup;
@@ -47,8 +47,10 @@ export async function backupService({ db, transaction, fail, log }) {
     if(Object.hasOwn(data,'event_planning')||Object.hasOwn(data,'nuliga_schedule_sync'))return backup;
     data.event_planning=data.events.map(e=>({event_id:e.id,started:1,source_id:null,metadata:'{}'}));data.nuliga_schedule_sync=[];
     }
-    if(Object.hasOwn(data,'event_match_slots')||!Array.isArray(data.events))return backup;data.event_match_slots=data.events.flatMap(e=>Array.from({length:10},(_,i)=>({event_id:e.id,slot:i+1,match_id:null,player_a_id:null,player_a2_id:null,player_b_id:null,player_b2_id:null,table_no:null,target:null,version:0})));
-    return {...backup,schema:12,data,checksum:digest(data)};
+    if(backup.schema<12){if(Object.hasOwn(data,'event_match_slots')||!Array.isArray(data.events))return backup;data.event_match_slots=data.events.flatMap(e=>Array.from({length:10},(_,i)=>({event_id:e.id,slot:i+1,match_id:null,player_a_id:null,player_a2_id:null,player_b_id:null,player_b2_id:null,table_no:null,target:null,version:0})));}
+    if(!Array.isArray(data.players))return backup;
+    data.players=data.players.map(p=>({...p,event_id:p.event_id??null}));
+    return {...backup,schema:13,data,checksum:digest(data)};
   };
   const validate = async backup => {
     backup=upgrade(backup);
@@ -70,7 +72,10 @@ export async function backupService({ db, transaction, fail, log }) {
           }
         }
         const data=backup.data, has=(table,id)=>data[table].some(r=>r.id===id);
-        for(const r of data.team_players)if(!has('teams',r.team_id)||!has('players',r.player_id))throw new Error('team member');
+        for(const p of data.players)if(p.event_id!==null&&(!Number.isSafeInteger(p.event_id)||!has('events',p.event_id)))throw new Error('guest event');
+        for(const r of data.team_players)if(!has('teams',r.team_id)||!has('players',r.player_id)||data.players.find(p=>p.id===r.player_id).event_id!==null)throw new Error('team member');
+        for(const r of data.event_players)if(data.players.some(p=>p.id===r.player_id&&p.event_id!==null&&p.event_id!==r.event_id))throw new Error('guest participant');
+        for(const m of [...data.matches,...data.event_match_slots])for(const key of ['player_a_id','player_b_id','player_a2_id','player_b2_id'])if(data.players.some(p=>p.id===m[key]&&p.event_id!==null&&p.event_id!==m.event_id))throw new Error('guest match');
         for(const r of data.event_teams)if(!has('events',r.event_id)||!has('teams',r.team_id))throw new Error('event team');
         for(const r of data.event_players)if(!has('events',r.event_id)||!has('players',r.player_id)||(r.team_id && !data.event_teams.some(t=>t.event_id===r.event_id&&t.team_id===r.team_id)))throw new Error('participant');
         for(const m of data.matches) {

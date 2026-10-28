@@ -81,7 +81,8 @@ test('FR-002 warning UI: exact input, paste/drop protection, click, cancellation
     if(!elements.has(id))elements.set(id,{value:'',disabled:false,listeners:{},addEventListener(type,fn){this.listeners[type]=fn;},showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},focus(){}});
     return elements.get(id);
   };
-  const context=vm.createContext({document:{querySelector:element},busy:false,rentalCorrection:undefined,refresh:async()=>{},message:()=>{}});
+  let now=1000;const timers=new Map();let timerId=0;
+  const context=vm.createContext({document:{querySelector:element},busy:false,rentalCorrection:undefined,refresh:async()=>{},message:()=>{},Date:{now:()=>now},setInterval:fn=>{timers.set(++timerId,fn);return timerId;},clearInterval:id=>timers.delete(id)});
   vm.runInContext(block+'\nglobalThis.openWarning=showWarning;globalThis.check=checkWarning;',context);
   const input=element('#warning-input'),save=element('#warning-save');
   let calls=0,valid=true;
@@ -96,4 +97,14 @@ test('FR-002 warning UI: exact input, paste/drop protection, click, cancellation
   open();input.value='EVENT LÖSCHEN';input.listeners.input();valid=false;context.check();assert.equal(input.value,'');assert.equal(save.disabled,true);await save.listeners.click();assert.equal(calls,0);
   valid=true;open();assert.equal(input.value,'');input.value='EVENT LÖSCHEN';input.listeners.input();await save.listeners.click();assert.equal(calls,1);assert.equal(element('#warning-dialog').open,false);
   open();element('#warning-dialog').close();await save.listeners.click();assert.equal(calls,1);
+  const delayed=()=>context.openWarning({phrase:null,label:'OK',delayMs:5000,summary:'Endstand',valid:()=>valid,run:async()=>{calls++;}});
+  const advance=ms=>{now+=ms;for(const fn of [...timers.values()])fn();};
+  delayed();assert.equal(element('#warning-entry').hidden,true);assert.equal(save.disabled,true);assert.equal(save.textContent,'OK (5 s)');
+  advance(4999);await save.listeners.click();assert.equal(calls,1);assert.equal(save.disabled,true);
+  advance(1);assert.equal(save.disabled,false);assert.equal(save.textContent,'OK');assert.equal(calls,1,'countdown never finishes automatically');
+  await save.listeners.click();assert.equal(calls,2);assert.equal(timers.size,0);
+  delayed();advance(4000);element('#warning-cancel').listeners.click();assert.equal(timers.size,0);
+  delayed();advance(1000);assert.equal(save.disabled,true,'reopening starts a fresh five seconds');
+  valid=false;advance(4000);assert.equal(save.disabled,true);await save.listeners.click();assert.equal(calls,2);assert.equal(timers.size,0);
+  valid=true;delayed();advance(1000);open();assert.equal(timers.size,0,'other warnings cancel the countdown');assert.equal(element('#warning-entry').hidden,false);
 });

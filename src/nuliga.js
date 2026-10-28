@@ -97,7 +97,7 @@ export function nuLigaService({db,transaction,log,fail,collect=collectNuLiga}) {
             const saved={...next};
             if(current&&!overwrite)for(const key of Object.keys(next))if(JSON.stringify(current[key])!==JSON.stringify(previous[key])){saved[key]=current[key];summary.preserved++;}
             if(!old){
-              if(kind==='player')await db.prepare('INSERT INTO players VALUES(?,?,?,?,?,0)').run(id,saved.first_name,saved.second_name,saved.last_name,saved.active);
+              if(kind==='player')await db.prepare('INSERT INTO players(id,first_name,second_name,last_name,active,version) VALUES(?,?,?,?,?,0)').run(id,saved.first_name,saved.second_name,saved.last_name,saved.active);
               else await db.prepare('INSERT INTO teams VALUES(?,?,?,0)').run(id,saved.name,saved.active);
               summary.created++;
             } else if(JSON.stringify(current)!==JSON.stringify(saved)) {

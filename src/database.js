@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { openLegacyDatabase } from './legacy-db.js';
 
-export const SCHEMA_VERSION = 12; // Logical JSON schema is shared with legacy migration and versioned backups.
+export const SCHEMA_VERSION = 13; // Logical JSON schema is shared with legacy migration and versioned backups.
 export const quote = name => '"' + name.replaceAll('"', '""') + '"';
 const lock = 12012026;
 const numeric = value => {
@@ -96,6 +96,7 @@ export async function openDatabase({ dbPath, databaseUrl, legacyPath, config }) 
         if([8,9].includes(installedVersion)) {await db.exec(nuligaSchema.replace(/\bINTEGER\b/g,'BIGINT'));}
         if([8,9,10].includes(installedVersion)){await db.exec(scheduleSchema.replace(/\bINTEGER\b/g,'BIGINT'));}
         if([8,9,10,11].includes(installedVersion)){await db.exec(leagueSchema.replace(/\bINTEGER\b/g,'BIGINT'));await db.exec('ALTER TABLE matches DROP CONSTRAINT matches_target_check;ALTER TABLE matches ADD CONSTRAINT matches_target_check CHECK(target BETWEEN 1 AND 999);UPDATE _schema SET version=12 WHERE id=1');}
+        if([8,9,10,11,12].includes(installedVersion))await db.exec('ALTER TABLE players ADD COLUMN event_id BIGINT;UPDATE _schema SET version=13 WHERE id=1');
         else if (installedVersion !== SCHEMA_VERSION) throw new Error('Die Datenbank benötigt eine passende App-Version.');
         return;
       }

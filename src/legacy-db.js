@@ -16,7 +16,7 @@ export function openLegacyDatabase(dbPath, config) {
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 12) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 13) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -67,5 +67,6 @@ export function openLegacyDatabase(dbPath, config) {
   if (schema < 10) db.exec('BEGIN IMMEDIATE;'+nuligaSchema+'PRAGMA user_version=10; COMMIT;');
   if (schema < 11) db.exec('BEGIN IMMEDIATE;'+scheduleSchema+'PRAGMA user_version=11; COMMIT;');
   if(schema<12)migrateLeague(db);
+  if(schema<13)db.exec('BEGIN IMMEDIATE;ALTER TABLE players ADD COLUMN event_id INTEGER;PRAGMA user_version=13;COMMIT;');
   return db;
 }

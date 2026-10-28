@@ -38,12 +38,13 @@ try {
     INSERT INTO audit VALUES(45,'2026-10-28 12:34:56','admin','fixture',9,'{"preserved":true}');
     UPDATE branding SET club_name='Migration Verein',primary_color='#147eb7',version=5;`);
   await sqlite.prepare('UPDATE branding SET logo=?').run('data:image/png;base64,' + readFileSync('./public/assets/bsv-logo.png').toString('base64'));
-  await sqlite.exec(`INSERT INTO players VALUES('p1','Anna','Maria','Altname',1,0),('p2','Ben','','Gegner',1,0);
+  await sqlite.exec(`INSERT INTO players(id,first_name,second_name,last_name,active,version) VALUES('p1','Anna','Maria','Altname',1,0),('p2','Ben','','Gegner',1,0);
     INSERT INTO teams VALUES('t1','BSV I',1,0);
     INSERT INTO team_players VALUES('t1','p1');
     INSERT INTO event_teams VALUES(7,'t1');
     INSERT INTO event_players VALUES(7,'p1','t1'),(7,'p2',NULL);
     UPDATE matches SET player_a_id='p1',player_b_id='p2',team_a_id='t1',team_a_name='Historisches Team' WHERE id=9;`);
+  await sqlite.exec("INSERT INTO players(id,first_name,last_name,event_id) VALUES('guest','Gast','Spieltag',7);INSERT INTO event_players VALUES(7,'guest','t1');");
   const syncFixture={players:[{source_id:'555',first_name:'Import',second_name:'',last_name:'Spieler'}],teams:[{source_id:'666',name:'Importierter Gegner',player_ids:['555']}],leagues:[{name:'Testliga'}]};
   const sync=nuLigaService({db:sqlite,transaction:fn=>sqlite.transaction(fn),log:async()=>{},fail:(status,message)=>Object.assign(new Error(message),{status}),collect:async()=>syncFixture});
   assert.equal((await sync.sync()).created,2);
@@ -97,8 +98,12 @@ try {
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a,'Alt A');
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,12);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,13);
   assert.deepEqual(await upgrade.prepare('SELECT * FROM players').all(),[]);
+  await upgrade.exec("INSERT INTO players(id,first_name,last_name) VALUES('existing','Alt','Spieler');ALTER TABLE players DROP COLUMN event_id;UPDATE _schema SET version=12;");
+  await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
+  assert.equal((await upgrade.prepare("SELECT * FROM players WHERE id='existing'").get()).event_id,null);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,13);
   await close(upgrade);
   // An incompatible source must roll back schema creation and must not mark migration complete.
   const badPath = join(dir, 'bad.sqlite'), bad = await open({ dbPath: badPath });

@@ -55,7 +55,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
     if (body.action !== action || body.confirmation !== phrase) throw fail(400, 'Die Aktion muss mit dem angezeigten Text exakt bestätigt werden.');
   };
   const today = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Europe/Berlin'}).format(new Date());
-  const players=playerService({db,transaction,fail,text,log,openEvent,touchEvent});
+  const players=playerService({db,transaction,fail,text,log,openEvent,getEvent,touchEvent});
   const nuliga=nuLigaService({db,transaction,fail,log,collect:collectNuLiga});
   const schedule=scheduleService({db,transaction,fail,log,nextId,collect:collectNuLigaSchedule});
   const eventState=async()=>{const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null};});};
@@ -253,6 +253,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             await db.prepare('DELETE FROM event_teams WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM event_match_slots WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM event_planning WHERE event_id=?').run(id);
+            await db.prepare('DELETE FROM players WHERE event_id=?').run(id);
             await db.prepare('DELETE FROM events WHERE id=?').run(id);
           }
           await log('admin','event:'+action,null,{before:event,matches:action==='edit'?undefined:matches,after:action==='edit'?eventFields(body):undefined});

@@ -31,7 +31,7 @@ test('FR-009: Vereinsgestaltung, Rechte, Konflikte, Upload, Neustart und Sicheru
     const page=await (await fetch(base+'/')).text();assert.ok(page.includes('BC München &lt;&amp;&gt; 🎱'));assert.ok(!page.includes('BSV PFAFFENHOFEN'));
     const css=await (await fetch(base+'/branding.css')).text();assert.ok(css.includes('--primary:#b13c27'));assert.ok(css.includes('--background:#ffffff'));
     const image=await fetch(base+'/api/branding/logo');assert.equal(image.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await image.arrayBuffer()),Buffer.from(logo.split(',')[1],'base64'));
-    const backup=(await call('/api/backups/export')).body;assert.equal(backup.schema,12);assert.equal(backup.data.branding[0].logo,logo);
+    const backup=(await call('/api/backups/export')).body;assert.equal(backup.schema,13);assert.equal(backup.data.branding[0].logo,logo);
     for(const key of ['club_name','background','surface','text'])assert.equal(backup.data.branding[0][key],value[key]);
     assert.equal(backup.data.branding[0].primary_color,value.primary);
     assert.ok(!backup.data.audit.find(r=>r.action==='settings:branding').detail.includes('base64'));

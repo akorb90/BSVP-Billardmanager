@@ -189,7 +189,7 @@ root.addEventListener('submit', e => {
 });
 root.addEventListener('click', e => {
   const button = e.target.closest('button'); if (!button) return;
-  if(button.dataset.eventStart&&!busy){const event=state.events.find(e=>e.id===Number(button.dataset.eventStart));mutate(async()=>{await api('/api/events/'+event.id+'/start',{version:event.version});selectedEventId=event.id;drafts.delete('match');view='spieltage';history.replaceState(null,'','/#spieltage/'+event.id);});return;}
+  if(button.dataset.eventStart&&!busy){const event=state.events.find(e=>e.id===Number(button.dataset.eventStart));if(event.kind==='Liga'){openParticipants(event,true);return;}mutate(async()=>{await api('/api/events/'+event.id+'/start',{version:event.version});selectedEventId=event.id;drafts.delete('match');view='spieltage';history.replaceState(null,'','/#spieltage/'+event.id);});return;}
   if(button.id==='table-settings-reload') { mutate(async()=>{drafts.delete('table-settings');root.querySelector('#table-settings')?.remove();}); return; }
   if(button.dataset.lag && current && !busy) { setupChoice={id:current.id,version:current.version,lag:button.dataset.lag}; preparation(current); }
   if(button.hasAttribute('data-setup-back') && current && !busy) { setupChoice=undefined; preparation(current); }
@@ -198,7 +198,7 @@ root.addEventListener('click', e => {
   if (button.dataset.finish && !busy) {
     const m = table ? current : state.matches.find(m => m.id === Number(button.dataset.finish));
     if (!m) return;
-    showWarning({phrase:'SPIEL ABSCHLIESSEN', label:'Spiel abschließen', summary:'<p>'+esc(m.player_a)+' '+m.a+' : '+m.b+' '+esc(m.player_b)+'</p><p>Der Endstand wird gespeichert und der Tisch freigegeben.</p>', valid:()=> (table?current:state.matches.find(v=>v.id===m.id))?.version===m.version, run:()=>api('/api/matches/'+m.id+'/finish',{version:m.version,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'})});
+    showWarning({phrase:null, label:'OK', delayMs:5000, summary:'<p>'+esc(m.player_a)+' '+m.a+' : '+m.b+' '+esc(m.player_b)+'</p><p>Der Endstand wird gespeichert und der Tisch freigegeben. Bitte prüfen: OK wird nach fünf Sekunden freigegeben.</p>', valid:()=> (table?current:state.matches.find(v=>v.id===m.id))?.version===m.version, run:()=>api('/api/matches/'+m.id+'/finish',{version:m.version,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'})});
   }
 });
 window.addEventListener('hashchange', () => {
@@ -220,7 +220,7 @@ function scheduleSyncForm() {
 function planningDashboard() {
   const planned=state.events.filter(e=>e.phase==='planned').sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
   const page=paginate(planned,'planned-events','Geplante Spieltage');
-  root.innerHTML='<div class="page-title"><h1>Spieltage planen</h1></div><section class="planning"><div class="panel"><h2>Spieltag anlegen</h2><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Der Spieltag bleibt bis zum manuellen Start geplant.</p><button class="primary">Spieltag anlegen</button></form></div><div class="panel">'+scheduleSyncForm()+'</div></section><section><h2>Geplante Spieltage</h2>'+page.controls+page.items.map(eventCard).join('')+'</section>';
+  root.innerHTML='<div class="page-title"><h1>Spieltage planen</h1></div><section class="planning"><div class="panel"><h2>Spieltag anlegen</h2><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Der Spieltag bleibt bis zum manuellen Start geplant.</p><button class="primary">Spieltag anlegen</button></form></div><div class="panel"><h2>nuLiga-Import</h2><p>Spieler, Mannschaften und Heimspieltage unter <a href="/#einstellungen">Einstellungen · nuLiga</a> synchronisieren.</p></div></section><section><h2>Geplante Spieltage</h2>'+page.controls+page.items.map(eventCard).join('')+'</section>';
 }
 function matchdayDashboard() {
   const events=state.events.filter(e=>e.phase!=='planned');
@@ -391,15 +391,17 @@ function handleBrandingSubmit(form) {
 }
 function tableCount() { return state?.table_settings?.table_count ?? 8; }
 function settingsDashboard() {
-  const settings=state.rental_settings;
-  root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
-  root.innerHTML += '<section class="panel">'+scheduleSyncForm()+'</section>';
-  const tables=state.table_settings || {table_count:8,version:0};
-  root.innerHTML += '<section class="panel"><h2>Tischanzahl</h2><form id="table-settings" data-version="'+tables.version+'"><input type="hidden" name="version" value="'+tables.version+'">'+field('Anzahl der Tische','table_count',tables.table_count,'number','min="1" max="20" step="1" required')+'<p>1 bis 20 Tische. Belegte Tische müssen vor einer Verringerung abgeschlossen werden. Historische Partien und Buchungen bleiben erhalten.</p><button>Tischanzahl speichern</button> <button type="button" id="table-settings-reload">Änderungen verwerfen / Neu laden</button></form></section>';
-  const sync=state.nuliga;
-  root.innerHTML += '<section class="panel"><h2>nuLiga synchronisieren</h2><p>Importiert alle aktuellen Mannschaften des BSV Pfaffenhofen sowie alle Mannschaften und gemeldeten Spieler ihrer Ligen von <a href="https://bbv-billard.liga.nu/" target="_blank" rel="noopener">nuLiga Bayern</a>.</p><p>'+ (sync?'Letzter erfolgreicher Abgleich: '+esc(new Date(sync.synced_at).toLocaleString('de-DE'))+' · '+sync.teams+' Mannschaften · '+sync.players+' Spieler.<br>'+sync.leagues.map(l=>esc(l.championship+' · '+l.name)).join('<br>'):'Noch kein Abgleich durchgeführt.')+'</p><form id="nuliga-sync">'+selectField('Umgang mit lokalen Änderungen','overwrite','no',[['no','Lokale Änderungen erhalten'],['yes','Importierte Namen und Kader mit nuLiga überschreiben']])+'<p>Manuell angelegte Einträge bleiben erhalten. Importierte Spieler und Mannschaften können in den Listen Spieler und Mannschaften bearbeitet werden. Gespeicherte Partien behalten ihre Namen und Zuordnungen. Nicht mehr gelieferte Einträge bleiben erhalten. Der Abruf kann einige Minuten dauern.</p><button class="primary">Jetzt synchronisieren</button></form></section>';
-  root.innerHTML += brandingForm();
-  root.innerHTML += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
+  const settings=state.rental_settings, tables=state.table_settings||{table_count:8,version:0},sync=state.nuliga;
+  let html='<div class="page-title"><div><h1>Einstellungen</h1><p>Verein, Spielbetrieb, nuLiga, Sicherheit und Datensicherung verwalten.</p></div></div>';
+  html += '<section class="settings-stack">'+brandingForm();
+  html += '<section class="panel"><h2>Tischanzahl</h2><form id="table-settings" data-version="'+tables.version+'"><input type="hidden" name="version" value="'+tables.version+'">'+field('Anzahl der Tische','table_count',tables.table_count,'number','min="1" max="20" step="1" required')+'<p>1 bis 20 Tische. Belegte Tische müssen vor einer Verringerung abgeschlossen werden. Historische Partien und Buchungen bleiben erhalten.</p><button>Tischanzahl speichern</button> <button type="button" id="table-settings-reload">Änderungen verwerfen / Neu laden</button></form></section>';
+  html += '<div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div>';
+  html += '<section class="panel"><h2>nuLiga · Spieler und Mannschaften</h2><p>Importiert alle aktuellen Mannschaften des BSV Pfaffenhofen sowie alle Mannschaften und gemeldeten Spieler ihrer Ligen von <a href="https://bbv-billard.liga.nu/" target="_blank" rel="noopener">nuLiga Bayern</a>.</p><p>'+ (sync?'Letzter erfolgreicher Abgleich: '+esc(new Date(sync.synced_at).toLocaleString('de-DE'))+' · '+sync.teams+' Mannschaften · '+sync.players+' Spieler.<br>'+sync.leagues.map(l=>esc(l.championship+' · '+l.name)).join('<br>'):'Noch kein Abgleich durchgeführt.')+'</p><form id="nuliga-sync">'+selectField('Umgang mit lokalen Änderungen','overwrite','no',[['no','Lokale Änderungen erhalten'],['yes','Importierte Namen und Kader mit nuLiga überschreiben']])+'<p>Manuell angelegte Einträge bleiben erhalten. Importierte Spieler und Mannschaften können in den Listen Spieler und Mannschaften bearbeitet werden. Gespeicherte Partien behalten ihre Namen und Zuordnungen. Nicht mehr gelieferte Einträge bleiben erhalten. Der Abruf kann einige Minuten dauern.</p><button class="primary">Jetzt synchronisieren</button></form></section>';
+  html += '<section class="panel">'+scheduleSyncForm()+'</section>';
+  html += '<div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div>';
+  html += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
+  html += '</section>';
+  root.innerHTML=html;
 }
 root.addEventListener('change', async e => {
   if(e.target.id !== 'backup-file' || busy) return;
@@ -546,7 +548,7 @@ root.addEventListener('change',e=>{
 });
 let playerSearch='',statsFilter={kind:'players',id:'',from:'',to:'',discipline:''};
 function playersDashboard() {
-  const players=state.players||[], teams=state.teams||[], q=playerSearch.toLocaleLowerCase('de');
+  const players=(state.players||[]).filter(p=>!p.event_id), teams=state.teams||[], q=playerSearch.toLocaleLowerCase('de');
   const page=paginate(players.filter(p=>(fullName(p)+' '+p.id+' '+state.team_players.filter(tp=>tp.player_id===p.id).map(tp=>teams.find(t=>t.id===tp.team_id)?.name||'').join(' ')).toLocaleLowerCase('de').includes(q)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')),'players','Spieler');
   const teamPage=paginate([...teams].sort((a,b)=>a.name.localeCompare(b.name,'de')),'teams','Mannschaften');
   const f=statsFilter, entity=(f.kind==='players'?players:teams).find(x=>x.id===f.id);
@@ -572,12 +574,9 @@ function openRegistry(title,content) {
   registryDialog.innerHTML='<h2>'+esc(title)+'</h2>'+content+'<p id="registry-error" role="alert"></p><button type="button" id="registry-cancel">Abbrechen</button>';
   registryDialog.querySelector('#registry-cancel').onclick=()=>registryDialog.close();
   registryDialog.onchange=e=>{
-    if(e.target.id==='participant-team-add') {
-      const form=e.target.form, selected=[...e.target.selectedOptions].map(o=>o.value);
-      for(const select of form.querySelectorAll('select[name^="assignment:"]'))if(!['exclude','none'].includes(select.value)&&!selected.includes(select.value))select.value='exclude';
-      for(const tp of state.team_players.filter(tp=>selected.includes(tp.team_id))) {
-        const select=form.elements['assignment:'+tp.player_id];if(select && (select.value==='exclude'||!selected.includes(select.value)))select.value=tp.team_id;
-      }
+    if(e.target.matches('[data-roster-side]')) {
+      const form=e.target.form,side=e.target.dataset.rosterSide,event=state.events.find(e=>e.id===Number(form.elements.event_id.value));
+      form.querySelector('[data-roster="'+side+'"]').innerHTML=participantRoster(event,e.target.value,Number(side));
     }
   };
   registryDialog.oninput=()=>{
@@ -594,15 +593,35 @@ root.addEventListener('click',e=>{
   if(b.dataset.registry) {
     const kind=b.dataset.registry, item=(kind==='player'?state.players:state.teams).find(p=>p.id===b.dataset.id);
     const identity='<input type="hidden" name="id" value="'+esc(item?.id||'')+'"><input type="hidden" name="version" value="'+(item?.version??0)+'">';
-    let fields=kind==='player'?field('Vorname','first_name',item?.first_name||'','text','maxlength="100"')+'<label>Zweiter Name (optional)<input name="second_name" maxlength="100" value="'+esc(item?.second_name||'')+'"></label>'+field('Nachname','last_name',item?.last_name||'','text','maxlength="100"')+'<p id="duplicate-warning" role="status"></p>'+(!item?selectField('Bei gleichem Namen','allow_duplicate','no',[['no','Doppeleintrag verhindern'],['yes','Ausdrücklich als andere Person anlegen']]):''):field('Mannschaftsname','name',item?.name||'','text','maxlength="100"')+multiSelect('Spielerzuordnung (Mehrfachauswahl mit Strg/Cmd)','player_ids',state.players.map(p=>[p.id,fullName(p)+' · ID '+p.id]),state.team_players.filter(tp=>tp.team_id===item?.id).map(tp=>tp.player_id));
+    let fields=kind==='player'?field('Vorname','first_name',item?.first_name||'','text','maxlength="100"')+'<label>Zweiter Name (optional)<input name="second_name" maxlength="100" value="'+esc(item?.second_name||'')+'"></label>'+field('Nachname','last_name',item?.last_name||'','text','maxlength="100"')+'<p id="duplicate-warning" role="status"></p>'+(!item?selectField('Bei gleichem Namen','allow_duplicate','no',[['no','Doppeleintrag verhindern'],['yes','Ausdrücklich als andere Person anlegen']]):''):field('Mannschaftsname','name',item?.name||'','text','maxlength="100"')+multiSelect('Spielerzuordnung (Mehrfachauswahl mit Strg/Cmd)','player_ids',state.players.filter(p=>!p.event_id).map(p=>[p.id,fullName(p)+' · ID '+p.id]),state.team_players.filter(tp=>tp.team_id===item?.id).map(tp=>tp.player_id));
     openRegistry(kind==='player'?'Spieler verwalten':'Mannschaft verwalten','<form id="registry-'+kind+'">'+identity+fields+selectField('Künftige Vorauswahl','active',item?.active??1,[[1,'Aktiv'],[0,'Archiviert']])+'<p>Historische Namen, Zuordnungen und Ergebnisse bleiben erhalten.</p><button>Speichern</button></form>');
   }
   if(b.dataset.participants) {
-    const event=state.events.find(e=>e.id===Number(b.dataset.participants)), selected=state.event_teams.filter(t=>t.event_id===event.id).map(t=>t.team_id);
-    const teams=state.teams.filter(t=>t.active), players=state.players.filter(p=>p.active);
-    openRegistry('Teilnehmer · '+event.name,'<form id="registry-participants"><input type="hidden" name="event_id" value="'+event.id+'"><input type="hidden" name="version" value="'+event.version+'">'+(event.kind==='Liga'?multiSelect('Mannschaften auswählen; Mitglieder werden vorausgewählt','team_ids',teams.map(t=>[t.id,t.name]),selected).replace('<select ','<select id="participant-team-add" '):'')+'<p>Je Spieler: nicht teilnehmen, ohne Mannschaft (auch Gegner) oder zugeordnete Mannschaft. Vorhandene Partien behalten ihre gespeicherte Zuordnung.</p>'+players.map(p=>{const ep=state.event_players.find(ep=>ep.event_id===event.id&&ep.player_id===p.id);return selectField(esc(fullName(p)+' · ID '+p.id),'assignment:'+p.id,ep?ep.team_id||'none':'exclude',[['exclude','Nicht teilnehmen'],['none','Teilnehmen ohne Mannschaft'],...teams.filter(t=>state.team_players.some(tp=>tp.team_id===t.id&&tp.player_id===p.id)).map(t=>[t.id,t.name])]);}).join('')+'<button>Teilnehmer speichern</button></form>');
+    openParticipants(state.events.find(e=>e.id===Number(b.dataset.participants)));
   }
 });
+function participantRoster(event,teamId,side) {
+  const team=state.teams.find(t=>t.id===teamId);
+  if(!team)return '<p>Bitte Mannschaft '+(side+1)+' auswählen.</p>';
+  const selected=state.event_players.filter(ep=>ep.event_id===event.id);
+  const wasSelected=state.event_teams.some(t=>t.event_id===event.id&&t.team_id===teamId);
+  const members=state.players.filter(p=>p.active&&((!p.event_id&&state.team_players.some(tp=>tp.team_id===teamId&&tp.player_id===p.id))||(p.event_id===event.id&&selected.some(ep=>ep.player_id===p.id&&ep.team_id===teamId))));
+  return '<h3>Mannschaft '+(side+1)+' · '+esc(team.name)+'</h3><div class="roster-list">'+members.map(p=>'<label class="roster-player"><input type="checkbox" name="assignment:'+esc(p.id)+'" value="'+esc(teamId)+'" '+(!wasSelected||selected.some(ep=>ep.player_id===p.id&&ep.team_id===teamId)?'checked':'')+'>'+esc(fullName(p))+(p.event_id?' · nur dieser Spieltag':'')+'</label>').join('')+'</div>'+(members.length?'':'<p>Keine gemeldeten Spieler vorhanden.</p>')+'<label>Zusätzlicher Spieler nur für diesen Spieltag<input data-guest-team="'+esc(teamId)+'" maxlength="100" placeholder="Vor- und Nachname"></label>';
+}
+function openParticipants(event,start=false) {
+  const selected=state.event_teams.filter(t=>t.event_id===event.id).map(t=>t.team_id);
+  const home=state.teams.find(t=>t.nuliga_profile?.endsWith('teamtable='+event.schedule?.home_source_id))?.id;
+  if(home&&selected.includes(home))selected.sort((a,b)=>Number(b===home)-Number(a===home));
+  const identity='<input type="hidden" name="event_id" value="'+event.id+'"><input type="hidden" name="version" value="'+event.version+'">';
+  let content;
+  if(event.kind==='Liga') {
+    const options=[['','Mannschaft auswählen'],...state.teams.filter(t=>t.active).map(t=>[t.id,t.name])];
+    content=[0,1].map(side=>selectField('Mannschaft '+(side+1),'team_ids',selected[side]||'',options).replace('<select ','<select data-roster-side="'+side+'" ')).join('')+
+      '<p>1. Teilnehmer bestätigen · 2. Erste Runde und Tische zuweisen. Gemeldete Spieler sind vorausgewählt; abwesende Spieler abwählen.</p>'+
+      [0,1].map(side=>'<section class="participant-roster" data-roster="'+side+'">'+participantRoster(event,selected[side],side)+'</section>').join('');
+  } else content=state.players.filter(p=>p.active&&!p.event_id).map(p=>'<label class="roster-player"><input type="checkbox" name="assignment:'+esc(p.id)+'" value="none" '+(state.event_players.some(ep=>ep.event_id===event.id&&ep.player_id===p.id)?'checked':'')+'>'+esc(fullName(p))+'</label>').join('');
+  openRegistry('Teilnehmer · '+event.name,'<form id="registry-participants" data-start="'+start+'">'+identity+content+'<button class="primary">Teilnehmer bestätigen · Weiter zur Aufstellung</button></form>');
+}
 function handlePlayersSubmit(form) {
   if(form.id==='player-search'){playerSearch=form.elements.q.value;listPages.delete('players');playersDashboard();return true;}
   if(form.id==='stats-filter'){statsFilter=Object.fromEntries(new FormData(form));listPages.delete('player-matches');playersDashboard();return true;}
@@ -610,18 +629,28 @@ function handlePlayersSubmit(form) {
   if(busy)return true;
   const data=Object.fromEntries(new FormData(form));data.version=Number(data.version);
   if(form.id==='registry-participants') {
-    data.team_ids=new FormData(form).getAll('team_ids');data.player_ids=[];data.assignments={};
+    data.team_ids=new FormData(form).getAll('team_ids').filter(Boolean);data.player_ids=[];data.assignments={};data.start=form.dataset.start==='true';data.guests=[];
+    for(const input of form.querySelectorAll('[data-guest-team]'))if(input.value.trim())data.guests.push({name:input.value.trim(),team_id:input.dataset.guestTeam});
     for(const [key,value] of new FormData(form))if(key.startsWith('assignment:')&&value!=='exclude'){const id=key.slice(11);data.player_ids.push(id);if(value!=='none')data.assignments[id]=value;}
   } else {data.active=Number(data.active);data.allow_duplicate=data.allow_duplicate==='yes';data.player_ids=new FormData(form).getAll('player_ids');}
   busy=true;
-  api(form.id==='registry-participants'?'/api/events/'+data.event_id+'/participants':form.id==='registry-player'?'/api/players':'/api/teams',data).then(()=>{registryDialog.close();message('Gespeichert.');}).catch(error=>{registryDialog.querySelector('#registry-error').textContent=error.message;}).finally(async()=>{busy=false;await refresh(true);});
+  api(form.id==='registry-participants'?'/api/events/'+data.event_id+'/participants':form.id==='registry-player'?'/api/players':'/api/teams',data).then(()=>{registryDialog.close();if(form.id==='registry-participants'){selectedEventId=Number(data.event_id);view='spieltage';history.replaceState(null,'','/#spieltage/'+data.event_id);message('Teilnehmer bestätigt. Jetzt Spieler und Tische für die erste Runde zuweisen.');}else message('Gespeichert.');}).catch(error=>{registryDialog.querySelector('#registry-error').textContent=error.message;}).finally(async()=>{busy=false;await refresh(true);});
   return true;
 }
 root.addEventListener('change',e=>{if(e.target.form?.id==='stats-filter' && e.target.name==='kind'){statsFilter={...statsFilter,kind:e.target.value,id:''};drafts.delete('stats-filter');playersDashboard();}});
 
 // One immutable action snapshot per warning. Enter never executes an action.
 const warningDialog=document.querySelector('#warning-dialog'), warningInput=document.querySelector('#warning-input'), warningSave=document.querySelector('#warning-save');
-let pendingWarning;
+let pendingWarning, warningTimer;
+function stopWarningTimer() {
+  if(warningTimer!==undefined){clearInterval(warningTimer);warningTimer=undefined;}
+}
+function updateWarningButton() {
+  const remaining=pendingWarning?.readyAt?Math.max(0,pendingWarning.readyAt-Date.now()):0;
+  warningSave.disabled=busy||!pendingWarning||remaining>0||!!(pendingWarning.phrase&&warningInput.value!==pendingWarning.phrase);
+  if(pendingWarning)warningSave.textContent=pendingWarning.label+(remaining>0?' ('+Math.ceil(remaining/1000)+' s)':'');
+  if(!remaining)stopWarningTimer();
+}
 function guardConfirmation(input, changed) {
   for(const type of ['paste','drop','contextmenu']) input.addEventListener(type,e=>e.preventDefault());
   input.addEventListener('beforeinput',e=>{if(['insertFromPaste','insertFromDrop','insertReplacementText'].includes(e.inputType))e.preventDefault();});
@@ -635,13 +664,16 @@ function changeSummary(item,data) {
   return '<p>Folgende Änderungen werden gespeichert:</p><ul>'+changes.map(([key,value])=>'<li>'+esc(names[key]||key)+': '+(key==='pin'?'wird ersetzt':esc(display(key,item[key]))+' → '+esc(display(key,value)))+'</li>').join('')+'</ul>'+(changes.length?'':'<p>Keine Feldänderungen.</p>');
 }
 function showWarning(pending) {
-  pendingWarning=pending; warningInput.value='';warningSave.disabled=!!pending.phrase;
+  stopWarningTimer();
+  pendingWarning={...pending,readyAt:pending.delayMs?Date.now()+pending.delayMs:0}; warningInput.value='';
   document.querySelector('#warning-entry').hidden=!pending.phrase;
   warningSave.textContent=pending.label;
   document.querySelector('#warning-summary').innerHTML=pending.summary;
   document.querySelector('#warning-phrase').textContent=pending.phrase || '';
   document.querySelector('#warning-error').textContent='';
   warningDialog.showModal();if(pending.phrase)warningInput.focus();else document.querySelector('#warning-cancel').focus();
+  updateWarningButton();
+  if(pending.delayMs)warningTimer=setInterval(()=>{checkWarning();updateWarningButton();},100);
 }
 function checkWarning() {
   if(rentalCorrection && state?.rentals.find(r=>r.id===pendingRental.id)?.version!==pendingRental.version) {
@@ -649,15 +681,16 @@ function checkWarning() {
     document.querySelector('#rental-error').textContent='Buchung geändert. Bitte abbrechen und erneut öffnen.';
   }
   if(pendingWarning && !pendingWarning.valid()) {
+    stopWarningTimer();
     pendingWarning=undefined;warningInput.value='';warningSave.disabled=true;
     document.querySelector('#warning-error').textContent='Daten wurden geändert. Bitte abbrechen, den aktualisierten Eintrag öffnen und erneut prüfen.';
   }
 }
-guardConfirmation(warningInput,()=>{checkWarning();warningSave.disabled=busy||!pendingWarning||(pendingWarning.phrase && warningInput.value!==pendingWarning.phrase);});
+guardConfirmation(warningInput,()=>{checkWarning();updateWarningButton();});
 document.querySelector('#warning-cancel').addEventListener('click',()=>warningDialog.close());
-warningDialog.addEventListener('close',()=>{pendingWarning=undefined;warningInput.value='';warningSave.disabled=true;});
+warningDialog.addEventListener('close',()=>{stopWarningTimer();pendingWarning=undefined;warningInput.value='';warningSave.disabled=true;});
 warningSave.addEventListener('click',async()=>{
-  checkWarning();if(busy||!pendingWarning||(pendingWarning.phrase && warningInput.value!==pendingWarning.phrase))return;
+  checkWarning();updateWarningButton();if(warningSave.disabled)return;
   const pending=pendingWarning;busy=true;warningSave.disabled=true;
   try {await pending.run();warningDialog.close();message(pending.success || 'Aktion gespeichert und protokolliert.');}
   catch(error){pendingWarning=undefined;warningInput.value='';document.querySelector('#warning-error').textContent=error.message+' Bitte abbrechen und erneut öffnen.';}

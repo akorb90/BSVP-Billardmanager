@@ -31,10 +31,10 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
   const window = element('window');
   const context = vm.createContext({
     rentalPrice, hourlyRate,
-    document: { querySelector: element, querySelectorAll: () => [], body: { classList: { add() {} } } },
+    document: { querySelector: element, querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
-    FormData: class { constructor(form) { return (form?.entries || [['password', 'test']])[Symbol.iterator](); } },
+    FormData: class { constructor(form) { this.entries=form?.entries || [['password', 'test']]; } [Symbol.iterator](){return this.entries[Symbol.iterator]();} getAll(name){return this.entries.filter(e=>e[0]===name).map(e=>e[1]);} },
     AbortSignal, setInterval() {},
     fetch: async (path,options) => {
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
@@ -44,6 +44,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
       else if (/^\/api\/events\/\d+\/start$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
+      else if (/^\/api\/events\/\d+\/participants$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
       else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
       return { ok: status === 200, status, json: async () => body };
@@ -312,7 +313,14 @@ test('Spieltagsplanung starts a day explicitly and opens only that day for match
   assert.doesNotMatch(app.element('#app').innerHTML,/id="match"|Tisch zuweisen/);
   const button={dataset:{eventStart:'1'},hasAttribute:()=>false};
   await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
-  // mutate completes after the click handler dispatches its asynchronous work.
+  assert.equal(app.posts.length,0,'Opening the roster does not start the day');
+  const dialog=app.element('#registry-dialog');
+  assert.match(dialog.innerHTML,/Mannschaft 1 · BSV Pfaffenhofen/);
+  assert.match(dialog.innerHTML,/Zusätzlicher Spieler nur für diesen Spieltag/);
+  dialog.onsubmit({preventDefault(){},target:{id:'registry-participants',dataset:{start:'true'},entries:[['event_id','1'],['version','0'],['team_ids','home'],['team_ids','away']],querySelectorAll:()=>[]}});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(app.posts[0].path,'/api/events/1/participants');
+  assert.equal(app.posts[0].data.start,true);
   await app.refresh(true);
   assert.equal(app.location.hash,'#spieltage/1');
   assert.match(app.element('#app').innerHTML,/<h1>Kommender Spieltag<\/h1>/);
@@ -322,4 +330,12 @@ test('Spieltagsplanung starts a day explicitly and opens only that day for match
   assert.ok(app.element('#app').innerHTML.indexOf('<h5>Heim · BSV Pfaffenhofen')<app.element('#app').innerHTML.indexOf('<h5>Gast · Gegner'));
   const form={id:'league-slot-1-1',elements:{}};
   await app.element('#app').dispatch('change',{target:{dataset:{},name:'player_a_id',value:'p1',closest:()=>form}});
+});
+
+test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column',async()=>{
+  const app=await frontend('/#einstellungen'),markup=app.element('#app').innerHTML;
+  const ids=['club-branding','table-settings','rental-settings','nuliga-sync','nuliga-schedule-sync','admin-password','backup-file'];
+  let previous=-1;
+  for(const id of ids){const index=markup.indexOf('id="'+id+'"');assert.ok(index>previous,id+' follows the previous section');previous=index;}
+  assert.match(markup,/class="settings-stack"/);assert.doesNotMatch(markup,/class="planning"/);
 });

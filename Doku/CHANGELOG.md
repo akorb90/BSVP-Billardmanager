@@ -2,6 +2,21 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Spielabschluss mit verzögertem OK — 2026-10-28
+
+- Beim Abschließen einer Partie entfällt die Texteingabe. Der Dialog zeigt den Endstand und einen OK-Button mit fünf Sekunden Wartezeit; danach ist eine ausdrückliche Bestätigung möglich. Gilt in der Tischübersicht und am Tablet.
+- Abbrechen oder Escape verwirft den Countdown; erneutes Öffnen startet die Wartezeit neu. Zwischenzeitlich geänderte Spielstände sperren den Abschluss weiterhin. Andere Bestätigungsdialoge behalten ihr bisheriges Verhalten.
+- Prüfung: 43 Tests erfolgreich, einschließlich Sperre bis 4.999 ms, Freigabe nach 5.000 ms, Abbruch, erneutem Öffnen und veralteten Daten.
+
+## FR-007-Fix: Kaderauswahl und geordnete Einstellungen — 2026-10-28
+
+- Liga-Spieltagsstart öffnet zuerst die zwei Mannschaften und darunter getrennte Kader mit Checkboxen. Importierte Mannschaften und gemeldete Spieler sind vorausgewählt; fremde Kader erscheinen nicht. Bestätigung speichert Teilnehmer und startet den Spieltag atomar. Anschließend Spieler und Tisch je Partie der ersten Runde zuweisen.
+- Pro Mannschaft kann ein zusätzlicher Name nur für diesen Spieltag erfasst werden. Weitere Gäste können bei erneutem Öffnen hinzugefügt werden. Gäste bleiben aus den Stammdatenlisten und anderen Spieltagen ausgeschlossen; gespeicherte Partien und historische Zuordnungen bleiben erhalten.
+- Einstellungen in einer Spalte: Vereinsgestaltung, Tische, Grundpreis, beide nuLiga-Abgleiche, Admin-Passwort und Datensicherung. Die Planung verlinkt zum gemeinsamen nuLiga-Bereich.
+- Schema 13 ergänzt die Spieltagsbindung der Gäste. Automatische Migration aus Schema 12, vollständiger Export, Prüfung und Wiederherstellung einschließlich Gäste und Aufstellungen; kompatibler Import älterer Sicherungen aus Schema 6–12. Separate Betriebssicherung bleibt erforderlich.
+- Prüfung: 43 Tests erfolgreich; isolierter Docker-HTTPS-Test mit PostgreSQL-Migration aus Schema 8 und 12, Gastspieler-Übernahme und vollständiger Wiederherstellung in getrennte Datenbanken erfolgreich. Browserprüfung von Kaderauswahl, zusätzlichem Gast, Bestätigung, Aufstellung/Tischwahl und Einstellungsreihenfolge mit isolierten Testdaten durchgeführt.
+- Deployment: Bestehenden lokalen Stack mit expliziter Compose-Override-Datei gebaut und gestartet (die vorhandene `.env` legt nur `compose.yaml` fest). Vorherige Datenbanksicherung unter `data/fr007-pre-deploy/database.dump`; Schema 13 und gesunde Container geprüft. HTTPS über localhost und 127.0.0.1 mit Node.js und expliziter lokaler Caddy-CA erfolgreich verifiziert; Windows curl verlangt eine bei der lokalen CA nicht vorhandene Sperrstatusauskunft.
+
 ## FR-007: Spieler- und Mannschaftsverwaltung — 2026-10-28
 
 - Eigener Menüpunkt **Spieler & Mannschaften** mit durchsuchbarer Spielerliste, stabilen IDs, Doppelhinweisen, BSV-Mannschaften, Spielerzuordnung und Archivierung für die künftige Vorauswahl. Ausschließlich Vorname, optionaler zweiter Name und Nachname als personenbezogene Stammdaten.
