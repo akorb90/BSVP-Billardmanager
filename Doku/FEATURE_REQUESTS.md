@@ -50,3 +50,7 @@ Anforderungen und Abnahmekriterien:
 
 ## FR-011:
 - Tischanzahl einstellbar zwische 1 und 20 Tischen über Einstellungsmenü
+
+
+## FR-012:
+- Umstellung SQLite auf Postgres in eigenem container für mehr Flexibilität
