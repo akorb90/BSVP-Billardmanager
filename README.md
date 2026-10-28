@@ -37,6 +37,8 @@ Einstellungen:
 
 Unter **Einstellungen → Vereinsgestaltung** können Administratoren den Vereinsnamen (1–80 Zeichen), ein eigenes Logo und die Farben für Akzente, Hintergrund, Flächen und Text speichern. Die Gestaltung gilt auch für Anmeldung, Browser-Titel und Tisch-Tablets; offene Seiten übernehmen sie automatisch beim nächsten Aktualisieren. PNG- und JPEG-Logos bis 1 MiB sind erlaubt. Ohne neue Dateiauswahl bleibt das vorhandene Logo erhalten; **Standardlogo verwenden** stellt beim Speichern das BSV-Logo wieder her. Andere Vereine sollten ihr eigenes Logo hochladen.
 
+Unter jedem Farbwähler kann der Hex-Farbcode direkt eingegeben werden (z. B. #147eb7). Farbwähler und Codefeld aktualisieren sich gegenseitig.
+
 Text muss zu Hintergrund und Flächen mindestens 4,5:1 Kontrast haben; die Beschriftung farbiger Hauptbuttons wird automatisch hell oder dunkel gewählt. **Änderungen verwerfen / Neu laden** lädt die gespeicherten Werte. Parallel geänderte Einstellungen erfordern erneutes Laden, damit kein fremder Stand überschrieben wird.
 
 Die Gestaltung einschließlich Logo liegt dauerhaft in der Datenbank und ist in Export/Import enthalten. Schema 7 ergänzt bestehende Installationen um die BSV-Vorgaben und erhält Spielstände, Zugangsdaten und Volumes. Sicherungen aus Schema 6 lassen sich weiterhin importieren und erhalten dabei die BSV-Standardgestaltung; Sicherungen aus Schema 7 benötigen diese oder eine kompatible neuere App-Version.

@@ -2,6 +2,11 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Farbcodes und verbindliche Backup-Vollständigkeit — 2026-10-28
+
+- Unter jedem Farbwähler steht ein direkt editierbarer Hex-Farbcode. Gültige Codes und Farbwähler synchronisieren sich in beide Richtungen; unvollständige oder ungültige Codes verhindern das Speichern.
+- Vereinsname, sämtliche Farben und Logo sind bereits im vollständigen Export/Import enthalten. Die Arbeitsanweisungen verlangen nun ausdrücklich die Sicherung aller dauerhaften Anwendungsdaten und Einstellungen sowie die Prüfung ihrer Wiederherstellung bei Erweiterungen.
+
 ## FR-009: Vereinsgestaltung — 2026-10-28
 
 - Einstellungen um Vereinsname, Logo-Upload (PNG/JPEG bis 1 MiB), Standardlogo-Rückkehr sowie editierbare Akzent-, Hintergrund-, Flächen- und Textfarben erweitert. Name und Gestaltung gelten für Kopf- und Fußzeile, Anmeldung, Browser-Titel und Tischseiten. Offene Seiten übernehmen gespeicherte Änderungen automatisch.

@@ -291,8 +291,15 @@ function tickRentals() {
   }
 }
 
+root.addEventListener('input',e=>{
+  const key=e.target.dataset.brandingColor || e.target.dataset.brandingHex;
+  if(!['primary','background','surface','text'].includes(key))return;
+  const form=e.target.closest('#club-branding');if(!form)return;
+  if(e.target.dataset.brandingColor)form.elements.namedItem(key).value=e.target.value;
+  else if(/^#[0-9a-f]{6}$/i.test(e.target.value))form.elements.namedItem(key+'_picker').value=e.target.value.toLowerCase();
+});
 function brandingForm() {
-  return '<section class="panel branding-panel"><h2>Vereinsgestaltung</h2><p>Vereinsname, Logo und Farben gelten für Anmeldung, Verwaltung und alle Tisch-Tablets.</p><form id="club-branding" data-version="'+branding.version+'"><input type="hidden" name="version" value="'+branding.version+'">'+field('Vereinsname','club_name',branding.club_name,'text','maxlength="80" required')+'<div class="branding-colors">'+[['primary','Akzentfarbe'],['background','Hintergrund'],['surface','Flächen'],['text','Textfarbe']].map(([key,label])=>field(label,key,branding[key],'color')).join('')+'</div><p>Text benötigt mindestens 4,5:1 Kontrast zu Hintergrund und Flächen.</p><img class="branding-logo" src="/api/branding/logo" alt="Aktuelles Vereinslogo"><label>Neues Logo (PNG oder JPEG, maximal 1 MiB)<input name="logo_file" id="club-logo-file" type="file" accept="image/png,image/jpeg"></label><p id="logo-selection">'+(pendingLogo===null?'Standardlogo wird wiederhergestellt.':pendingLogo?'Neues Logo ausgewählt. Zum Übernehmen speichern.':'Ohne neue Auswahl bleibt das aktuelle Logo erhalten.')+'</p><button type="button" id="club-logo-reset">Standardlogo verwenden</button><p>Das Standardlogo gehört dem BSV Pfaffenhofen. Für einen anderen Verein bitte ein eigenes Logo hochladen.</p><button class="primary">Vereinsgestaltung speichern</button> <button type="button" id="club-branding-reload">Änderungen verwerfen / Neu laden</button></form></section>';
+  return '<section class="panel branding-panel"><h2>Vereinsgestaltung</h2><p>Vereinsname, Logo und Farben gelten für Anmeldung, Verwaltung und alle Tisch-Tablets.</p><form id="club-branding" data-version="'+branding.version+'"><input type="hidden" name="version" value="'+branding.version+'">'+field('Vereinsname','club_name',branding.club_name,'text','maxlength="80" required')+'<div class="branding-colors">'+[['primary','Akzentfarbe'],['background','Hintergrund'],['surface','Flächen'],['text','Textfarbe']].map(([key,label])=>'<div class="branding-color">'+field(label,key+'_picker',branding[key],'color','data-branding-color="'+key+'"')+field(label+' (Hex-Code)',key,branding[key],'text','data-branding-hex="'+key+'" pattern="#[0-9a-fA-F]{6}" minlength="7" maxlength="7" placeholder="#147eb7" title="Hex-Farbcode mit # und sechs Ziffern oder Buchstaben A–F, zum Beispiel #147eb7" autocomplete="off" spellcheck="false" required')+'</div>').join('')+'</div><p>Text benötigt mindestens 4,5:1 Kontrast zu Hintergrund und Flächen.</p><img class="branding-logo" src="/api/branding/logo" alt="Aktuelles Vereinslogo"><label>Neues Logo (PNG oder JPEG, maximal 1 MiB)<input name="logo_file" id="club-logo-file" type="file" accept="image/png,image/jpeg"></label><p id="logo-selection">'+(pendingLogo===null?'Standardlogo wird wiederhergestellt.':pendingLogo?'Neues Logo ausgewählt. Zum Übernehmen speichern.':'Ohne neue Auswahl bleibt das aktuelle Logo erhalten.')+'</p><button type="button" id="club-logo-reset">Standardlogo verwenden</button><p>Das Standardlogo gehört dem BSV Pfaffenhofen. Für einen anderen Verein bitte ein eigenes Logo hochladen.</p><button class="primary">Vereinsgestaltung speichern</button> <button type="button" id="club-branding-reload">Änderungen verwerfen / Neu laden</button></form></section>';
 }
 root.addEventListener('change',async e=>{
   if(e.target.id!=='club-logo-file' || busy)return;
@@ -313,6 +320,7 @@ root.addEventListener('click',e=>{
 function handleBrandingSubmit(form) {
   if(form.id!=='club-branding')return false;
   const data=Object.fromEntries(new FormData(form));delete data.logo_file;
+  for(const key of ['primary','background','surface','text'])delete data[key+'_picker'];
   mutate(async()=>{
     await api('/api/settings/branding',{...data,version:Number(data.version),...(pendingLogo===undefined?{}:{logo:pendingLogo})});
     pendingLogo=undefined;drafts.delete(form.id);form.remove();message('Vereinsgestaltung gespeichert.');

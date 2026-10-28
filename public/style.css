@@ -191,3 +191,5 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 .branding-colors{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.branding-colors input{padding:5px;min-height:48px}.branding-logo{display:block;max-width:150px;max-height:130px;object-fit:contain;background:white;padding:8px;margin-bottom:20px}@media(max-width:600px){.branding-colors{grid-template-columns:1fr 1fr}}
 
 #message{color:white}
+
+.branding-color input[type="text"]{padding:12px;font-family:ui-monospace,Consolas,monospace}.branding-color label:last-child{margin-bottom:0}

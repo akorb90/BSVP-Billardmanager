@@ -262,3 +262,19 @@ test('FR-005: Dateiprüfung, Vorschau, Abbruch und ausdrückliche Wiederherstell
   assert.equal(app.element('#admin-nav').hidden,true);
   assert.match(app.element('#message').textContent,/Admin-Passwort aus der Sicherung/);
 });
+
+
+test('Farbcodes stehen unter den Farbwählern und synchronisieren in beide Richtungen',async()=>{
+  const app=await frontend('/#einstellungen');
+  const markup=app.element('#app').innerHTML;
+  for(const key of ['primary','background','surface','text']) {
+    assert.ok(markup.indexOf('name="'+key+'_picker"')<markup.indexOf('name="'+key+'"'));
+    assert.ok(markup.includes('data-branding-hex="'+key+'"'));
+    const fields=new Map([[key,{value:'#147eb7'}],[key+'_picker',{value:'#147eb7'}]]);
+    const form={elements:{namedItem:name=>fields.get(name)}};
+    const input=(dataset,value)=>app.element('#app').dispatch('input',{target:{dataset,value,closest:()=>form}});
+    await input({brandingHex:key},'#Ab12Cd');assert.equal(fields.get(key+'_picker').value,'#ab12cd');
+    await input({brandingHex:key},'#12');assert.equal(fields.get(key+'_picker').value,'#ab12cd');
+    await input({brandingColor:key},'#987654');assert.equal(fields.get(key).value,'#987654');
+  }
+});
