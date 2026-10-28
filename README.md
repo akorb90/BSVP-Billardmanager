@@ -32,8 +32,6 @@ Einstellungen:
 - Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die feste Übersicht der acht Tische bleibt vollständig sichtbar.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
 
-**Bewusste Draft-Grenzen:** keine automatische Turnierauslosung, Gruppen-/KO-Bäume, Liga-Mannschaftswertung, Spieler-Stammdaten oder Verbandsregelwerke. Jedes gewonnene Rack zählt einen Punkt. Kein 14/1 oder Karambol. Kein Offline-Schreiben: bei Verbindungsverlust bleiben Änderungen gesperrt. Ergebnisse bleiben für Administratoren auch nach Gesamtabschluss mit roter Warnbestätigung korrigierbar. Tischvermietungen werden minutengenau abgerechnet. Es gibt zunächst ein gemeinsames Administratorkonto; personenbezogene Admin-Auditierung benötigt später individuelle Konten.
-
 ## Tischvermietung
 
 Unter **Tischvermietung** lassen sich freie Tische zu einem vereinbarten Stundenpreis vermieten. Angefangene Minuten werden aufgerundet; Start, Preis und Abrechnung bleiben in der Buchungshistorie gespeichert.
@@ -191,6 +189,6 @@ Tablets / Adminbrowser ── HTTPS :443 ── Caddy ── App :3000 ── SQ
 
 Das Schema verwendet Version 6 (`PRAGMA user_version`). Version 5 ergänzt Tischvermietungen und Grundpreis. Version 6 übernimmt den vorhandenen Admin-Hash einmalig aus der Konfiguration in die Datenbank; spätere Konfigurationsänderungen überschreiben das Passwort nicht. Eine Wiederherstellung der Datenbank stellt auch den damaligen Passwortstand wieder her. Die Migration von Version 2 ergänzt PIN-Hashes, eine Berechtigungsrevision und persistente PIN-Versuchslimits. Bestehende Partien erhalten keine automatische PIN; diese wird bei Bedarf im Adminbereich nachgetragen. Eine transaktionale Migration übernimmt bestehende Version-1-Daten: Veranstaltungen erhalten den Status `open` und eine Versionsnummer, Spieler und Ergebnisse bleiben unverändert. ID-Zähler verhindern, dass nach dem Löschen alte IDs wiederverwendet werden. Vor Migrationen eine konsistente Sicherung erstellen. Ältere App-Versionen dürfen nicht gegen das migrierte Schema gestartet werden; für einen Rollback passende App-Version und Datenbank-Backup zusammen wiederherstellen. SQLite passt zu acht Tischen und einem App-Prozess; bei Mehrprozess-/Mehrstandortbetrieb auf PostgreSQL migrieren. Die Tisch-ID ist auf 1–8 begrenzt. Vermietungen rechnen mit dem Grundpreis abzüglich eines Rabatts von 0 bis 100 %; der Grundpreis wird unter „Einstellungen“ verwaltet.
 
-Nächste fachliche Entscheidungen: konkrete bayerische Liga-/Mannschaftsregeln, Turniermodus (Gruppen/Einfach-/Doppel-KO), Spielerregister sowie Berechtigungen für Schiedsrichter und Vereinsverwaltung.
+Geplante Erweiterungen und ihre Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
 Referenzen: [Docker Desktop unter Windows](https://docs.docker.com/desktop/setup/install/windows-install/), [Compose-Secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
