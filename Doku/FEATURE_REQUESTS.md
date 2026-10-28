@@ -48,9 +48,5 @@ Anforderungen und Abnahmekriterien:
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
 
-## FR-011:
-- Tischanzahl einstellbar zwische 1 und 20 Tischen über Einstellungsmenü
-
-
 ## FR-012:
 - Umstellung SQLite auf Postgres in eigenem container für mehr Flexibilität

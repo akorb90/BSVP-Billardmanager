@@ -14,10 +14,16 @@ export function backupService({ db, transaction, fail, log }) {
   const read = () => Object.fromEntries(tables.map(name => [name, db.prepare(`SELECT * FROM ${quote(name)} ORDER BY rowid`).all()]));
   const revision = () => digest(read());
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || backup?.schema!==6 || version!==7 || backup.checksum!==digest(backup.data) || Object.hasOwn(backup.data,'branding')) return backup;
-    const {primary,...defaults}=DEFAULT_BRANDING;
-    const data={...backup.data,branding:[{id:1,...defaults,primary_color:primary}]};
-    return {...backup,schema:7,data,checksum:digest(data)};
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7].includes(backup.schema) || version!==8 || backup.checksum!==digest(backup.data)) return backup;
+    let data={...backup.data};
+    if (backup.schema===6) {
+      if (Object.hasOwn(data,'branding')) return backup;
+      const {primary,...defaults}=DEFAULT_BRANDING;
+      data.branding=[{id:1,...defaults,primary_color:primary}];
+    }
+    if (Object.hasOwn(data,'table_settings')) return backup;
+    data.table_settings=[{id:1,table_count:8,version:0}];
+    return {...backup,schema:8,data,checksum:digest(data)};
   };
   const validate = backup => {
     backup=upgrade(backup);
@@ -42,6 +48,10 @@ export function backupService({ db, transaction, fail, log }) {
         }
       }
       if (check.prepare('PRAGMA foreign_key_check').all().length || check.prepare('PRAGMA integrity_check').get().integrity_check !== 'ok') throw new Error('integrity');
+      const tableSettings=check.prepare('SELECT * FROM table_settings').all();
+      if (tableSettings.length!==1) throw new Error('table settings');
+      const count=tableSettings[0].table_count;
+      if (check.prepare("SELECT 1 FROM matches WHERE status='live' AND table_no>? UNION ALL SELECT 1 FROM rentals WHERE status='active' AND table_no>?").get(count,count)) throw new Error('inactive table');
       const credentials = check.prepare('SELECT * FROM admin_credentials').all();
       const brand=check.prepare('SELECT *,primary_color AS "primary" FROM branding').all();
       if(brand.length!==1) throw new Error('branding');

@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
-async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], rental_settings = {base_cents:900,version:0} } = {}) {
+async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
   const posts=[];
   const elements = new Map();
   const element = id => {
@@ -43,7 +43,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
-      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, rental_settings } : { error: 'Bitte anmelden.' }; }
+      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
       return { ok: status === 200, status, json: async () => body };
     },
@@ -277,4 +277,27 @@ test('Farbcodes stehen unter den Farbwählern und synchronisieren in beide Richt
     await input({brandingHex:key},'#12');assert.equal(fields.get(key+'_picker').value,'#ab12cd');
     await input({brandingColor:key},'#987654');assert.equal(fields.get(key).value,'#987654');
   }
+});
+
+
+test('FR-011: Tischanzahl steuert Übersicht, Auswahl, Vermietung, Einstellungen und zweistellige Tablet-Adressen', async()=>{
+  for(const count of [1,20]) {
+    const options={table_settings:{table_count:count,version:4},events:[{id:1,status:'open'}],matches:[{id:1,event_id:1,status:'planned',player_a:'A',player_b:'B',target:5,a:0,b:0}]};
+    const overview=await frontend('/#uebersicht',options), html=overview.element('#app').innerHTML;
+    assert.equal((html.match(/class="table-card/g)||[]).length,count);
+    assert.match(html,new RegExp('0 / '+count+' Tische belegt'));
+    const planning=await frontend('/#spieltage',options);
+    assert.match(planning.element('#app').innerHTML,new RegExp('option value="'+count+'">Tisch '+count));
+    assert.doesNotMatch(planning.element('#app').innerHTML,new RegExp('option value="'+(count+1)+'">Tisch '+(count+1)));
+    const rental=await frontend('/#vermietung',options), rentalHtml=rental.element('#app').innerHTML;
+    assert.equal((rentalHtml.match(/class="table-card/g)||[]).length,count);
+    assert.match(rentalHtml,new RegExp(count+' / '+count+' Tische frei'));
+    const settings=await frontend('/#einstellungen',options);
+    assert.match(settings.element('#app').innerHTML,/id="table-settings" data-version="4"/);
+    assert.match(settings.element('#app').innerHTML,/min="1" max="20" step="1" required/);
+    await settings.element('#app').listeners.submit({preventDefault(){},target:{id:'table-settings',dataset:{version:'4'},entries:[['table_count','20'],['version','4']],remove(){}}});
+    assert.equal(settings.posts[0].path,'/api/settings/tables');assert.equal(settings.posts[0].data.table_count,20);assert.equal(settings.posts[0].data.version,4);
+  }
+  const tablet=await frontend('/tisch/20',{admin:false,tablet:true});
+  assert.match(tablet.element('#app').innerHTML,/TISCH 20/);
 });

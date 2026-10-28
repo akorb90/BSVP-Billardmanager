@@ -194,6 +194,11 @@ try {
   assert.equal((await request('/api/admin')).body.matches.length,0);
   console.log('PASS: confirmed correction and cascading deletion after event closure; missing confirmation denied');
   console.log('PASS: volume survives container replacement; match finishes and table becomes available');
+  assert.equal((await request('/api/settings/tables',{table_count:20,version:0})).status,200);
+  assert.equal((await request('/tisch/20')).status,200);
+  assert.equal((await request('/api/rentals',{table_no:20,settings_version:0})).status,201);
+  assert.equal((await request('/api/settings/tables',{table_count:1,version:1})).status,409);
+  console.log('PASS: configurable table count, table 20 over HTTPS and occupied-table reduction guard');
   const backup = await request('/api/backups/export');
   assert.equal(backup.status,200); assert.match(backup.headers['content-disposition'],/attachment/);
   assert.equal(backup.body.data.events.length,0);

@@ -1,6 +1,6 @@
 # BSVP Billardmanager
 
-Webanwendung für Spieltage, Ergebnisse und Tischvermietung an acht Billardtischen.
+Webanwendung für Spieltage, Ergebnisse und Tischvermietung an 1 bis 20 einstellbaren Billardtischen.
 
 ## Neu installieren
 

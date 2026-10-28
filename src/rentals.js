@@ -12,7 +12,7 @@ export function migrateRentals(db) {
     PRAGMA user_version=5; COMMIT;`);
 }
 
-export function rentalService({db, transaction, fail, integer, log}) {
+export function rentalService({db, transaction, fail, integer, log, activeTable}) {
   db.prepare("INSERT OR IGNORE INTO entity_ids(name,value) VALUES('rentals',(SELECT COALESCE(MAX(id),0) FROM rentals))").run();
   const confirm = (body, action, phrase) => {
     if(body.action !== action || (phrase && body.confirmation !== phrase)) throw fail(400,'Bitte die angezeigte Aktion bestätigen.');
@@ -40,7 +40,7 @@ export function rentalService({db, transaction, fail, integer, log}) {
           return settings();
         }
         if (path === '/api/rentals') {
-          const number=integer(body.table_no,1,8), base=settings();
+          const number=activeTable(body.table_no), base=settings();
           if (body.settings_version !== base.version) throw fail(409,'Der Grundpreis wurde geändert. Bitte den Preis erneut prüfen.');
           if (occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409,'Dieser Tisch ist belegt.');
           if(body.discount!==undefined && (typeof body.discount!=='number' || !Number.isFinite(body.discount) || body.discount<0 || body.discount>100)) throw fail(400,'Rabatt muss zwischen 0 und 100 % liegen.');

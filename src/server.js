@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { migrateTables, tableService } from './tables.js';
 import { backupService, BACKUP_LIMIT } from './backup.js';
 import { loadConfig } from './config.js';
 import { migrateRentals, rentalService } from './rentals.js';
@@ -25,7 +26,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
     CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, actor TEXT NOT NULL, action TEXT NOT NULL, match_id INTEGER, detail TEXT NOT NULL);
     `);
   const schema = db.prepare('PRAGMA user_version').get().user_version;
-  if (schema > 7) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
+  if (schema > 8) throw new Error('Die Datenbank benötigt eine neuere App-Version.');
   if (schema < 2) {
     db.exec(`BEGIN IMMEDIATE;
       ALTER TABLE events ADD COLUMN status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed'));
@@ -70,6 +71,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
       db.exec('PRAGMA user_version=7; COMMIT');
     } catch(error) {db.exec('ROLLBACK');throw error;}
   }
+  if (schema < 8) migrateTables(db);
   const adminHash = () => db.prepare('SELECT password_hash FROM admin_credentials WHERE id=1').get().password_hash;
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
@@ -80,7 +82,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
   const integer = (v, min, max) => { if (!Number.isInteger(v) || v < min || v > max) throw fail(400, 'Ungültiger Zahlenwert.'); return v; };
   const log = (actor, action, id, detail) => db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => { db.exec('BEGIN IMMEDIATE'); try { const value = fn(); db.exec('COMMIT'); return value; } catch (e) { db.exec('ROLLBACK'); throw e; } };
-  const rentals = rentalService({db, transaction, fail, integer, log});
+  const tables = tableService({db, transaction, fail, integer, log});
+  const rentals = rentalService({db, transaction, fail, integer, log, activeTable:tables.activeNumber});
   const branding = brandingService({db, transaction, fail, log});
   const backups = backupService({db, transaction, fail, log});
   const nextId = name => db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name).value;
@@ -158,6 +161,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
       if (req.method === 'GET' && url.pathname === '/health') { db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
+      if (req.method === 'POST' && url.pathname === '/api/settings/tables') { admin(); return json(res,200,tables.save(body)); }
       if (req.method === 'GET' && url.pathname === '/api/branding') return json(res,200,branding.publicState());
       if (req.method === 'POST' && url.pathname === '/api/settings/branding') {admin();return json(res,200,branding.save(body));}
       if (req.method === 'GET' && url.pathname === '/api/branding/logo') {
@@ -221,13 +225,13 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
-      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...rentals.state(), csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
+      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { table_settings:tables.get(), ...rentals.state(), csrf: session.csrf, events: db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all(), matches: db.prepare('SELECT * FROM matches ORDER BY id DESC').all().map(publicMatch) }); }
       if (req.method === 'POST' && (url.pathname === '/api/rentals' || url.pathname.startsWith('/api/rentals/'))) {
         admin(); return json(res, url.pathname === '/api/rentals' ? 201 : 200, rentals.handle(url.pathname,body));
       }
-      const pinRoute = /^\/api\/tables\/([1-8])\/login$/.exec(url.pathname);
+      const pinRoute = /^\/api\/tables\/([1-9]|1[0-9]|20)\/login$/.exec(url.pathname);
       if (req.method==='POST' && pinRoute) {
-        const number=Number(pinRoute[1]);
+        const number=tables.activeNumber(Number(pinRoute[1]));
         const attempt=db.prepare('SELECT * FROM pin_attempts WHERE table_no=?').get(number);
         if(attempt && attempt.until>now && attempt.count>=5) throw fail(429,'Zu viele PIN-Versuche. Bitte 15 Minuten warten.');
         const count=attempt && attempt.until>now ? attempt.count+1 : 1, until=attempt && attempt.until>now ? attempt.until : now+15*60_000;
@@ -244,9 +248,9 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         tabletSessions.set(hash(token),{id:m.id,table:number,revision:m.auth_version,expires:now+8*3600_000});
         return json(res,200,{token});
       }
-      const tableRoute = /^\/api\/tables\/([1-8])$/.exec(url.pathname);
+      const tableRoute = /^\/api\/tables\/([1-9]|1[0-9]|20)$/.exec(url.pathname);
       if (req.method === 'GET' && tableRoute) {
-        const number=Number(tableRoute[1]), m=liveAt(number);
+        const number=tables.activeNumber(Number(tableRoute[1])), m=liveAt(number);
         if(m && !session && !authorizedTablet(tabletAuth,m)) throw fail(401,'Bitte die sechsstellige PIN der Partie eingeben.');
         return json(res,200,{match:publicMatch(m)||null});
       }
@@ -312,9 +316,10 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             } else openEvent(event);
             if (event !== m.event_id && body.destination_version !== getEvent(event).version) throw fail(409, 'Die Zielveranstaltung wurde geändert. Bitte erneut prüfen.');
             const target=integer(body.target,1,99), a=integer(body.a,0,target), b=integer(body.b,0,target);
-            const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,8);
+            const status=body.status, number=body.table_no === null ? null : integer(body.table_no,1,20);
             if (!['planned','live','finished'].includes(status) || !['8-Ball','9-Ball','10-Ball'].includes(body.discipline) || !['a','b'].includes(body.first)) throw fail(400,'Ungültige Spielregel oder Status.');
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
+            if (status==='live') tables.activeNumber(number);
             if (status==='live' && (rentals.occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id))) throw fail(409,'Dieser Tisch ist belegt.');
             db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a),text(body.player_b),body.discipline,target,body.first,a,b,status,number,id);
             if(body.pin !== undefined && body.pin !== '') db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
@@ -329,7 +334,7 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
             if(event!==m.event_id) touchEvent(event);
           } else if (action === 'start') {
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');
-            const number = integer(body.table_no, 1, 8);
+            const number = tables.activeNumber(body.table_no);
             if (rentals.occupied(number) || db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number)) throw fail(409, 'Dieser Tisch ist belegt.');
             db.prepare("UPDATE matches SET table_no=?,status='live',version=version+1 WHERE id=?").run(number, id);
             if(body.lag_winner!==undefined || body.first!==undefined) {
@@ -355,7 +360,8 @@ export function createApp({ dbPath, config, origin = 'http://localhost:3000' }) 
         });
         return json(res, 200, result);
       }
-      if (req.method === 'GET' && ['/', '/admin', '/app.js', '/rental-pricing.js', '/style.css'].includes(url.pathname) || req.method === 'GET' && /^\/tisch\/[1-8]$/.test(url.pathname)) {
+      if (req.method === 'GET' && ['/', '/admin', '/app.js', '/rental-pricing.js', '/style.css'].includes(url.pathname) || req.method === 'GET' && /^\/tisch\/([1-9]|1[0-9]|20)$/.test(url.pathname)) {
+        if (url.pathname.startsWith('/tisch/')) tables.activeNumber(Number(url.pathname.split('/').pop()));
         const asset = url.pathname === '/rental-pricing.js' ? 'rental-pricing.js' : url.pathname === '/app.js' ? 'app.js' : url.pathname === '/style.css' ? 'style.css' : 'index.html';
         res.setHeader('Content-Type', asset.endsWith('.js') ? 'text/javascript; charset=utf-8' : asset.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/html; charset=utf-8');
         let content=readFileSync(new URL(`../public/${asset}`, import.meta.url));

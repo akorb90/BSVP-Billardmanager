@@ -23,15 +23,17 @@ Einstellungen:
 
 - Liga-Spieltage und Turniere mit Name und Datum anlegen.
 - Begegnungen manuell planen: zwei Spieler, 8-/9-/10-Ball, Gewinnspiele und Tablet-PIN. Ausstoßen und erstes Break werden vor Ort abgefragt.
-- Begegnungen einem von acht freien Tischen zuweisen; Doppelbelegung wird verhindert.
+- Begegnungen einem der eingestellten Tische zuweisen; Doppelbelegung wird verhindert.
 - Feste Kiosk-Endpunkte `/tisch/1` bis `/tisch/8`, Punkte +/−, Wechselbreak und automatische Aktualisierung alle drei Sekunden.
 - Ergebnisse nach Erreichen des Spielziels zentral oder direkt am zugeordneten Tablet bestätigen. Danach wird der Tisch frei; das Ergebnis bleibt erhalten.
 - Obere Adminnavigation: Tischübersicht, Spieltagsverwaltung, Ergebnisse, Tischvermietung und Einstellungen. Die Tischübersicht zeigt laufende Partien; abgeschlossene Partien erscheinen im Ergebnisarchiv.
-- Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die feste Übersicht der acht Tische bleibt vollständig sichtbar.
+- Veranstaltungen, Begegnungen, Ergebnisse und Buchungshistorie bieten Zurück/Weiter und 10, 20, 50 oder 100 Einträge pro Seite (Standard: 20). Jede Liste behält ihre Auswahl beim Menüwechsel und bei automatischen Aktualisierungen; eine andere Seitengröße beginnt auf Seite 1. Die Übersicht aller eingestellten Tische bleibt vollständig sichtbar.
 - SQLite speichert Veranstaltungen, Begegnungen, Ergebnisse und ein Änderungsprotokoll. Gleichzeitige Eingaben werden mit Versionsprüfung und Transaktionen geschützt.
 - Einstellungen bündeln Vereinsgestaltung (FR-009), Grundpreis, Admin-Passwortwechsel und [Datensicherung mit Export und Import (FR-005)](Datensicherung.md). Eine geprüfte Sicherungsdatei kann den vollständigen Anwendungsstand auf einer neuen Installation wiederherstellen.
 
 ## Vereinsgestaltung (FR-009)
+
+Unter **Einstellungen → Tischanzahl** lässt sich die Anzahl von **1 bis 20** einstellen (Standard: 8). Übersicht, Tischzuweisung und Vermietung übernehmen die Änderung automatisch. Die Tische sind fortlaufend ab 1 nummeriert; Tablet-Adressen lauten beispielsweise `/tisch/20`. Eine Verringerung wird abgelehnt, solange ein entfallender Tisch eine laufende Partie oder Vermietung hat. Abgeschlossene Partien und Buchungen bleiben mit ihrer historischen Tischnummer erhalten und können weiterhin korrigiert werden. Bei parallelen Änderungen neu laden bzw. **Änderungen verwerfen / Neu laden** wählen. Die Einstellung ist Bestandteil der Datensicherung.
 
 Unter **Einstellungen → Vereinsgestaltung** können Administratoren den Vereinsnamen (1–80 Zeichen), ein eigenes Logo und die Farben für Akzente, Hintergrund, Flächen und Text speichern. Die Gestaltung gilt auch für Anmeldung, Browser-Titel und Tisch-Tablets; offene Seiten übernehmen sie automatisch beim nächsten Aktualisieren. PNG- und JPEG-Logos bis 1 MiB sind erlaubt. Ohne neue Dateiauswahl bleibt das vorhandene Logo erhalten; **Standardlogo verwenden** stellt beim Speichern das BSV-Logo wieder her. Andere Vereine sollten ihr eigenes Logo hochladen.
 

@@ -1,6 +1,6 @@
 import { rentalPrice, hourlyRate } from './rental-pricing.js';
 const root = document.querySelector('#app'), connection = document.querySelector('#connection');
-const table = Number(/^\/tisch\/([1-8])$/.exec(location.pathname)?.[1]);
+const table = Number(/^\/tisch\/([1-9]|1[0-9]|20)$/.exec(location.pathname)?.[1]);
 if (table) document.body.classList.add('kiosk');
 if (table && location.hash) history.replaceState(null, '', location.pathname);
 let setupChoice, clockOffset=0;
@@ -18,7 +18,7 @@ function applyBranding() {
 }
 const navigation = document.querySelector('#admin-nav');
 
-const views = { einstellungen: ['Einstellungen', 'Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle acht Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+const views = { einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const drafts = new Map();
 const listPages = new Map();
@@ -92,8 +92,8 @@ function dashboard() {
   const visibleMatches = state.matches.filter(m => view === 'ergebnisse' ? m.status === 'finished' : view === 'spieltage' ? true : m.status === 'live');
   const matchPage = paginate(visibleMatches, 'matches-' + view, views[view][0]);
   const eventPage = view === 'spieltage' ? paginate(state.events, 'events', 'Veranstaltungen') : null;
-  root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length + (state.rentals || []).filter(r=>r.status==='active').length} / 8 Tische belegt</span></div>
-    <section ${view === 'uebersicht' ? '' : 'hidden'}><div class="section-title"><h2>Unsere Tische</h2><span>Live-Spielstände · alle 3 Sekunden</span></div><section class="tables">${Array.from({length:8}, (_,i) => {
+  root.innerHTML = `<div class="page-title"><div><p class="eyebrow">SPIELBETRIEB</p><h1>${views[view][0]}</h1><p>${views[view][1]}</p></div><span class="pill">${live.length + (state.rentals || []).filter(r=>r.status==='active').length} / ${tableCount()} Tische belegt</span></div>
+    <section ${view === 'uebersicht' ? '' : 'hidden'}><div class="section-title"><h2>Unsere Tische</h2><span>Live-Spielstände · alle 3 Sekunden</span></div><section class="tables">${Array.from({length:tableCount()}, (_,i) => {
       const m = live.find(m => m.table_no === i + 1);
       const r = (state.rentals || []).find(r=>r.table_no===i+1 && r.status==='active');
       if(r) return `<a href="/#vermietung" class="table-card occupied"><strong>TISCH ${i+1}</strong><h3>Vermietet</h3>${rentalRunning(r)}<small>Zur Tischvermietung ↗</small></a>`;
@@ -104,7 +104,7 @@ function dashboard() {
     <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div>${eventPage?.controls || ''}<div class="event-list">${eventPage ? eventPage.items.map(eventCard).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>' : ''}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Alle Begegnungen' : 'Laufende Partien'}</h2><span>${visibleMatches.length} Partien</span></div>${matchPage.controls}<section id="matches">${matchRows(matchPage.items)}</section>`;
 }
 function matchRows(matches) {
-  return matches.map(m => `<article class="match-row"><div><span class="pill ${m.status === 'live' ? 'green' : ''}">${labels[m.status]}</span><h3>${esc(m.player_a)} <span class="muted">vs.</span> ${esc(m.player_b)}</h3><p>${esc(state.events.find(e => e.id === m.event_id)?.name)} · ${esc(m.discipline)} · Ziel ${m.target}${m.table_no ? ' · Tisch ' + m.table_no : ''}</p></div><strong class="result">${m.a} : ${m.b}</strong>${m.status === 'planned' ? `<form class="start" data-id="${m.id}"><label>Tisch<select name="table_no">${Array.from({length:8},(_,i) => `<option value="${i+1}">Tisch ${i+1}</option>`).join('')}</select></label><button>Tisch zuweisen ↗</button></form>` : m.status === 'live' ? `<div class="match-actions"><a href="/tisch/${m.table_no}">Punkte bearbeiten ↗</a>${finishButton(m)}${Math.max(m.a,m.b) < m.target ? '<small>Abschluss ab Erreichen des Spielziels</small>' : '<small>Spielziel erreicht · bereit zum Abschluss</small>'}</div>` : ''}${m.pin_set ? '' : '<small>Tablet-PIN fehlt · bitte Partie bearbeiten</small>'}${timers(m)}${matchAdminActions(m)}</article>`).join('') || '<div class="empty">Keine Partien in dieser Ansicht.</div>';
+  return matches.map(m => `<article class="match-row"><div><span class="pill ${m.status === 'live' ? 'green' : ''}">${labels[m.status]}</span><h3>${esc(m.player_a)} <span class="muted">vs.</span> ${esc(m.player_b)}</h3><p>${esc(state.events.find(e => e.id === m.event_id)?.name)} · ${esc(m.discipline)} · Ziel ${m.target}${m.table_no ? ' · Tisch ' + m.table_no : ''}</p></div><strong class="result">${m.a} : ${m.b}</strong>${m.status === 'planned' ? `<form class="start" data-id="${m.id}"><label>Tisch<select name="table_no">${Array.from({length:tableCount()},(_,i) => `<option value="${i+1}">Tisch ${i+1}</option>`).join('')}</select></label><button>Tisch zuweisen ↗</button></form>` : m.status === 'live' ? `<div class="match-actions"><a href="/tisch/${m.table_no}">Punkte bearbeiten ↗</a>${finishButton(m)}${Math.max(m.a,m.b) < m.target ? '<small>Abschluss ab Erreichen des Spielziels</small>' : '<small>Spielziel erreicht · bereit zum Abschluss</small>'}</div>` : ''}${m.pin_set ? '' : '<small>Tablet-PIN fehlt · bitte Partie bearbeiten</small>'}${timers(m)}${matchAdminActions(m)}</article>`).join('') || '<div class="empty">Keine Partien in dieser Ansicht.</div>';
 }
 function tabletLogin() {
   current=undefined; adminNavigation(false);
@@ -169,6 +169,7 @@ async function mutate(fn) {
 root.addEventListener('submit', e => {
   e.preventDefault(); if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
+    if (form.id === 'table-settings') { await api('/api/settings/tables',{table_count:Number(data.table_count),version:Number(data.version)}); drafts.delete(form.id); form.remove(); message('Tischanzahl gespeichert.'); }
     if (form.id === 'tablet-login') { const result=await api(`/api/tables/${table}/login`,data); sessionStorage.setItem(`tablet-session:${table}`,result.token); form.reset(); }
     if (form.id === 'login') {
       const result = await api('/api/login', data); csrf = result.csrf;
@@ -181,6 +182,7 @@ root.addEventListener('submit', e => {
 });
 root.addEventListener('click', e => {
   const button = e.target.closest('button'); if (!button) return;
+  if(button.id==='table-settings-reload') { mutate(async()=>{drafts.delete('table-settings');root.querySelector('#table-settings')?.remove();}); return; }
   if(button.dataset.lag && current && !busy) { setupChoice={id:current.id,version:current.version,lag:button.dataset.lag}; preparation(current); }
   if(button.hasAttribute('data-setup-back') && current && !busy) { setupChoice=undefined; preparation(current); }
   if(button.dataset.begin && current && setupChoice?.lag && !busy) { const m=current; mutate(()=>api(`/api/matches/${m.id}/begin`,{lag_winner:setupChoice.lag,first:button.dataset.begin,version:m.version})); }
@@ -232,7 +234,7 @@ root.addEventListener('click',e=>{
       '<div class="form-row">'+field('Spieler A','player_a',item.player_a,'text','maxlength="100"')+field('Spieler B','player_b',item.player_b,'text','maxlength="100"')+'</div>'+
       '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field('Gewinnspiele','target',item.target,'number','min="1" max="99"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
       '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="99"')+field('Punkte B','b',item.b,'number','min="0" max="99"')+'</div>'+
-      '<div class="form-row">'+selectField('Status','status',item.status,state.events.find(e=>e.id===item.event_id)?.status==='closed'?[['finished','Abgeschlossen']]:Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:8},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
+      '<div class="form-row">'+selectField('Status','status',item.status,state.events.find(e=>e.id===item.event_id)?.status==='closed'?[['finished','Abgeschlossen']]:Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:Math.max(tableCount(),item.table_no || 0)},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
       '<label>'+ (item.pin_set ? 'Neue Tablet-PIN (leer lassen zum Beibehalten)' : 'Tablet-PIN nachtragen') +'<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>'+
       '<small>Geplant: 0:0 und kein Tisch. Am Tisch: freier Tisch erforderlich. Abgeschlossen: genau ein Spieler hat das Spielziel erreicht.</small>';
   } else {
@@ -327,9 +329,12 @@ function handleBrandingSubmit(form) {
   });
   return true;
 }
+function tableCount() { return state?.table_settings?.table_count ?? 8; }
 function settingsDashboard() {
   const settings=state.rental_settings;
   root.innerHTML='<div class="page-title"><div><h1>Einstellungen</h1><p>Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.</p></div></div><section class="planning"><div class="panel"><h2>Grundpreis</h2><form id="rental-settings" data-version="'+settings.version+'">'+field('Grundpreis in €/h','base_euros',settings.base_cents/100,'number','min="0" max="10000" step="0.01"')+'<p>Gilt für neue Buchungen. Bestehende Buchungen behalten ihren vereinbarten Preis.</p><button>Grundpreis speichern</button></form></div><div class="panel"><h2>Admin-Passwort ändern</h2><form id="admin-password">'+field('Aktuelles Passwort','current_password','','password','autocomplete="current-password"')+field('Neues Passwort','new_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+field('Neues Passwort wiederholen','repeat_password','','password','autocomplete="new-password" minlength="12" maxlength="128"')+'<p>12 bis 128 Zeichen. Nach dem Wechsel werden alle Admin-Sitzungen abgemeldet. Bitte anschließend mit dem neuen Passwort anmelden.</p><button>Passwort ändern</button></form></div></section>';
+  const tables=state.table_settings || {table_count:8,version:0};
+  root.innerHTML += '<section class="panel"><h2>Tischanzahl</h2><form id="table-settings" data-version="'+tables.version+'"><input type="hidden" name="version" value="'+tables.version+'">'+field('Anzahl der Tische','table_count',tables.table_count,'number','min="1" max="20" step="1" required')+'<p>1 bis 20 Tische. Belegte Tische müssen vor einer Verringerung abgeschlossen werden. Historische Partien und Buchungen bleiben erhalten.</p><button>Tischanzahl speichern</button> <button type="button" id="table-settings-reload">Änderungen verwerfen / Neu laden</button></form></section>';
   root.innerHTML += brandingForm();
   root.innerHTML += '<section class="panel"><h2>Datensicherung</h2><p>Alle Spieltage, Partien, Spielstände, Vermietungen, Einstellungen und das Änderungsprotokoll als JSON-Datei sichern. Enthält auch Passwort- und PIN-Hashes: Die Datei vertraulich und außerhalb dieses Rechners aufbewahren.</p><p><a class="button" href="/api/backups/export" download>Sicherung herunterladen</a></p><h3>Sicherung wiederherstellen</h3><p>Ersetzt sämtliche vorhandenen Anwendungsdaten. Zuerst eine aktuelle Sicherung herunterladen. Anschließend gilt das Admin-Passwort aus der Sicherung; alle Admin- und Tablet-Sitzungen werden abgemeldet. Laufende Zeitmessungen werden ab ihrem gespeicherten Start weitergerechnet.</p><label>Sicherungsdatei auswählen (maximal 50 MiB)<input id="backup-file" type="file" accept=".json,application/json"></label><p>Die Datei wird zuerst geprüft. Erst die anschließende Bestätigung ersetzt Daten. Serveradresse, HTTPS-Zertifikate und Installationsdateien werden separat gesichert; Hinweise stehen in der README.</p></section>';
 }
@@ -359,9 +364,9 @@ function handlePasswordSubmit(form) {
 function rentalDashboard() {
   const rentals=state.rentals || [], settings=state.rental_settings || {base_cents:900,version:0};
   const rentalPage = paginate(rentals, 'rentals', 'Buchungshistorie');
-  const free=Array.from({length:8},(_,i)=>i+1).filter(n=>!rentals.some(r=>r.table_no===n&&r.status==='active')&&!state.matches.some(m=>m.table_no===n&&m.status==='live'));
-  root.innerHTML='<div class="page-title"><div><p class="eyebrow">TISCHVERMIETUNG</p><h1>Tischvermietung</h1><p>Angefangene Minuten werden aufgerundet. Vereinbarte Preise bleiben gespeichert.</p></div><span class="pill">'+free.length+' / 8 Tische frei</span></div>'+
-    '<section class="tables">'+Array.from({length:8},(_,i)=>{
+  const free=Array.from({length:tableCount()},(_,i)=>i+1).filter(n=>!rentals.some(r=>r.table_no===n&&r.status==='active')&&!state.matches.some(m=>m.table_no===n&&m.status==='live'));
+  root.innerHTML='<div class="page-title"><div><p class="eyebrow">TISCHVERMIETUNG</p><h1>Tischvermietung</h1><p>Angefangene Minuten werden aufgerundet. Vereinbarte Preise bleiben gespeichert.</p></div><span class="pill">'+free.length+' / '+tableCount()+' Tische frei</span></div>'+
+    '<section class="tables">'+Array.from({length:tableCount()},(_,i)=>{
       const n=i+1,r=rentals.find(r=>r.table_no===n&&r.status==='active'), m=state.matches.find(m=>m.table_no===n&&m.status==='live');
       return '<article class="table-card '+(r||m?'occupied':'')+'"><strong>TISCH '+n+'</strong><h3>'+(r?'Vermietet':m?'Partie am Tisch':'Frei')+'</h3>'+(r?rentalRunning(r)+'<button data-rental-finish="'+r.id+'" data-version="'+r.version+'">Vermietung abschließen</button>':m?'<p>'+esc(m.player_a)+' / '+esc(m.player_b)+'</p>':'<p>Für eine neue Vermietung verfügbar</p>')+'</article>';
     }).join('')+'</section><section class="planning"><div class="panel"><h2>Vermietung starten</h2><form id="rental-start" data-version="'+settings.version+'" data-base="'+settings.base_cents+'">'+

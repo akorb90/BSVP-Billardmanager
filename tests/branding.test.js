@@ -31,7 +31,7 @@ test('FR-009: Vereinsgestaltung, Rechte, Konflikte, Upload, Neustart und Sicheru
     const page=await (await fetch(base+'/')).text();assert.ok(page.includes('BC München &lt;&amp;&gt; 🎱'));assert.ok(!page.includes('BSV PFAFFENHOFEN'));
     const css=await (await fetch(base+'/branding.css')).text();assert.ok(css.includes('--primary:#b13c27'));assert.ok(css.includes('--background:#ffffff'));
     const image=await fetch(base+'/api/branding/logo');assert.equal(image.headers.get('content-type'),'image/png');assert.deepEqual(Buffer.from(await image.arrayBuffer()),Buffer.from(logo.split(',')[1],'base64'));
-    const backup=(await call('/api/backups/export')).body;assert.equal(backup.schema,7);assert.equal(backup.data.branding[0].logo,logo);
+    const backup=(await call('/api/backups/export')).body;assert.equal(backup.schema,8);assert.equal(backup.data.branding[0].logo,logo);
     for(const key of ['club_name','background','surface','text'])assert.equal(backup.data.branding[0][key],value[key]);
     assert.equal(backup.data.branding[0].primary_color,value.primary);
     assert.ok(!backup.data.audit.find(r=>r.action==='settings:branding').detail.includes('base64'));
@@ -41,7 +41,7 @@ test('FR-009: Vereinsgestaltung, Rechte, Konflikte, Upload, Neustart und Sicheru
     assert.equal((await call('/api/backups/preview',{backup})).status,200);
     assert.equal((await call('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);
     assert.deepEqual((await call('/api/branding')).body,saved);await login();
-    const legacy=structuredClone(backup);legacy.schema=6;delete legacy.data.branding;resign(legacy);
+    const legacy=structuredClone(backup);legacy.schema=6;delete legacy.data.branding;delete legacy.data.table_settings;resign(legacy);
     assert.equal((await call('/api/backups/preview',{backup:legacy})).status,200);
     assert.equal((await call('/api/backups/restore',{backup:legacy,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);
     assert.equal((await call('/api/branding')).body.club_name,DEFAULT_BRANDING.club_name);

@@ -2,6 +2,14 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-011: Einstellbare Tischanzahl — 2026-10-28
+
+- Unter **Einstellungen → Tischanzahl** lassen sich 1 bis 20 Tische speichern (Standard 8). Übersicht, Belegungszähler, Tischzuweisung, Vermietung und Tablet-Adressen übernehmen die Einstellung; auch zweistellige Tischnummern sind nutzbar.
+- Eine Verringerung ist erst möglich, wenn alle entfallenden Tische frei sind. Abgeschlossene Partien und Buchungen behalten ihre historischen Tischnummern und bleiben korrigierbar. Adminrechte, Origin/CSRF und eine Versionsprüfung schützen Änderungen; Formularentwürfe enthalten ihre ursprüngliche Version und können verworfen werden. Änderungen erscheinen im Auditprotokoll.
+- Schema 8 übernimmt alle vorhandenen Daten transaktional, erweitert die Tischgrenzen und speichert die Tischanzahl im bestehenden Datenvolume. Vollständige Sicherungen enthalten die neue Einstellung automatisch; Importprüfung und Wiederherstellung berücksichtigen sie einschließlich Belegungskonsistenz. Sicherungen aus Schema 6/7 werden auf acht Tische ergänzt, Schema 6 erhält zusätzlich die Standardgestaltung. Die separat dokumentierte Betriebssicherung bleibt erforderlich.
+- Prüfung: 32 automatisierte Tests einschließlich Bestandsmigration, Grenzwerten, Berechtigungen, Belegungsschutz, Tablet-Zugang, Historie, Neustart und vollständigem Restore in eine getrennte Datenbank. Isolierter Docker-HTTPS-Test einschließlich Tisch 20, Verringerungsschutz und Export/Import erfolgreich.
+- Deployment: konsistente Datenbanksicherung vor Migration unter `backups/fr011-20261028/billard-before.sqlite`. Bestehenden Stack mit expliziter lokaler Build-Ergänzung aktualisiert (`docker compose -f compose.yaml -f compose.override.yaml up -d --build --wait`), da die Standardauswahl das veröffentlichte Image verwendete. App gesund, Proxy aktiv, HTTPS-Zertifikatskette über localhost und 127.0.0.1 geprüft. Prüfsummen bestätigen unveränderte Bestandsdaten, `.env` und Sicherheitskonfiguration; vorhandene Datenvolumes und CA weiterverwendet. Stack bleibt aktiv.
+
 ## FR-010: Dokumentation und Image-Deployment — 2026-10-28
 
 - README auf Ersteinrichtung und Updates reduziert. Bedienung, Betrieb/Sicherheit, vollständige Anwendungs- und Betriebssicherung, Entwicklung, Logoherkunft, Release Notes und offene Anforderungen unter `Doku/` strukturiert. Veraltete Angaben zu Schema und Backup-Kompatibilität berichtigt.
