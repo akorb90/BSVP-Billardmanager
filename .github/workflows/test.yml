@@ -25,11 +25,13 @@ jobs:
           DOCKER_TEST_IMAGE: bsvp-billardmanager:local
   publish:
     needs: test
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/fr-010-deployment-doku' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.image.outputs.reference }}
     concurrency:
       group: publish-${{ github.ref }}
       cancel-in-progress: false
@@ -41,7 +43,13 @@ jobs:
         id: image
         env:
           REPOSITORY: ${{ github.repository }}
-        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        run: |
+          name="ghcr.io/${REPOSITORY,,}"
+          tag=latest
+          if [[ "$GITHUB_REF" == refs/heads/codex/fr-010-deployment-doku ]]; then tag=latest-TEST; fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then tag="$GITHUB_REF_NAME"; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "reference=$name:$tag" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -53,7 +61,9 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=long
+            type=raw,value=latest-TEST,enable=${{ github.ref == 'refs/heads/codex/fr-010-deployment-doku' }}
+            type=sha,format=long,enable=${{ github.ref != 'refs/heads/codex/fr-010-deployment-doku' }}
+            type=sha,format=long,suffix=-TEST,enable=${{ github.ref == 'refs/heads/codex/fr-010-deployment-doku' }}
             type=ref,event=tag
       - uses: docker/build-push-action@v6
         with:
@@ -75,3 +85,21 @@ jobs:
             .env.example
             README.md
             Doku/
+  verify-published:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Pull published image without registry login
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: docker pull "$IMAGE"
+      - name: Verify published image over HTTPS
+        env:
+          DOCKER_TEST_IMAGE: ${{ needs.publish.outputs.image }}
+        run: node scripts/docker-smoke.js

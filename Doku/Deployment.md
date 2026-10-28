@@ -2,7 +2,7 @@
 
 ## Fertige Images auf GitHub
 
-Die GitHub Container Registry (GHCR) ist für dieses Repository geeignet. Der Workflow `.github/workflows/test.yml` prüft Änderungen einschließlich eines isolierten Docker-HTTPS-Tests. Erst danach veröffentlicht er bei Push auf `main` das Image `ghcr.io/akorb90/bsvp-billardmanager:latest` und zusätzlich `sha-<vollständige-Commit-SHA>`. Tags mit Präfix `v` veröffentlichen ihren eigenen Tag, ohne `latest` zu ändern. Ein manueller Lauf auf `main` ist ebenfalls möglich. Auf Arbeitsbranches und bei Pull Requests werden keine Images veröffentlicht.
+Die GitHub Container Registry (GHCR) ist für dieses Repository geeignet. Der Workflow `.github/workflows/test.yml` prüft Änderungen einschließlich eines isolierten Docker-HTTPS-Tests. Erst danach veröffentlicht er bei Push auf `main` das Image `ghcr.io/akorb90/bsvp-billardmanager:latest` und zusätzlich `sha-<vollständige-Commit-SHA>`. Tags mit Präfix `v` veröffentlichen ihren eigenen Tag, ohne `latest` zu ändern. Ein manueller Lauf auf `main` ist ebenfalls möglich. Der freigegebene Testbranch `codex/fr-010-deployment-doku` veröffentlicht ausschließlich `latest-TEST` und `sha-<vollständige-Commit-SHA>-TEST`. Auf anderen Arbeitsbranches und bei Pull Requests werden keine Images veröffentlicht. Eine zusätzliche Prüfung lädt das veröffentlichte Image auf einem frischen Runner ohne Registry-Anmeldung und führt den vollständigen HTTPS-Integrationstest damit aus.
 
 Images werden für Linux amd64 (übliche PCs) und arm64 gebaut. Der Workflow nutzt das automatisch bereitgestellte `GITHUB_TOKEN` mit `packages: write`; zusätzliche Registry-Secrets auf dem Betriebsrechner sind für ein öffentliches Paket nicht erforderlich. OCI-Metadaten verknüpfen Image, Quellrepository und Commit. Das Installationspaket im Actions-Lauf enthält ausschließlich `compose.yaml`, `Caddyfile`, `.env.example`, README und Doku. Quellcode, lokale Konfiguration, Zugangsdaten und Volumes sind nicht enthalten.
 
@@ -48,3 +48,7 @@ docker compose -f compose.yaml exec -T proxy caddy reload --config /etc/caddy/Ca
 ```
 
 Die zusätzliche Sicherung von Installationsdateien, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt erforderlich und ersetzt nie den vollständigen Anwendungs-Export.
+
+## Testveröffentlichung vor main
+
+Ein Push auf `codex/fr-010-deployment-doku` durchläuft dieselben Tests und denselben Multiarch-Build wie `main`, veröffentlicht jedoch die Tags mit Suffix `-TEST`. Das produktive `latest` wird dabei nicht verändert. Für einen getrennten Testbetrieb `BILLARD_IMAGE=ghcr.io/akorb90/bsvp-billardmanager:latest-TEST` setzen oder den Integrationstest mit `DOCKER_TEST_IMAGE` aufrufen. Die Testversion nicht gegen Produktionsdaten starten.
