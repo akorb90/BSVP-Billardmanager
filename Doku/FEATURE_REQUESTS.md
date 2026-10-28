@@ -31,3 +31,9 @@ Anforderungen und Abnahmekriterien:
 - Offizielle Dokumente direkt öffnen und, soweit technisch und rechtlich möglich, in der Anwendung durchsuchbar anzeigen. Falls eine eingebettete Anzeige nicht möglich ist, einen klaren Link zum Original anbieten.
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
+
+
+## FR-007-Fix
+
+- Spieltagsplanung fehlerhaft. Beim starten des Spieltags werden alle registrierten Spieler mit teilnahme dropdown angezeigt. Das ist sehr schlechtes UI design und unübersichtlich. Nach Auswahl des Spieltags sollen die beiden Mannschaften vorausgewählt sein, das ist korrekt. Im Bereich darunter werden erst Mannschaft 1 mit ihren Spielern angezeigt und dann mannschaft 2. Die gemeldeten Spieler sind vorausgefüllt, zusätzlich gibt es ein freitext feld um manuell noch einen spieler nur für diesen Spieltag anzulegen. Anschließend wird die Auswahl bestätigt und die Spieler werden den Partien für die erste Runde zugewiesen, dabei erfolgt auch die Zuweisung auf einen Tisch
+- Die Synchronisationseinstellungen für nuliga müssen in de n Einstellung zusammenliegen. Die Einstellungen sollen dabei direkt alle neu geordnet werden. keine Einstellungen nebeneinander, sinnvolle Überschriften und Reihenfolge definieren
