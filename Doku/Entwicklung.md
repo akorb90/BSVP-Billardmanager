@@ -49,15 +49,37 @@ Nach dem Lauf werden ausschließlich die Container und Volumes dieses Testprojek
 
 Der vollständige Docker-Test prüft auch Backup-Export/Import sowie eine vollständige SQLite-Übernahme und Wiederherstellung zwischen getrennten PostgreSQL-Datenbanken: Einstellungen, Logo, Farben, Hashes, Zeiten, Preise, Historie, neue Tabellen, fehlgeschlagene Migrationen und fehlerhafte Importe. Echte Tablets im Vereins-WLAN und die Zertifikatsinstallation auf den Geräten sind separat zu prüfen.
 
-## Architektur und nächste Schritte
+## Aktuelle Architektur
 
 ```text
 Tablets / Adminbrowser ── HTTPS :443 ── Caddy ── App :3000 ── PostgreSQL :5432 ── postgres_data
 ```
 
-Das logische Datenschema bleibt Version 8; PostgreSQL verwaltet den Installationsstand in `_schema`. Alle SQL-Zugriffe auf PostgreSQL sind asynchron und parametrisiert. Transaktionen verwenden eine feste Pool-Verbindung und eine gemeinsame transaktionale Advisory-Sperre, damit Versionsprüfung, Tischbelegung und Änderungen auch über mehrere Verbindungen atomar bleiben. Sicherungsprüfungen werden innerhalb eines Savepoints vollständig eingesetzt, mit echten Constraints und Fachprüfungen validiert und anschließend verworfen. Der Wiederherstellungszähler für das Protokoll wird transaktional fortgeschrieben. HTTP-Sitzungen bleiben pro App-Prozess; der Compose-Stack betreibt einen App-Prozess. Version 8 erweitert die Tischgrenzen für Partien und Vermietungen auf 20 und ergänzt die versionierte Tischanzahl (Standard 8). Die transaktionale Migration übernimmt sämtliche Zeilen und Belegungsindizes. Exporte enthalten automatisch alle Anwendungstabellen einschließlich `table_settings`; Importe prüfen auch, dass laufende Vorgänge innerhalb der eingestellten Tischanzahl liegen. Sicherungen aus Schema 6/7 werden beim Import ergänzt. Version 7 ergänzt Vereinsname, Logo und Farben. Version 5 ergänzt Tischvermietungen und Grundpreis. Version 6 übernimmt den vorhandenen Admin-Hash einmalig aus der Konfiguration in die Datenbank; spätere Konfigurationsänderungen überschreiben das Passwort nicht. Eine Wiederherstellung der Datenbank stellt auch den damaligen Passwortstand wieder her. Die Migration von Version 2 ergänzt PIN-Hashes, eine Berechtigungsrevision und persistente PIN-Versuchslimits. Bestehende Partien erhalten keine automatische PIN; diese wird bei Bedarf im Adminbereich nachgetragen. Eine transaktionale Migration übernimmt bestehende Version-1-Daten: Veranstaltungen erhalten den Status `open` und eine Versionsnummer, Spieler und Ergebnisse bleiben unverändert. ID-Zähler verhindern, dass nach dem Löschen alte IDs wiederverwendet werden. Vor Migrationen eine konsistente Sicherung erstellen. Ältere App-Versionen dürfen nicht gegen das migrierte Schema gestartet werden; für einen Rollback passende App-Version und Datenbank-Backup zusammen wiederherstellen. Die automatische Übernahme aus SQLite und das Rückkehrverfahren sind unter [Datensicherung](Datensicherung.md) beschrieben. Die Tisch-ID ist auf 1–20 begrenzt. Neue Belegungen sind nur bis zur eingestellten Tischanzahl zulässig; historische Zuordnungen bleiben bei einer Verringerung erhalten. Vermietungen rechnen mit dem Grundpreis abzüglich eines Rabatts von 0 bis 100 %; der Grundpreis wird unter „Einstellungen“ verwaltet.
+Stand: 2026-10-29, logisches Datenschema **13** (`SCHEMA_VERSION` in `src/database.js`). PostgreSQL speichert den installierten Stand in `_schema`. Der Compose-Stack betreibt einen Node.js-24-App-Prozess und PostgreSQL 17; App und Datenbank haben keine öffentlich veröffentlichten Ports. Caddy stellt HTTPS bereit. Admin- und Tablet-Sitzungen liegen im App-Prozess und gehen bei einem Neustart verloren.
 
-Geplante Erweiterungen und ihre Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
+| Bereich | Einstiegspunkte und Verantwortung |
+| --- | --- |
+| Browser | `public/index.html`, `public/app.js`, `public/style.css`; `public/rental-pricing.js` für die Preisberechnung |
+| HTTP und Sicherheit | `src/server.js`: Routen, Anmeldung, Sitzungen, CSRF/Origin und Rechte; `src/config.js`: Sicherheitskonfiguration |
+| Spielbetrieb | `src/domain.js`, `src/tables.js`, `src/rentals.js`: Regeln, Tischbelegung und Vermietung |
+| Veranstaltungen und Stammdaten | `src/players.js`, `src/schedule.js`, `src/league.js`, `src/tournaments.js`: Spieler/Mannschaften, Planung, Liga-Aufstellungen, Gruppen und KO |
+| nuLiga | `src/nuliga.js` und `scripts/nuliga-sync.js`: externe Vereinsdaten und Synchronisierung |
+| Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/legacy-db.js`: SQLite-Altbestände und isolierte Kompatibilitätstests |
+| Einstellungen und Sicherung | `src/branding.js`, `src/backup.js`: Vereinsgestaltung, vollständiger Export, Prüfung und Wiederherstellung |
+
+SQL-Werte werden parametrisiert übergeben. Transaktionen nutzen eine feste Pool-Verbindung und eine gemeinsame transaktionale Advisory-Sperre für atomare Prüfungen und Änderungen, insbesondere bei Versionen und Tischbelegung. Das SQLite-Verfahren ist kein produktiver Ersatzbetrieb: Der Server benötigt PostgreSQL.
+
+Das aktuelle Datenmodell umfasst Veranstaltungen und Partien mit Zeiten, Ergebnissen und PIN-Hashes, Änderungsprotokoll und ID-Zähler, Vermietungen und Preise, Admin-Hash, Vereinsgestaltung, Tischanzahl, Spieler/Mannschaften und historische Zuordnungen, nuLiga-Zuordnungen und Sync-Stände, Spieltagsplanung, Liga-Aufstellungen und Spieltagsgäste. Turniere speichern ihre Regeln, Auslosungen und Fortschritte in `event_planning.metadata` (Turnierformat 1) und verwenden reguläre `matches`; sie erfordern keine zusätzliche Schemaversion.
+
+Exporte ermitteln alle Anwendungstabellen und Spalten aus dem installierten Schema; `_schema` ist technische Versionsverwaltung und nicht Teil der Nutzdaten. Das JSON-Sicherungsformat hat Version 1 und enthält die Schemaversion separat. PostgreSQL-Sicherungsprüfungen setzen Daten innerhalb eines Savepoints ein, prüfen Constraints und Fachregeln und verwerfen den Prüfzustand wieder. Die eigentliche Wiederherstellung erfolgt atomar einschließlich Audit-ID-Fortschreibung. Alle dauerhaften Einstellungen bleiben Bestandteil der Anwendungssicherung; Installation, externe Sicherheitskonfiguration und HTTPS-Schlüssel benötigen zusätzlich die [Betriebssicherung](Datensicherung.md).
+
+Die Tischanzahl ist zwischen 1 und 20 einstellbar. Neue Belegungen müssen innerhalb dieser Grenze liegen; historische Tischzuordnungen bleiben bei einer Verringerung erhalten. Vermietungen verwenden den gespeicherten Grundpreis und einen Rabatt von 0 bis 100 Prozent.
+
+Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1–13, PostgreSQL-Upgrades, SQLite-Übernahme und ältere Sicherungen. Geplante Erweiterungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
+
+## Lokale Ausgaben
+
+`/output/` ist für lokale Screenshots, Rechercheausgaben und Bildvarianten reserviert und wird von Git ignoriert. Bestehende Dateien bleiben erhalten. Für veröffentlichte Dokumentationsbilder einen versionierten Ordner unter `Doku/` verwenden; Anwendungsbilder gehören nach `public/assets/`. Keine globalen Regeln wie `*.png` oder `*.json` hinzufügen. Test- und Buildlogs liegen weiterhin in einem eigenen Laufordner unter dem bereits ignorierten `data/`.
 
 Referenzen: [Docker Desktop unter Windows](https://docs.docker.com/desktop/setup/install/windows-install/), [Compose-Secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
 

@@ -5,3 +5,5 @@ secrets/
 *.sqlite*
 coverage/
 backups/
+# Local screenshots, research exports and image variants; published assets stay tracked.
+/output/

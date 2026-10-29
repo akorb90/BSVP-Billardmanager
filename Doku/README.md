@@ -5,6 +5,8 @@
 - [Datensicherung](Datensicherung.md): vollständiger Anwendungs-Export/Import und zusätzliche Betriebssicherung.
 - [Bedienung](Bedienung.md): Funktionen, Screenshots, Spielablauf, Vermietung und Vereinsgestaltung.
 - [Entwicklung und Tests](Entwicklung.md): lokaler Quellcode-Build, isolierte Integrationstests und Architektur.
+- [Datenmigrationen](Migrationen.md): Schemageschichte, unterstützte Upgradewege und Backup-Kompatibilität.
+- [Projektcleanup (FR-013)](Projektcleanup.md): Analyse zur Tokennutzung und weitere Optionen mit Vor- und Nachteilen.
 - [Release Notes](CHANGELOG.md) und [offene Anforderungen](FEATURE_REQUESTS.md).
 - [Logo und Herkunft](Logo.md).
 

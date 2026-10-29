@@ -2,6 +2,14 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-013: Projektcleanup und sparsame Arbeitsweise — 2026-10-29
+
+- Folgeänderung: Architekturübersicht anhand des Codes auf Schema 13 aktualisiert; Schemastände 1–13 und unterstützte Upgrade-/Importwege nach [Migrationen](Migrationen.md) ausgelagert. Lokalen Ausgabeordner `/output/` gezielt ignoriert; Dateien bleiben erhalten und veröffentlichte Bildpfade werden nicht ausgeschlossen. Lokale Dokumentationsverweise, Ignore-Regeln und Diff geprüft; lokales Deployment und HTTPS-Zertifikatsprüfung erneut erfolgreich.
+- `AGENTS.md` ergänzt um gezielte Kontextsuche, Projekteinstiegspunkte, lokale vollständige Logs mit kompakter Ergebnisanzeige und risikobasierte Prüfungen. Commit und Push bleiben standardmäßig beim Entwickler; lokale Bereitstellung und alle Datensicherheitsregeln bleiben erhalten.
+- [Analyse und Entscheidungsvorlage](Projektcleanup.md) dokumentiert Befunde sowie weitere Optionen mit Nutzen, Aufwand und Nachteilen. Keine gemessene Tokenreduktion behauptet; Anwendung und Datenmodell unverändert.
+- Prüfung: Dokumentationsinhalt, lokale Markdown-Verweise und `git diff --check`. Keine Anwendungstests erforderlich für diese reinen Dokumentationsänderungen.
+- Deployment: bestehender lokaler Stack mit beiden Compose-Dateien und `up -d --build --wait` erfolgreich gebaut und gestartet. App und PostgreSQL gesund, Proxy läuft. HTTPS `/health` mit bestehender Caddy-CA und aktiver Zertifikatsprüfung über Node geprüft (Windows-curl konnte den lokalen Zertifikatssperrstatus nicht prüfen). Stack bleibt aktiv; bestehende Konfiguration und Volumes erhalten.
+
 ## FR-006: Turnierverwaltung mit Auslosung, Gruppen und KO — 2026-10-29
 
 - Turniere mit 2–64 aktiven Stammdatenspielern als Gruppenphase, Einfach-KO oder Gruppen + KO vorbereiten. Modus, Disziplin, Spielziel, Gruppenanzahl, Qualifikanten und Rangfolgeregel werden vor Beginn geprüft und angezeigt. Zufällige, gespeicherte Vorschau mit ausdrücklicher Übernahme; eine neue Auslosung verändert bestehende Partien erst bei Bestätigung und ist nach der ersten Tischzuweisung gesperrt.
