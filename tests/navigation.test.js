@@ -50,7 +50,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       return { ok: status === 200, status, json: async () => body };
     },
   });
-  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh }; })()`, context);
+  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection }; })()`, context);
   return { ...app, element, links, location, window, posts, setAdmin(value) { admin = value; } };
 }
 
@@ -372,4 +372,20 @@ test('FR-006 adjustments: sorted players, filters, free tables and live links',a
   assert.match(output,/<option value="3">Tisch 3/);
   assert.doesNotMatch(output,/<option value="[12]">Tisch/);
   assert.ok(output.includes('href="/tisch/1"'));
+});
+
+test('Tournament group field follows selected players and assignment mode',async()=>{
+  const app=await frontend('/#planung');
+  const checkbox={checked:false},label={hidden:true},input={disabled:true};
+  const row={dataset:{membership:'bsv'},querySelector(selector){return selector==='[data-group-choice]'?label:selector==='[data-group-choice] input'?input:checkbox;}};
+  const fields={participant_filter:{value:'all'},assignment:{value:'manual'},mode:{value:'groups'}};
+  const form={elements:{namedItem(name){return fields[name];}},querySelectorAll(){return [row];}};
+  app.updateTournamentSelection(form);assert.equal(label.hidden,true);assert.equal(input.disabled,true);
+  checkbox.checked=true;app.updateTournamentSelection(form);assert.equal(label.hidden,false);assert.equal(input.disabled,false);
+  checkbox.checked=false;app.updateTournamentSelection(form);assert.equal(label.hidden,true);assert.equal(input.disabled,true);
+  checkbox.checked=true;fields.assignment.value='random';app.updateTournamentSelection(form);assert.equal(label.hidden,false);assert.equal(input.disabled,false);
+  form.dataset={action:'preview'};
+  await app.element('#app').dispatch('change',{target:{name:'group:a',dataset:{},closest(){return form;}}});
+  assert.equal(fields.assignment.value,'manual');
+  fields.assignment.value='manual';fields.mode.value='ko';app.updateTournamentSelection(form);assert.equal(label.hidden,true);
 });

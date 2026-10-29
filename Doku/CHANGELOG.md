@@ -4,6 +4,10 @@ Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anf
 
 ## FR-006: Anpassungen der Turnierverwaltung — 2026-10-29
 
+- Auswahlkorrektur: „Gruppe:“ mit Zahlenfeld steht direkt hinter dem Namen und erscheint bei Gruppenmodi unabhängig vom Zuweisungsmodus für angehakte Teilnehmer; beim Abwählen wird es ausgeblendet und deaktiviert. Änderungen der Gruppennummer schalten automatisch auf manuelle Zuweisung um. 17 Navigationstests und Gesamtsuite mit 49 Tests erfolgreich, keine übersprungenen Tests. Logs der erneuten Prüfung unter data/tournament-group-visibility/.
+
+- Layout-Nachbesserung: übersichtliche Teilnehmerzeilen mit moderaten Abständen statt großer Leerbereiche; manuelle Gruppennummer rechts neben dem Namen mit Beschriftung „Gruppe:“ und echtem Zahlenfeld. 16 Navigationstests und Gesamtsuite mit 48 Tests erfolgreich, keine übersprungenen Tests. Lokales Deployment und HTTPS-Prüfung erfolgreich; Logs unter data/tournament-compact/.
+
 - Alphabetische, einspaltige Teilnehmerauswahl mit Filtern für BSV-Mitglieder und externe Spieler. Direkte Spieleranlage oberhalb der Auswahl speichert einen externen Stammdatenspieler und wählt ihn aus.
 - Manuelle Gruppenzuweisung mit serverseitiger Prüfung von Gruppennummern, Mindestbesetzung und Qualifikation. Gruppen und neue Spieler werden über die bestehenden vollständigen Backups gesichert; keine Schemaänderung nötig.
 - Neue Gruppenpläne verwenden vollständige Jeder-gegen-jeden-Runden mit wechselnden Pausen bei ungerader Besetzung. Gruppen werden bei der Partieerzeugung abwechselnd berücksichtigt; die Partienliste zeigt die Erzeugungsreihenfolge. Bestehende Auslosungen bleiben erhalten.
