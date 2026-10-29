@@ -2,6 +2,16 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-006: Turnierverwaltung mit Auslosung, Gruppen und KO — 2026-10-29
+
+- Turniere mit 2–64 aktiven Stammdatenspielern als Gruppenphase, Einfach-KO oder Gruppen + KO vorbereiten. Modus, Disziplin, Spielziel, Gruppenanzahl, Qualifikanten und Rangfolgeregel werden vor Beginn geprüft und angezeigt. Zufällige, gespeicherte Vorschau mit ausdrücklicher Übernahme; eine neue Auslosung verändert bestehende Partien erst bei Bestätigung und ist nach der ersten Tischzuweisung gesperrt.
+- Vollständige Jeder-gegen-jeden-Gruppen mit Ergebnissen, Tabellen und Qualifikationsstatus. Siege, optional Differenz und erzielte Racks/Punkte, danach ausdrückliche Spielleitungsentscheidung mit Begründung. Ungeklärte Gleichstände verhindern die KO-Zuordnung.
+- KO-Baum mit allen Runden, Paarungen, ausdrücklichen Freilosen, automatischem Siegerfortschritt und Turniersieger. Begegnungen nutzen die bestehende Tischzuweisung, Tablet-PIN, Ergebniserfassung und Historie. Gleichzeitige Turnierpartien derselben Person werden verhindert.
+- Generierte Partien sind gegen Einzel-Löschung, Verschieben und Regel-/Teilnehmeränderungen geschützt. Bestätigte Ergebniskorrekturen sind vor Erzeugung abhängiger KO-Partien möglich; danach werden sie ausdrücklich gesperrt, auch bei noch nicht gestarteten Folgepartien. Endgültig abgeschlossene Gruppenturniere sperren Ergebniskorrekturen wegen möglicher neuer Gleichstände.
+- Persistenz in bestehenden Veranstaltungsmetadaten (Turnierformat Version 1) und regulären Partien; Schema 13 benötigt keine Datenmigration. Vollständige Sicherung und Importprüfung umfassen Vorschau, Regeln, Namensstände, Entscheidungen, KO-Verweise, Ergebnisse, PIN-Hashes und Audit. Die separate Betriebssicherung bleibt erforderlich.
+- Prüfung: 46 automatisierte Tests erfolgreich, darunter Gruppenpaarungen und Freilose für 2–64 Teilnehmer, alle drei Modi, Gleichstände, Tablet-Erfassung, Korrektursperren, Neustart, beschädigte Sicherungen und vollständige Wiederherstellung in eine getrennte Datenbank. Isolierter Docker-Test mit PostgreSQL und HTTPS einschließlich Turnierfortschritt, Backup-Restore und Datenbankneustart erfolgreich. Auslosungsvorschau und Neuladen zusätzlich im Browser mit isolierten Testdaten geprüft; Formulare behalten Mehrfachauswahl und Entscheidungsreihenfolge bei Aktualisierungen. Veranstaltungs-Deep-Links korrigiert.
+- Deployment: bestehenden Stack mit expliziter Compose-Override-Datei gebaut und gestartet. Vorherige Anwendungssicherung und PostgreSQL-Dump unter `backups/fr006-20261029-1793253929545/`. Alle 20 Bestandstabellen vollständig verglichen; unveränderte `.env`, Sicherheitskonfiguration und Caddy-CA bestätigt. App und Datenbank gesund, Proxy aktiv; HTTPS-Zertifikatskette und neue Oberfläche über localhost sowie 127.0.0.1 geprüft. Stack bleibt aktiv.
+
 ## Spielabschluss mit verzögertem OK — 2026-10-28
 
 - Beim Abschließen einer Partie entfällt die Texteingabe. Der Dialog zeigt den Endstand und einen OK-Button mit fünf Sekunden Wartezeit; danach ist eine ausdrückliche Bestätigung möglich. Gilt in der Tischübersicht und am Tablet.

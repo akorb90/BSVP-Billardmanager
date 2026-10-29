@@ -339,3 +339,22 @@ test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column'
   for(const id of ids){const index=markup.indexOf('id="'+id+'"');assert.ok(index>previous,id+' follows the previous section');previous=index;}
   assert.match(markup,/class="settings-stack"/);assert.doesNotMatch(markup,/class="planning"/);
 });
+
+test('FR-006: planned tournament deep links, preview confirmation and checkbox payload',async()=>{
+  const players=['a','b','c'].map(id=>({id,first_name:'Spieler',second_name:'',last_name:id,active:1,event_id:null}));
+  const event={id:1,name:'Testturnier',kind:'Turnier',date:'2026-10-29',status:'open',phase:'planned',version:3};
+  const app=await frontend('/#spieltage/1',{events:[event],players});
+  assert.match(app.element('#app').innerHTML,/Turnierverwaltung/);
+  assert.match(app.element('#app').innerHTML,/Zufällige Auslosung als Vorschau/);
+  assert.doesNotMatch(app.element('#app').innerHTML,/Spielplan · 10 Partien/);
+  const form={id:'tournament-preview-1',dataset:{event:'1',action:'preview',version:'3'},entries:[['mode','ko'],['discipline','9-Ball'],['target','5'],['groupCount','2'],['qualifiers','1'],['rules','difference'],['player_ids','a'],['player_ids','b']],remove(){},closest(){return null;}};
+  await app.element('#app').dispatch('submit',{preventDefault(){},target:form});
+  assert.deepEqual(app.posts[0],{path:'/api/events/1/tournament/preview',data:{mode:'ko',discipline:'9-Ball',target:5,groupCount:2,qualifiers:1,rules:'difference',player_ids:['a','b'],version:3}});
+  event.tournamentPreview={mode:'ko',discipline:'9-Ball',target:5,rules:'difference',players:players.map(p=>({id:p.id,name:'Spieler '+p.id})),groups:[],rounds:[[{a:'a',b:null,match:null},{a:'b',b:'c',match:null}],[{a:'a',b:null,match:null}]],resolutions:{}};
+  await app.refresh(true);
+  assert.match(app.element('#app').innerHTML,/noch nicht übernommen/);
+  assert.match(app.element('#app').innerHTML,/Freilos → weiter/);
+  assert.match(app.element('#app').innerHTML,/Diese Auslosung verbindlich übernehmen/);
+  app.location.hash='#spieltage/1';await app.window.dispatch('hashchange',{});
+  assert.match(app.element('#app').innerHTML,/Turnierverwaltung/);
+});

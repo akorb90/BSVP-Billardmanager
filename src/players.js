@@ -53,6 +53,9 @@ export function playerService({db,transaction,fail,text,log,openEvent,getEvent,t
     });},
     async participants(eventId,body) {return transaction(async()=>{
       const event=body.start===true?await getEvent(eventId):await openEvent(eventId);
+      const tournamentPlan=await db.prepare('SELECT metadata FROM event_planning WHERE event_id=?').get(eventId);
+      const tournamentMeta=JSON.parse(tournamentPlan?.metadata||'{}');
+      if(tournamentMeta.tournament||tournamentMeta.tournamentPreview)throw fail(409,'Turnierteilnehmer bitte über die Auslosung verwalten.');
       if(event.version!==body.version)throw fail(409,'Spieltag wurde geändert. Bitte neu öffnen.');
       if(body.start===true){
         const plan=await db.prepare('SELECT * FROM event_planning WHERE event_id=?').get(eventId);

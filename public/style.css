@@ -198,3 +198,14 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 .settings-stack{display:flex;flex-direction:column;gap:24px}.settings-stack .form-row,.settings-stack .branding-colors{display:flex;flex-direction:column}.participant-roster{margin:24px 0;padding-top:16px;border-top:1px solid var(--primary)}.roster-player{display:flex;align-items:center;gap:12px;margin:10px 0}.roster-player input{width:20px;height:20px;flex:none}.roster-list{margin-bottom:20px}
 
 .league-board>h2{margin-bottom:8px}.league-round{margin:28px 0}.league-round>h3{padding:12px 0;border-bottom:2px solid var(--primary)}.league-partie{margin:16px 0}.league-partie h4{margin:0;font-size:20px}.league-partie h5{font-size:16px;margin:4px 0 12px}.league-partie fieldset{border:0;padding:0;margin:0}.league-lineup{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}.league-partie .dialog-actions{margin-top:12px}.league-score{display:flex;align-items:center;justify-content:space-between;gap:15px;font-size:18px}.league-score strong{white-space:nowrap}@media(max-width:800px){.league-lineup{grid-template-columns:1fr}.league-partie .section-title{flex-wrap:wrap;gap:10px}.league-score{flex-wrap:wrap}}
+.tournament { margin: 2rem 0; }
+.tournament details { margin-bottom: 1.5rem; }
+.tournament summary { cursor: pointer; padding: 1rem 0; font-weight: 700; }
+.tournament-players { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: .5rem; max-height: 24rem; overflow: auto; }
+.tournament-players label { display: flex; align-items: center; gap: .6rem; }
+.tournament-players input { width: auto; }
+.tournament-bracket { display: flex; gap: 1rem; overflow-x: auto; align-items: stretch; }
+.tournament-bracket > section { min-width: 230px; flex: 1; display: flex; flex-direction: column; justify-content: space-around; }
+.tournament-bracket .panel { margin-bottom: 1rem; }
+.tournament-scroll { overflow-x: auto; }
+.tournament th,.tournament td { padding: .6rem; text-align: left; }

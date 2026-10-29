@@ -19,9 +19,10 @@ function applyBranding() {
 const navigation = document.querySelector('#admin-nav');
 
 const views = { planung:['Spieltage planen','Spieltage anlegen und synchronisieren'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
-let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1) : 'uebersicht';
+let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1).split('/')[0] : 'uebersicht';
 let selectedEventId=Number(location.hash.split('/')[1])||null;
 const drafts = new Map();
+const tournamentPanels = new Map();
 const listPages = new Map();
 function paginate(items, key, label) {
   const paging = listPages.get(key) || { page: 1, size: 20 };
@@ -62,8 +63,16 @@ function adminNavigation(authenticated) {
     else link.removeAttribute('aria-current');
   }
 }
-function saveDrafts() { for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login','admin-password'].includes(form.id)) drafts.set(form.id, [...new FormData(form)].filter(([name])=>!['logo_file','logo_reset'].includes(name))); }
-function restoreDrafts() { for (const [id, entries] of drafts) for (const [name, value] of entries) { const field = document.getElementById(id)?.elements.namedItem(name); if (field) field.value = value; } const form=root.querySelector('#match');if(form)updateParticipantOptions(form); }
+function saveDrafts() { for(const panel of root.querySelectorAll('details[data-tournament-panel]'))tournamentPanels.set(Number(panel.dataset.tournamentPanel),panel.open); for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login','admin-password'].includes(form.id)) drafts.set(form.id, [...new FormData(form)].filter(([name])=>!['logo_file','logo_reset'].includes(name))); }
+function restoreDrafts() { for (const [id, entries] of drafts) {
+  const form=document.getElementById(id);if(!form)continue;
+  if(id.startsWith('tournament-')) {
+    const positions={};for(const field of form.elements){if(!field.name)continue;const values=entries.filter(([name])=>name===field.name).map(([,value])=>value);
+      if(field.type==='checkbox')field.checked=values.includes(field.value);
+      else if(values.length){const index=positions[field.name]||0;field.value=values[index]??values[0];positions[field.name]=index+1;}
+    }
+  }else for(const [name,value] of entries){const field=form.elements.namedItem(name);if(field)field.value=value;}
+} const form=root.querySelector('#match');if(form)updateParticipantOptions(form); }
 function finishButton(m) { return '<button data-finish="' + m.id + '" ' + (Math.max(m.a,m.b) < m.target ? 'disabled title="Spielziel noch nicht erreicht"' : 'class="primary"') + '>Spiel abschließen</button>'; }
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const labels = { planned:'Geplant', live:'Am Tisch', finished:'Abgeschlossen' };
@@ -173,6 +182,12 @@ async function mutate(fn) {
 root.addEventListener('submit', e => {
   e.preventDefault(); if(handlePlayersSubmit(e.target))return; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   mutate(async () => {
+    if(form.id.startsWith('tournament-')) {
+      const action=form.dataset.action,payload={...data,version:Number(data.version??form.dataset.version)};
+      if(action==='preview'){payload.player_ids=new FormData(form).getAll('player_ids');for(const k of ['target','groupCount','qualifiers'])payload[k]=Number(data[k]);}
+      if(action==='resolve'){payload.group=Number(data.group);payload.order=new FormData(form).getAll('order');}
+      await api('/api/events/'+form.dataset.event+'/tournament/'+action,payload);drafts.delete(form.id);if(action==='preview'){const panel=form.closest('details');if(panel)panel.open=false;}form.remove();message(action==='preview'?'Auslosung als Vorschau gespeichert. Bitte prüfen und bestätigen.':action==='confirm'?'Auslosung übernommen. Partien können Tischen zugewiesen werden.':'Gleichstand entschieden.');
+    }
     if(form.id.startsWith('league-slot-')){const payload={...data,version:Number(form.dataset.version),table_no:data.table_no?Number(data.table_no):null,target:data.target?Number(data.target):null,start:e.submitter?.value==='start'};await api('/api/events/'+form.dataset.event+'/slots/'+form.dataset.slot,payload);drafts.delete(form.id);message(payload.start?'Partie dem Tisch zugewiesen.':'Aufstellung gespeichert.');}
     if(form.id==='nuliga-schedule-sync'){message('Spieltage werden abgerufen …');const result=await api('/api/settings/nuliga-schedule',{});message(result.created+' Spieltage neu angelegt, '+result.updated+' aktualisiert, '+result.removed+' Auswärtsspieltage entfernt. Alle neuen Spieltage sind geplant.');}
     if (form.id === 'nuliga-sync') { message('nuLiga wird abgerufen …'); const result=await api('/api/settings/nuliga',{overwrite:data.overwrite==='yes'}); drafts.delete(form.id); message('Synchronisiert: '+result.teams+' Mannschaften und '+result.players+' Spieler. '+result.created+' neu, '+result.updated+' aktualisiert; '+result.preserved+' lokale Anpassungen erhalten.'); }
@@ -189,6 +204,7 @@ root.addEventListener('submit', e => {
 });
 root.addEventListener('click', e => {
   const button = e.target.closest('button'); if (!button) return;
+  if(button.dataset.tournamentOpen){selectedEventId=Number(button.dataset.tournamentOpen);view='spieltage';history.replaceState(null,'','/#spieltage/'+selectedEventId);dashboard();return;}
   if(button.dataset.eventStart&&!busy){const event=state.events.find(e=>e.id===Number(button.dataset.eventStart));if(event.kind==='Liga'){openParticipants(event,true);return;}mutate(async()=>{await api('/api/events/'+event.id+'/start',{version:event.version});selectedEventId=event.id;drafts.delete('match');view='spieltage';history.replaceState(null,'','/#spieltage/'+event.id);});return;}
   if(button.id==='table-settings-reload') { mutate(async()=>{drafts.delete('table-settings');root.querySelector('#table-settings')?.remove();}); return; }
   if(button.dataset.lag && current && !busy) { setupChoice={id:current.id,version:current.version,lag:button.dataset.lag}; preparation(current); }
@@ -203,7 +219,7 @@ root.addEventListener('click', e => {
 });
 window.addEventListener('hashchange', () => {
   if (table) return;
-  saveDrafts(); const previousEventId=selectedEventId; view = Object.hasOwn(views, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
+  saveDrafts(); const previousEventId=selectedEventId; view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1).split('/')[0] : 'uebersicht';
   selectedEventId=Number(location.hash.split('/')[1])||null;
   if(previousEventId!==selectedEventId)drafts.delete('match');
   if (state) { dashboard(); restoreDrafts(); }
@@ -223,7 +239,7 @@ function planningDashboard() {
   root.innerHTML='<div class="page-title"><h1>Spieltage planen</h1></div><section class="planning"><div class="panel"><h2>Spieltag anlegen</h2><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Der Spieltag bleibt bis zum manuellen Start geplant.</p><button class="primary">Spieltag anlegen</button></form></div><div class="panel"><h2>nuLiga-Import</h2><p>Spieler, Mannschaften und Heimspieltage unter <a href="/#einstellungen">Einstellungen · nuLiga</a> synchronisieren.</p></div></section><section><h2>Geplante Spieltage</h2>'+page.controls+page.items.map(eventCard).join('')+'</section>';
 }
 function matchdayDashboard() {
-  const events=state.events.filter(e=>e.phase!=='planned');
+  const events=state.events.filter(e=>e.phase!=='planned'||e.id===selectedEventId);
   const selected=events.find(e=>e.id===selectedEventId);
   const eventPage=paginate(events,'events','Spieltage');
   const matches=state.matches.filter(m=>!selected||m.event_id===selected.id);
@@ -232,7 +248,7 @@ function matchdayDashboard() {
   if(!selected) {root.innerHTML+='<section><h2>Spieltage</h2>'+eventPage.controls+eventPage.items.map(eventCard).join('')+'</section>';}
   else {
     root.innerHTML+='<p><a href="/#spieltage">Alle Spieltage</a></p>'+eventCard(selected);
-    root.innerHTML+=leagueBoard(selected);
+    root.innerHTML+=selected.kind==='Turnier'?tournamentBoard(selected):leagueBoard(selected);
   }
   const linked=new Set((state.event_match_slots||[]).filter(s=>s.event_id===selected?.id).map(s=>s.match_id));
   const additional=matches.filter(m=>!linked.has(m.id));
@@ -264,8 +280,8 @@ function leagueBoard(event) {
 }
 function eventCard(event) {
   const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
-  if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3>'+esc(event.name)+'</h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions"><button class="primary" data-event-start="'+event.id+'">Spieltag starten</button><button data-entity="event" data-action="edit" data-id="'+event.id+'">Spieltag bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">Spieltag löschen</button></div></article>';
-  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
+  if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3>'+esc(event.name)+'</h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions">'+(event.kind==='Turnier'?'<button class="primary" data-tournament-open="'+event.id+'">Turnier vorbereiten</button>':'<button class="primary" data-event-start="'+event.id+'">Spieltag starten</button>')+'<button data-entity="event" data-action="edit" data-id="'+event.id+'">Spieltag bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">Spieltag löschen</button></div></article>';
+  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed||event.kind==='Turnier'?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
 }
 function matchAdminActions(m) {
   return `<div class="entity-actions"><button data-entity="match" data-action="edit" data-id="${m.id}">Partie bearbeiten</button><button data-entity="match" data-action="delete" data-id="${m.id}">Partie löschen</button></div>`;
@@ -702,3 +718,38 @@ await refresh(true);
 setInterval(() => { if (!busy) refresh(); }, 3000);
 
 setInterval(tickTimers,1000);
+
+function tournamentBoard(event) {
+  const t=event.tournament,p=event.tournamentPreview,config=p||t;
+  const ms=state.matches.filter(m=>m.event_id===event.id),canDraw=event.status==='open'&&!ms.some(m=>m.status!=='planned');
+  const rules={difference:'Siege → Rack-/Punktedifferenz → erzielte Racks/Punkte → Entscheidung der Spielleitung mit Begründung',wins:'Siege → Entscheidung der Spielleitung mit Begründung'};
+  const form=(action)=>'id="tournament-'+action+'-'+event.id+'" data-action="'+action+'" data-event="'+event.id+'" data-version="'+event.version+'"';
+  const versionField='<input type="hidden" name="version" value="'+event.version+'">';
+  const name=(draw,id)=>id?esc(draw.players.find(p=>p.id===id)?.name||id):'Noch offen';
+  function drawView(draw,preview=false) {
+    let out='<p>'+esc(({groups:'Gruppenphase',ko:'Einfach-KO','groups-ko':'Gruppenphase + KO'})[draw.mode])+' · '+esc(draw.discipline)+' · Spielziel '+draw.target+'</p><p><strong>Rangfolge:</strong> '+rules[draw.rules]+'.'+(draw.mode==='groups-ko'?' Die ersten '+draw.qualifiers+' je Gruppe qualifizieren sich. KO-Setzung: Rang für Rang, Gruppen abwechselnd vorwärts/rückwärts; Freilose zuerst.':'')+'</p>';
+    draw.groups.forEach((g,i)=>{
+      out+='<section class="panel"><h3>Gruppe '+(i+1)+'</h3>';
+      if(preview)out+='<p>'+g.players.map(id=>name(draw,id)).join(' · ')+'</p><ul>'+g.games.map(game=>'<li>'+name(draw,game.a)+' – '+name(draw,game.b)+'</li>').join('')+'</ul>';
+      else {
+        const tab=draw.tables[i];out+='<div class="tournament-scroll"><table><thead><tr><th>Rang</th><th>Spieler</th><th>Spiele</th><th>Siege</th><th>Racks/Punkte</th><th>Differenz</th><th>Qualifikation</th></tr></thead><tbody>'+tab.rows.map((r,n)=>'<tr><td>'+(n+1)+(tab.tied?' *':'')+'</td><td>'+name(draw,r.id)+'</td><td>'+r.played+'</td><td>'+r.wins+'</td><td>'+r.for+':'+r.against+'</td><td>'+r.difference+'</td><td>'+(draw.mode==='groups-ko'&&n<draw.qualifiers?(tab.complete&&!tab.tied?'Qualifiziert':'Vorläufig'):'–')+'</td></tr>').join('')+'</tbody></table></div>';
+        out+='<ul>'+g.games.map(game=>{const m=ms.find(m=>m.id===game.match);return '<li>Partie #'+game.match+': '+name(draw,game.a)+' – '+name(draw,game.b)+' · '+(m?m.a+':'+m.b+' ('+labels[m.status]+')':'Ausstehend')+'</li>';}).join('')+'</ul>';
+        if(tab.tied)out+='<p>* Punktgleiche Ränge sind vorläufig. Vor der Qualifikation muss die Spielleitung verbleibende Gleichstände auflösen.</p>';
+        if(tab.complete&&tab.tied&&!draw.rounds.length&&event.status==='open')out+='<form '+form('resolve').replace('id="tournament-resolve-','id="tournament-resolve-'+i+'-')+'>'+versionField+'<input type="hidden" name="group" value="'+i+'"><p>Reihenfolge für Gleichstände festlegen. Die gewählte Rangfolgeregel hat weiterhin Vorrang.</p>'+tab.rows.map((r,n)=>selectField('Entscheidungsrang '+(n+1),'order',r.id,tab.rows.map(x=>[x.id,draw.players.find(p=>p.id===x.id).name]))).join('')+field('Begründung (z. B. Entscheidungsspiel)','reason','','text','maxlength="500"')+'<button>Gleichstand verbindlich entscheiden</button></form>';
+        if(draw.resolutions[i])out+='<p>Entscheidung: '+esc(draw.resolutions[i].reason)+' · '+draw.resolutions[i].order.map(id=>name(draw,id)).join(' → ')+'</p>';
+      }
+      out+='</section>';
+    });
+    if(draw.rounds.length)out+='<h3>KO-Baum</h3><div class="tournament-bracket">'+draw.rounds.map((round,r)=>'<section><h4>'+(r===draw.rounds.length-1?'Finale':'Runde '+(r+1))+'</h4>'+round.map((game,i)=>{const m=ms.find(m=>m.id===game.match);return '<article class="panel"><small>Paarung '+(i+1)+(r?' · Sieger aus '+(2*i+1)+' / '+(2*i+2)+' der Vorrunde':'')+'</small><p>'+name(draw,game.a)+'<br>'+(!r&&!game.b?'Freilos → weiter':name(draw,game.b))+'</p>'+(m?'<strong>'+m.a+' : '+m.b+'</strong><p>Partie #'+m.id+' · '+labels[m.status]+'</p>':'')+'</article>';}).join('')+'</section>').join('')+'</div>';
+    if(draw.champion)out+='<p class="pill">Turniersieger: '+name(draw,draw.champion)+'</p>';
+    if(draw.complete)out+='<p>Sportlicher Turnierablauf abgeschlossen. Gesamtabschluss oben bestätigen.</p>';
+    return out;
+  }
+  let html='<section class="tournament"><h2>Turnierverwaltung</h2>';
+  if(canDraw){const chosen=new Set(config?.players.map(p=>p.id)||state.event_players.filter(p=>p.event_id===event.id).map(p=>p.player_id));
+    html+='<details data-tournament-panel="'+event.id+'" '+((tournamentPanels.get(event.id)??!config)?'open':'')+'><summary>Teilnehmer und Regeln · neue Auslosung</summary><form '+form('preview')+'>'+versionField+'<div class="form-row">'+selectField('Modus','mode',config?.mode||'groups-ko',[['groups-ko','Gruppen + KO'],['groups','Nur Gruppen'],['ko','Nur KO']])+selectField('Disziplin','discipline',config?.discipline||'9-Ball',['8-Ball','9-Ball','10-Ball','14/1'].map(x=>[x,x]))+field('Gewinnspiele / Punkte (14/1)','target',config?.target||5,'number','min="1" max="999"')+'</div><div class="form-row">'+field('Gruppenanzahl (bei Gruppen)','groupCount',config?.groupCount||2,'number','min="1" max="32"')+field('Qualifikanten je Gruppe (bei Gruppen + KO)','qualifiers',config?.qualifiers||2,'number','min="1" max="64"')+'</div>'+selectField('Rangfolge und Gleichstand','rules',config?.rules||'difference',Object.entries(rules))+'<p>Jeder gegen jeden innerhalb einer Gruppe. Restgleichstände werden nach Abschluss der Gruppen ausdrücklich mit Begründung entschieden. Maximal 64 Teilnehmer; jede Gruppe mindestens zwei.</p><fieldset><legend>Teilnehmer aus den Spieler-Stammdaten</legend><div class="tournament-players">'+state.players.filter(p=>p.active&&!p.event_id).map(p=>'<label><input type="checkbox" name="player_ids" value="'+esc(p.id)+'" '+(chosen.has(p.id)?'checked':'')+'>'+esc(fullName(p))+'</label>').join('')+'</div></fieldset><button class="primary">Zufällige Auslosung als Vorschau</button></form></details>';
+  }
+  if(p&&canDraw)html+='<section class="panel"><h3>Auslosungsvorschau · noch nicht übernommen</h3>'+drawView(p,true)+'<form '+form('confirm')+'>'+versionField+'<label>Tablet-PIN für Turnierpartien<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"></label><p>Bestätigung ersetzt eine bisherige Auslosung und ihre noch nicht gestarteten Partien. Danach unten die Tische zuweisen.</p><button class="primary">Diese Auslosung verbindlich übernehmen</button></form></section>';
+  if(t)html+='<h3>Bestätigter Turnierstand</h3>'+drawView(t);
+  return html+'</section>';
+}

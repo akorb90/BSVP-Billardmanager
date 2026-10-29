@@ -2,23 +2,7 @@
 
 Dieses Dokument enthält ausschließlich offene oder in Umsetzung befindliche Feature Requests. Erfolgreich umgesetzte Anforderungen werden mit ihrer FR-Nummer, dem Umsetzungsdatum und dem Prüfstand in die [Release Notes](CHANGELOG.md) übernommen und hier entfernt. Bestehende FR-Nummern bleiben erhalten und werden nicht erneut vergeben.
 
-Als nächster Ausbau folgt die Turnierverwaltung (FR-006) auf Basis der umgesetzten Spieler- und Mannschaftsverwaltung (FR-007). Datensicherung (FR-005) ist ebenfalls umgesetzt, siehe [Release Notes](CHANGELOG.md). Das Regelwerk (FR-008) kann unabhängig davon umgesetzt werden.
-
-## FR-006: Turnierverwaltung mit Auslosung, Gruppenphase und KO-Baum
-
-Turniere sollen aus einer Teilnehmerliste automatisch ausgelost und als Gruppenphase, KO-Turnier oder Gruppenphase mit anschließender KO-Runde organisiert werden können. Auslosung, Spielplan und Ergebnisfortschritt bilden einen gemeinsamen Ablauf.
-
-Anforderungen und Abnahmekriterien:
-
-- Teilnehmer aus den Spieler-Stammdaten (FR-007) auswählen; doppelte Teilnahme derselben Person verhindern.
-- Vor der Auslosung Modus, Disziplin, Gewinnspiele sowie bei Gruppenphasen Gruppenanzahl und Anzahl der Qualifikanten je Gruppe festlegen. Unzulässige Kombinationen verständlich erklären.
-- Zufällige Auslosung als Vorschau anzeigen und erst nach Bestätigung übernehmen. Vor Turnierbeginn kann neu ausgelost werden; nach Beginn darf eine neue Auslosung bestehende Partien oder Ergebnisse nicht überschreiben.
-- In Gruppen spielt jeder gegen jeden. Begegnungen, Ergebnisse, Tabellen und Qualifikation nachvollziehbar anzeigen. Die Rangfolge- und Gleichstandsregeln vor Turnierbeginn festlegen und anzeigen; ungeklärte Gleichstände müssen vor der KO-Zuordnung aufgelöst werden.
-- Einen Einfach-KO-Baum mit Runden, Paarungen und Siegerfortschritt darstellen. Freilose bei unpassender Teilnehmerzahl ausdrücklich anzeigen und korrekt weiterführen.
-- Bestätigte Ergebnisse aktualisieren Gruppentabelle bzw. KO-Baum und erzeugen die nachfolgenden Begegnungen. Korrekturen mit Auswirkungen auf bereits gestartete Folgepartien dürfen nicht unbemerkt den Turnierverlauf verändern.
-- Generierte Begegnungen in die bestehende Tischzuweisung, Tablet-Erfassung und Spielhistorie integrieren. Turnierstand und Auslosung bleiben nach Neuladen und Neustart erhalten.
-
-Abhängigkeit: FR-007 liefert die Teilnehmerauswahl. FR-008 dient als Nachschlagewerk; daraus folgt keine automatische Umsetzung sämtlicher Verbandsregeln.
+Turnierverwaltung (FR-006), Spieler- und Mannschaftsverwaltung (FR-007) sowie Datensicherung (FR-005) sind umgesetzt, siehe [Release Notes](CHANGELOG.md). Offen bleibt das Regelwerk (FR-008).
 
 ## FR-008: Aktuelles BBV-Verbandsregelwerk als Nachschlagewerk
 
@@ -31,3 +15,12 @@ Anforderungen und Abnahmekriterien:
 - Offizielle Dokumente direkt öffnen und, soweit technisch und rechtlich möglich, in der Anwendung durchsuchbar anzeigen. Falls eine eingebettete Anzeige nicht möglich ist, einen klaren Link zum Original anbieten.
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
+
+
+## FR-006 Anpassungen
+- Turnier Teilnehmer Auswahl mit Filteroptionen für BSV Mitglieder und externe Mitglieder. Darüber ein Feld mit der Möglichkeit manuell Spieler für das Turnier anzulegen.
+- Teilnehmer Liste Alphabetisch sortiert als einspaltige Liste
+- Manuelle Gruppenzuweisung als Auswahloption
+- Nach Tischzuweisung darf der Tisch für weitere Zuweisungen nicht im Auswahlmenü erscheinen bis zum Abschluss der Partie
+- Partie Reihenfolge sinnvoll sortieren so dass jeder Spieler der Reihe nach drankommt wenn matches von oben nach unten in der Liste gestartet werden
+- Link zu Tisch bei gestartet Partie in Partieübersicht hinzufügen

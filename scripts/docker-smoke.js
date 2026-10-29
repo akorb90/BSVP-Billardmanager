@@ -224,9 +224,26 @@ try {
   assert.equal((await request('/api/rentals',{table_no:20,settings_version:0})).status,201);
   assert.equal((await request('/api/settings/tables',{table_count:1,version:1})).status,409);
   console.log('PASS: configurable table count, table 20 over HTTPS and occupied-table reduction guard');
+  // FR-006 runs only in this disposable PostgreSQL project.
+  const tournamentPlayers=[];
+  for(let i=0;i<3;i++){const p=await request('/api/players',{first_name:'Turniertest',last_name:String(i)});assert.equal(p.status,200);tournamentPlayers.push(p.body.id);}
+  const tournament=(await request('/api/events',{name:'Isolierter KO-Test',kind:'Turnier',date:'2026-10-29'})).body.id;
+  assert.equal((await request('/api/events/'+tournament+'/tournament/preview',{version:0,mode:'ko',discipline:'9-Ball',target:1,groupCount:1,qualifiers:1,rules:'difference',player_ids:tournamentPlayers})).status,200);
+  assert.equal((await request('/api/backups/preview',{backup:(await request('/api/backups/export')).body})).status,200);
+  assert.equal((await request('/api/events/'+tournament+'/tournament/confirm',{version:1,pin:'123456'})).status,200);
+  let tournamentState=(await request('/api/admin')).body;
+  const semi=tournamentState.matches.find(m=>m.event_id===tournament);
+  assert.equal((await request('/api/matches/'+semi.id+'/start',{version:0,table_no:1,lag_winner:'a',first:'a'})).status,200);
+  assert.equal((await request('/api/matches/'+semi.id+'/score',{version:1,side:'a',delta:1})).status,200);
+  assert.equal((await request('/api/matches/'+semi.id+'/finish',{version:2,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'})).status,200);
+  tournamentState=(await request('/api/admin')).body;
+  assert.equal(tournamentState.matches.filter(m=>m.event_id===tournament).length,2);
+  assert.ok(tournamentState.events.find(e=>e.id===tournament).tournament.rounds[1][0].match);
+  assert.equal((await request('/api/events/'+tournament+'/tournament/preview',{version:tournamentState.events.find(e=>e.id===tournament).version,mode:'ko',discipline:'9-Ball',target:1,groupCount:1,qualifiers:1,rules:'difference',player_ids:tournamentPlayers})).status,409);
+  console.log('PASS: PostgreSQL tournament preview, confirmation, bye, table scoring and automatic final');
   const backup = await request('/api/backups/export');
   assert.equal(backup.status,200); assert.match(backup.headers['content-disposition'],/attachment/);
-  assert.equal(backup.body.data.events.length,0);
+  assert.equal(backup.body.data.events.length,1);
   assert.equal((await request('/api/backups/export',undefined,{admin:false})).status,401);
   assert.equal((await request('/api/backups/preview',{backup:backup.body},{csrfValue:'bad'})).status,403);
   assert.equal((await request('/api/backups/preview',{backup:backup.body})).status,200);

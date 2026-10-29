@@ -1,3 +1,4 @@
+import {validateTournamentBackup} from './tournaments.js';
 import { SCHEMA_VERSION, quote } from './database.js';
 import { createHash } from 'node:crypto';
 import { DEFAULT_BRANDING, validateBranding } from './branding.js';
@@ -100,6 +101,7 @@ export async function backupService({ db, transaction, fail, log }) {
         for(const e of data.events)if(!data.event_planning.some(p=>p.event_id===e.id))throw Error('missing planning state');
         for(const p of data.event_planning){if(!has('events',p.event_id))throw Error('planned event');const meta=JSON.parse(p.metadata);if(!meta||typeof meta!=='object'||Array.isArray(meta))throw Error('planning metadata');if(!p.started&&(data.matches.some(m=>m.event_id===p.event_id)||data.events.some(e=>e.id===p.event_id&&e.status==='closed')))throw Error('unstarted matches');}
         for(const r of data.nuliga_schedule_sync){const summary=JSON.parse(r.summary);if(!Number.isFinite(Date.parse(r.synced_at))||!summary||!Number.isSafeInteger(summary.found))throw Error('schedule sync');}
+        validateTournamentBackup(data);
         await replace(backup.data);
         if (db.dialect === 'postgres') await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         else if ((await db.prepare('PRAGMA foreign_key_check').all()).length) throw new Error('foreign key');

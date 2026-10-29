@@ -22,6 +22,7 @@ export function leagueService({db,transaction,fail,log,nextId,openEvent,touchEve
     async initialize(eventId){for(const s of LEAGUE_SLOTS)await db.prepare('INSERT INTO event_match_slots(event_id,slot) VALUES(?,?) ON CONFLICT(event_id,slot) DO NOTHING').run(eventId,s.slot);},
     async save(eventId,number,body){return transaction(async()=>{
       const event=await openEvent(eventId),spec=LEAGUE_SLOTS.find(s=>s.slot===number);
+      if(event.kind!=='Liga')throw fail(409,'Liga-Aufstellungen sind nur für Liga-Spieltage verfügbar.');
       if(!spec)throw fail(400,'Ungültige Partie.');
       const before=await db.prepare('SELECT * FROM event_match_slots WHERE event_id=? AND slot=?').get(eventId,number);
       if((before?.version||0)!==body.version)throw fail(409,'Aufstellung wurde geändert. Bitte neu laden.');
