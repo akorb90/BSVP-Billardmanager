@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createApp} from '../src/server.js';
-import {drawTournament,makeBracket,standings,validateOptions} from '../src/tournaments.js';
+import {drawTournament,makeBracket,standings,validateOptions,roundRobin} from '../src/tournaments.js';
 
 const people=n=>Array.from({length:n},(_,i)=>({id:'p'+i,name:'Spieler '+i}));
 const options={mode:'groups-ko',discipline:'9-Ball',target:1,groupCount:2,qualifiers:1,rules:'difference'};
@@ -47,10 +47,10 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     await start('source.sqlite');const ids=[];
     for(let i=0;i<6;i++)ids.push((await ok('/api/players',{first_name:'Spieler',last_name:String(i)})).id);
     const id=(await ok('/api/events',{name:'Gruppen und KO',kind:'Turnier',date:'2026-10-29'})).id;
-    const data={...options,player_ids:ids};
+    const data={...options,player_ids:ids,assignment:'manual',groupAssignments:Object.fromEntries(ids.map((id,i)=>[id,i<3?1:2]))};
     assert.equal((await call('/api/events/'+id+'/tournament/preview',{...data,version:0,player_ids:[ids[0],ids[0]]})).status,400);
     await action(id,'preview',data);assert.equal((await state()).matches.length,0);
-    const preview=(await event(id)).tournamentPreview;assert.equal(preview.groups.length,2);
+    const preview=(await event(id)).tournamentPreview;assert.equal(preview.groups.length,2);assert.deepEqual(preview.groups.map(g=>g.players),[ids.slice(0,3),ids.slice(3)]);
     const backupPreview=await ok('/api/backups/export');await ok('/api/backups/preview',{backup:backupPreview});
     await action(id,'confirm',{pin:'123456'});
     assert.equal((await state()).matches.length,6);
@@ -99,4 +99,16 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     assert.equal((await event(group)).tournament.complete,true);assert.equal((await event(group)).tournament.rounds.length,0);
     await ok('/api/backups/preview',{backup:await ok('/api/backups/export')});
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true,maxRetries:5});}
+});
+
+test('FR-006 adjustments: manual assignment validation and fair complete rounds',()=>{
+  const players=people(6),groupAssignments={p0:1,p1:1,p2:1,p3:2,p4:2,p5:2};
+  const t=drawTournament({...options,assignment:'manual',groupAssignments},players);
+  assert.deepEqual(t.groups.map(g=>g.players),[['p0','p1','p2'],['p3','p4','p5']]);
+  for(const bad of [{},{...groupAssignments,p0:3},{...groupAssignments,p0:2,p1:2}])assert.throws(()=>drawTournament({...options,assignment:'manual',groupAssignments:bad},players));
+  for(let n=2;n<=64;n++){
+    const games=roundRobin(people(n).map(p=>p.id)),perRound=Math.floor(n/2);
+    assert.equal(new Set(games.map(g=>[g.a,g.b].sort().join('/'))).size,n*(n-1)/2);
+    for(let i=0;i<games.length;i+=perRound)assert.equal(new Set(games.slice(i,i+perRound).flatMap(g=>[g.a,g.b])).size,2*perRound);
+  }
 });

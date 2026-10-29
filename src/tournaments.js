@@ -14,12 +14,28 @@ export function validateOptions(t) {
   if(t.mode==='groups-ko' && (!Number.isInteger(t.qualifiers)||t.qualifiers<1||t.qualifiers>Math.floor(ids.length/t.groupCount)||t.qualifiers*t.groupCount<2))throw error('Die Qualifikanten müssen in jede Gruppe passen und zusammen mindestens zwei Spieler ergeben.');
 }
 export function drawTournament(options,players) {
-  const t={...options,players,groups:[],rounds:[],resolutions:{},confirmed:false,version:1};validateOptions(t);
+  const {assignment,groupAssignments,...settings}=options;
+  const t={...settings,players,groups:[],rounds:[],resolutions:{},confirmed:false,version:1};validateOptions(t);
   const ids=players.map(p=>p.id);
   for(let i=ids.length-1;i>0;i--){const j=randomInt(i+1);[ids[i],ids[j]]=[ids[j],ids[i]];}
   if(t.mode==='ko')t.rounds=makeBracket(ids);
-  else {t.groups=Array.from({length:t.groupCount},()=>({players:[],games:[]}));ids.forEach((id,i)=>t.groups[i%t.groupCount].players.push(id));for(const g of t.groups)for(let i=0;i<g.players.length;i++)for(let j=i+1;j<g.players.length;j++)g.games.push({a:g.players[i],b:g.players[j],match:null});}
+  else {t.groups=Array.from({length:t.groupCount},()=>({players:[],games:[]}));if(assignment==='manual') {
+    if(!groupAssignments||ids.some(id=>!Number.isInteger(groupAssignments[id])||groupAssignments[id]<1||groupAssignments[id]>t.groupCount))throw error('Bitte jedem Teilnehmer eine gültige Gruppe zuweisen.');
+    players.forEach(p=>t.groups[groupAssignments[p.id]-1].players.push(p.id));
+    if(t.groups.some(g=>g.players.length<2||(t.mode==='groups-ko'&&g.players.length<t.qualifiers)))throw error('Jede Gruppe benötigt mindestens zwei Teilnehmer und genug Qualifikanten.');
+  }else if(assignment&&assignment!=='random')throw error('Ungültige Gruppenzuweisung.');
+  else ids.forEach((id,i)=>t.groups[i%t.groupCount].players.push(id));
+  for(const g of t.groups)g.games=roundRobin(g.players);}
   return t;
+}
+export function roundRobin(players) {
+  const ring=[...players];if(ring.length%2)ring.push(null);
+  const games=[];
+  for(let round=0;round<ring.length-1;round++) {
+    for(let i=0;i<ring.length/2;i++)if(ring[i]&&ring[ring.length-1-i])games.push({a:ring[i],b:ring[ring.length-1-i],match:null});
+    ring.splice(1,0,ring.pop());
+  }
+  return games;
 }
 export function makeBracket(ids) {
   const size=2**Math.ceil(Math.log2(ids.length)),byes=size-ids.length,first=[];
@@ -53,7 +69,7 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
       game.match=await nextId('matches');
       await db.prepare("INSERT INTO matches(id,event_id,player_a,player_b,player_a_id,player_b_id,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?,'a',?)").run(game.match,id,a.name,b.name,a.id,b.id,t.discipline,t.target,pin||ms[0]?.pin_hash||null);
     };
-    for(const g of t.groups)for(const game of g.games)await create(game);
+    for(let i=0;i<Math.max(0,...t.groups.map(g=>g.games.length));i++)for(const g of t.groups)if(g.games[i])await create(g.games[i]);
     const tables=t.groups.map(g=>standings(t,g,ms));
     if(t.mode==='groups-ko'&&!t.rounds.length&&tables.every(s=>s.complete&&!s.tied)) {
       const qualifiers=[];for(let rank=0;rank<t.qualifiers;rank++)for(const s of (rank%2?[...tables].reverse():tables))qualifiers.push(s.rows[rank].id);
@@ -82,7 +98,7 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
         const ids=body.player_ids;
         if(!Array.isArray(ids)||ids.length>64||new Set(ids).size!==ids.length)throw fail(400,'Teilnehmer dürfen nicht doppelt vorkommen (höchstens 64).');
         const people=[];for(const pid of ids){const p=await db.prepare('SELECT * FROM players WHERE id=?').get(pid);if(!p||!p.active||p.event_id!==null)throw fail(400,'Bitte aktive Spieler aus den Stammdaten auswählen.');people.push({id:p.id,name:playerName(p)});}
-        const candidate=drawTournament({mode:body.mode,discipline:body.discipline,target:body.target,groupCount:body.groupCount,qualifiers:body.qualifiers,rules:body.rules},people);
+        const candidate=drawTournament({mode:body.mode,discipline:body.discipline,target:body.target,groupCount:body.groupCount,qualifiers:body.qualifiers,rules:body.rules,assignment:body.assignment,groupAssignments:body.groupAssignments},people);
         // Preview never changes the accepted draw or its matches.
         meta.tournamentPreview=candidate;
       }else if(action==='confirm'){

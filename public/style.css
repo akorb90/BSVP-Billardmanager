@@ -201,7 +201,7 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 .tournament { margin: 2rem 0; }
 .tournament details { margin-bottom: 1.5rem; }
 .tournament summary { cursor: pointer; padding: 1rem 0; font-weight: 700; }
-.tournament-players { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: .5rem; max-height: 24rem; overflow: auto; }
+.tournament-players { display: grid; grid-template-columns: 1fr; gap: .5rem; max-height: 24rem; overflow: auto; }
 .tournament-players label { display: flex; align-items: center; gap: .6rem; }
 .tournament-players input { width: auto; }
 .tournament-bracket { display: flex; gap: 1rem; overflow-x: auto; align-items: stretch; }
@@ -209,3 +209,6 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 .tournament-bracket .panel { margin-bottom: 1rem; }
 .tournament-scroll { overflow-x: auto; }
 .tournament th,.tournament td { padding: .6rem; text-align: left; }
+
+.tournament-players [hidden] { display: none; }
+.tournament-players [data-group-choice] input { width: 5rem; }

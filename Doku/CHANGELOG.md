@@ -2,6 +2,15 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-006: Anpassungen der Turnierverwaltung — 2026-10-29
+
+- Alphabetische, einspaltige Teilnehmerauswahl mit Filtern für BSV-Mitglieder und externe Spieler. Direkte Spieleranlage oberhalb der Auswahl speichert einen externen Stammdatenspieler und wählt ihn aus.
+- Manuelle Gruppenzuweisung mit serverseitiger Prüfung von Gruppennummern, Mindestbesetzung und Qualifikation. Gruppen und neue Spieler werden über die bestehenden vollständigen Backups gesichert; keine Schemaänderung nötig.
+- Neue Gruppenpläne verwenden vollständige Jeder-gegen-jeden-Runden mit wechselnden Pausen bei ungerader Besetzung. Gruppen werden bei der Partieerzeugung abwechselnd berücksichtigt; die Partienliste zeigt die Erzeugungsreihenfolge. Bestehende Auslosungen bleiben erhalten.
+- Belegte und vermietete Tische fehlen in der Partiezuweisung; ohne freien Tisch ist der Start deaktiviert. Tischlinks ergänzen Gruppen- und KO-Partien.
+- Prüfung: 19 gezielte Tests und Gesamtsuite mit 48 erfolgreichen Tests, keine übersprungenen Tests. Manuelle Gruppen einschließlich Export und Wiederherstellung in getrennter Datenbank geprüft. Isolierter Docker-Test mit PostgreSQL und HTTPS erfolgreich. Die npm-Skripte wurden wegen fehlendem npm im PATH direkt mit Node ausgeführt. Logs unter data/fr006-adjustments/.
+- Deployment: bestehender lokaler Stack mit beiden Compose-Dateien gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS /health liefert 200 mit geprüfter bestehender CA. Stack bleibt aktiv; Konfiguration und Datenvolumes erhalten.
+
 ## FR-013: Projektcleanup und sparsame Arbeitsweise — 2026-10-29
 
 - Folgeänderung: Architekturübersicht anhand des Codes auf Schema 13 aktualisiert; Schemastände 1–13 und unterstützte Upgrade-/Importwege nach [Migrationen](Migrationen.md) ausgelagert. Lokalen Ausgabeordner `/output/` gezielt ignoriert; Dateien bleiben erhalten und veröffentlichte Bildpfade werden nicht ausgeschlossen. Lokale Dokumentationsverweise, Ignore-Regeln und Diff geprüft; lokales Deployment und HTTPS-Zertifikatsprüfung erneut erfolgreich.

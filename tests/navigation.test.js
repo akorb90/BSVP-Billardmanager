@@ -308,7 +308,7 @@ test('Spieltagsplanung starts a day explicitly and opens only that day for match
   const events=[{id:1,name:'Kommender Spieltag',kind:'Liga',date:'2026-11-07',status:'open',phase:'planned',version:0},{id:2,name:'Anderer Spieltag',kind:'Liga',date:'2026-11-08',status:'open',phase:'started',version:0}];
   events[0].schedule={home:'BSV Pfaffenhofen',home_source_id:'11'};
   const app=await frontend('/#planung',{events,players:[{id:'p1',first_name:'Anna',last_name:'BSV',active:1}],teams:[{id:'away',name:'Gegner'},{id:'home',name:'BSV Pfaffenhofen',nuliga_profile:'https://bbv-billard.liga.nu/teamPortrait?teamtable=11'}],event_teams:[{event_id:1,team_id:'away'},{event_id:1,team_id:'home'}]});
-  assert.match(app.element('#app').innerHTML,/Spieltag anlegen|Spieltage synchronisieren/);
+  assert.match(app.element('#app').innerHTML,/Veranstaltung anlegen/);
   assert.match(app.element('#app').innerHTML,/data-event-start="1"/);
   assert.doesNotMatch(app.element('#app').innerHTML,/id="match"|Tisch zuweisen/);
   const button={dataset:{eventStart:'1'},hasAttribute:()=>false};
@@ -345,7 +345,7 @@ test('FR-006: planned tournament deep links, preview confirmation and checkbox p
   const event={id:1,name:'Testturnier',kind:'Turnier',date:'2026-10-29',status:'open',phase:'planned',version:3};
   const app=await frontend('/#spieltage/1',{events:[event],players});
   assert.match(app.element('#app').innerHTML,/Turnierverwaltung/);
-  assert.match(app.element('#app').innerHTML,/Zufällige Auslosung als Vorschau/);
+  assert.match(app.element('#app').innerHTML,/Auslosung als Vorschau/);
   assert.doesNotMatch(app.element('#app').innerHTML,/Spielplan · 10 Partien/);
   const form={id:'tournament-preview-1',dataset:{event:'1',action:'preview',version:'3'},entries:[['mode','ko'],['discipline','9-Ball'],['target','5'],['groupCount','2'],['qualifiers','1'],['rules','difference'],['player_ids','a'],['player_ids','b']],remove(){},closest(){return null;}};
   await app.element('#app').dispatch('submit',{preventDefault(){},target:form});
@@ -357,4 +357,19 @@ test('FR-006: planned tournament deep links, preview confirmation and checkbox p
   assert.match(app.element('#app').innerHTML,/Diese Auslosung verbindlich übernehmen/);
   app.location.hash='#spieltage/1';await app.window.dispatch('hashchange',{});
   assert.match(app.element('#app').innerHTML,/Turnierverwaltung/);
+});
+
+test('FR-006 adjustments: sorted players, filters, free tables and live links',async()=>{
+  const event={id:1,name:'Turnier',kind:'Turnier',date:'2026-10-29',status:'open',phase:'planned',version:0};
+  const players=[{id:'z',first_name:'Zoe',last_name:'Z',active:1,is_bsv:false},{id:'a',first_name:'Anna',last_name:'A',active:1,is_bsv:true}];
+  const app=await frontend('/#spieltage/1',{events:[event],players});
+  const html=app.element('#app').innerHTML;
+  assert.ok(html.indexOf('Anna A')<html.indexOf('Zoe Z'));
+  for(const text of ['BSV-Mitglieder','Externe Spieler','Spieler manuell anlegen','Gruppenzuweisung','group:a'])assert.ok(html.includes(text));
+  const matches=[{id:1,event_id:1,status:'planned',player_a:'A',player_b:'B',a:0,b:0,target:5},{id:2,event_id:1,status:'live',table_no:1,player_a:'C',player_b:'D',a:0,b:0,target:5}];
+  const live=await frontend('/#spieltage/1',{events:[event],matches,rentals:[{table_no:2,status:'active'}],table_settings:{table_count:3}});
+  const output=live.element('#app').innerHTML;
+  assert.match(output,/<option value="3">Tisch 3/);
+  assert.doesNotMatch(output,/<option value="[12]">Tisch/);
+  assert.ok(output.includes('href="/tisch/1"'));
 });
