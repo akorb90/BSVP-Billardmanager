@@ -2,6 +2,14 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit AP4: 14/1-Rackstatistik und Disziplinfilter — 2026-11-01
+
+- FUNC-004 behoben: 14/1 als Statistikfilter ergänzt. Je Partie und Spielerseite zählen zehn volle Kugelpunkte als ein Rack; erst danach werden die Rackwerte summiert. 114:69 ergibt 11:6, zweimal 19 Punkte ergeben zwei Racks. Gemischte Disziplinen verwenden gemeinsame Rackzahlen.
+- Statistische Partienlisten zeigen die Rackwertung und ergänzend die ursprünglichen 14/1-Punkte. Gespeicherte Ergebnisse und normale Spiel-/Ergebnisansichten bleiben unverändert. Sieg/Niederlage richtet sich weiterhin nach den Originalständen; auch Doppelpartner und Mannschaftsseiten verwenden dieselbe Umrechnung.
+- Statistikformular und Wechsel zwischen Spieler-/Mannschaftsbezug erkennen die echte Formular-ID trotz eines Felds namens `id`.
+- Prüfung: 27 gezielte Tests und Gesamtsuite mit 107 erfolgreichen Tests, keine übersprungenen Tests. Browserprüfung mit synthetischen Ergebnissen bestätigt 114:69 → 11:6, einzelne und gemischte Disziplinen, Datumsfilter, Mannschaftswerte und unveränderte Punkte im Ergebnisarchiv. npm-Skripte wegen fehlendem npm im PATH direkt mit Node ausgeführt; Logs und Fortsetzungsstand unter `data/ap4-2026-11-01/`.
+- Deployment: Isolierter Docker-/PostgreSQL-/HTTPS-Test erfolgreich. Bestehendes lokales Projekt `billardmanager` mit beiden Compose-Dateien gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS `/health` 200 mit vorhandener CA und aktiver Zertifikatsprüfung; ausgeliefertes `app.js` entspricht dem geprüften AP4-Quellcode. Stack bleibt aktiv, bestehende Secrets und Datenvolumes erhalten.
+
 ## Audit AP3: Semantische Backupprüfung vervollständigen — 2026-11-01
 
 - TECH-001 behoben: Gemeinsamer Buchungsvalidator für laufende Vermietung und Backupimport prüft Status-/Zeitrelationen, Preis-/Prozentgrenzen, vereinbarten Stundenpreis und exakt passende Dauer, aufgerundete Minuten und Gesamtbeträge. Laufende Buchungen dürfen keine Abschlusswerte enthalten. Widersprüche werden abgewiesen, nicht still neu berechnet.

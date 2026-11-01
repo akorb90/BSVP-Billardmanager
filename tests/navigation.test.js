@@ -411,6 +411,50 @@ test('AP2: match correction limits support 14/1 scores and follow target/discipl
   assert.equal(fields.a.value,'125','changing limits never silently changes recorded points');
 });
 
+test('AP4: 14/1 statistics round each match before aggregation and preserve original winners and point scores',async()=>{
+  const events=[{id:1,name:'Current',date:'2026-11-01',kind:'Liga',status:'open'},{id:2,name:'Earlier',date:'2026-10-31',kind:'Liga',status:'open'}];
+  const players=[{id:'p',first_name:'Anna',last_name:'Test',active:1},{id:'q',first_name:'Ben',last_name:'Test',active:1}];
+  const base={event_id:1,status:'finished',discipline:'14/1',player_a_id:'p',player_b_id:'q',player_a:'Anna',player_b:'Ben',a:114,b:69,target:114};
+  const matches=[{...base,id:1},{...base,id:2,a:19,b:11,target:19},{...base,id:3,a:19,b:10,target:19},
+    {...base,id:4,discipline:'9-Ball',a:5,b:2,target:5},{...base,id:5,status:'live',a:999,b:0,target:999},{...base,id:6,status:'planned',a:0,b:0},
+    {...base,id:7,event_id:2,a:125,b:80,target:125},{...base,id:8,event_id:2,discipline:'9-Ball',a:5,b:2,target:5}];
+  const before=JSON.stringify(matches);
+  const app=await frontend('/#spieler',{events,players,matches});
+  async function filter(discipline='',from='2026-11-01',to=from){
+    // Native HTMLFormElement.id is shadowed by the select named id.
+    const form={id:{value:'p'},getAttribute:()=> 'stats-filter',entries:Object.entries({kind:'players',id:'p',from,to,discipline})};
+    await app.element('#app').dispatch('submit',{preventDefault(){},target:form});
+    return app.element('#app').innerHTML;
+  }
+  let markup=await filter();
+  assert.match(markup,/4 Ergebnisse · 4 Siege · 0 Niederlagen · Racks 18 : 10/);
+  assert.match(markup,/<strong class="result">11 : 6 Racks<\/strong>/);
+  assert.match(markup,/<p>114 : 69 Punkte<\/p>/);
+  assert.match(markup,/<option value="14\/1"/);
+  markup=await filter('14/1');
+  assert.match(markup,/3 Ergebnisse · 3 Siege · 0 Niederlagen · Racks 13 : 8/,'19:11 and 19:10 still count as wins despite equal converted racks');
+  assert.doesNotMatch(markup,/Ziel 5<\/p>/,'discipline filter removes the 9-Ball match');
+  markup=await filter('9-Ball');assert.match(markup,/1 Ergebnisse · 1 Siege · 0 Niederlagen · Racks 5 : 2/);
+  markup=await filter('','2026-10-31');assert.match(markup,/2 Ergebnisse · 2 Siege · 0 Niederlagen · Racks 17 : 10/,'125 points plus 5 racks equals 17 racks');
+  markup=await filter('14/1','2027-01-01');assert.match(markup,/0 Ergebnisse · 0 Siege · 0 Niederlagen · Racks 0 : 0/);
+  assert.equal(JSON.stringify(matches),before,'statistics never rewrite stored point scores');
+  app.location.hash='#ergebnisse';await app.window.dispatch('hashchange',{});
+  assert.match(app.element('#app').innerHTML,/<strong class="result">114 : 69<\/strong>/,'regular result archive retains the actual point score');
+});
+
+test('AP4: secondary doubles players, team sides and loss counts use the same rack conversion',async()=>{
+  const players=[{id:'p',first_name:'Anna',last_name:'Test',active:1},{id:'r',first_name:'Ada',last_name:'Test',active:1},{id:'q',first_name:'Ben',last_name:'Test',active:1}];
+  const matches=[{id:1,event_id:1,status:'finished',discipline:'14/1',player_a_id:'r',player_b_id:'q',team_a_id:'home',team_b_id:'away',player_a:'Ada / Anna',player_b:'Ben',a:19,b:11,target:19},
+    {id:2,event_id:1,status:'finished',discipline:'14/1',player_a_id:'r',player_b_id:'q',team_a_id:'home',team_b_id:'away',player_a:'Ada / Anna',player_b:'Ben',a:19,b:10,target:19}];
+  const app=await frontend('/#spieler',{players,matches,teams:[{id:'home',name:'Home'},{id:'away',name:'Away'}],events:[{id:1,name:'Doubles',date:'2026-11-01',kind:'Liga',status:'open'}],event_match_slots:[{match_id:1,player_a2_id:'p'},{match_id:2,player_a2_id:'p'}]});
+  for(const [kind,id,summary] of [['players','p','2 Ergebnisse · 2 Siege · 0 Niederlagen · Racks 2 : 2'],['teams','home','2 Ergebnisse · 2 Siege · 0 Niederlagen · Racks 2 : 2'],['teams','away','2 Ergebnisse · 0 Siege · 2 Niederlagen · Racks 2 : 2']]){
+    await app.element('#app').dispatch('submit',{preventDefault(){},target:{id:{},getAttribute:()=> 'stats-filter',entries:Object.entries({kind,id,from:'',to:'',discipline:'14/1'})}});
+    assert.ok(app.element('#app').innerHTML.includes(summary),summary);
+  }
+  await app.element('#app').dispatch('change',{target:{name:'kind',value:'players',dataset:{},form:{id:{},getAttribute:()=> 'stats-filter'}}});
+  assert.match(app.element('#app').innerHTML,/0 Ergebnisse · 0 Siege · 0 Niederlagen · Racks 0 : 0/,'switching entity kind clears the previous selection');
+});
+
 test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column',async()=>{
   const app=await frontend('/#einstellungen'),markup=app.element('#app').innerHTML;
   const ids=['club-branding','table-settings','rental-settings','nuliga-sync','nuliga-schedule-sync','admin-password','backup-file'];
