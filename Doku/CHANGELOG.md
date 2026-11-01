@@ -2,6 +2,14 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit AP1: Parallele Ligaänderungen absichern — 2026-11-01
+
+- FUNC-001 behoben: Nur bearbeitete Liga-Aufstellungen werden als lokale Entwürfe erhalten. Ihre ursprüngliche Slotversion bleibt bei automatischer Aktualisierung und Menüwechsel bestehen; veraltete Entwürfe können fremde Änderungen nicht mehr still überschreiben.
+- Konflikthinweis mit **Entwurf verwerfen / Serverstand laden** ergänzt. Unbearbeitete Formulare übernehmen den aktuellen Serverstand; erfolgreiche Speicherung entfernt den lokalen Entwurf. Beim Wechsel aus Formularen mit einem Feld namens `id` wird die tatsächliche Formular-ID verwendet.
+- Prüfung: 21 Navigationstests und Gesamtsuite mit 53 erfolgreichen Tests, keine übersprungenen Tests. Echte Browserprüfung mit zwei getrennten synthetischen Adminsitzungen bestätigt Konfliktablehnung ohne Überschreiben, Erhalt bei Zurücknavigation, bewusstes Neuladen und anschließendes Speichern. Isolierter Docker-Test mit PostgreSQL und HTTPS erfolgreich. npm-Skripte wegen fehlendem npm im PATH direkt mit Node ausgeführt. Prüfprotokolle unter `data/ap1-2026-11-01/`.
+- FUNC-004 im Auditbericht präzisiert: Bei 14/1 werden je volle zehn Kugelpunkte pro Partie und Seite als ein Rack gewertet, z. B. 114:69 → 11:6. Dies ist die Vorgabe für das weiterhin offene AP4; die Statistik wurde mit AP1 nicht geändert.
+- Deployment: Bestehendes lokales Compose-Projekt mit beiden Compose-Dateien gebaut und gestartet. App und PostgreSQL gesund, Proxy aktiv; HTTPS `/health` mit vorhandener CA und aktiver Zertifikatsprüfung erfolgreich. Ausgeliefertes `app.js` stimmt mit dem geprüften Quellcode überein. Stack bleibt aktiv; bestehende Sicherheitskonfiguration und Datenvolumes erhalten.
+
 ## FR-006: Anpassungen der Turnierverwaltung — 2026-10-29
 
 - Auswahlkorrektur: „Gruppe:“ mit Zahlenfeld steht direkt hinter dem Namen und erscheint bei Gruppenmodi unabhängig vom Zuweisungsmodus für angehakte Teilnehmer; beim Abwählen wird es ausgeblendet und deaktiviert. Änderungen der Gruppennummer schalten automatisch auf manuelle Zuweisung um. 17 Navigationstests und Gesamtsuite mit 49 Tests erfolgreich, keine übersprungenen Tests. Logs der erneuten Prüfung unter data/tournament-group-visibility/.

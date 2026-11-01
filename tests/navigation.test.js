@@ -8,7 +8,7 @@ const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
-async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
+async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
   const posts=[];
   const elements = new Map();
   const element = id => {
@@ -31,7 +31,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
   const window = element('window');
   const context = vm.createContext({
     rentalPrice, hourlyRate,
-    document: { querySelector: element, querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
+    document: { querySelector: element, getElementById:id=>elements.get('#'+id), querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
     FormData: class { constructor(form) { this.entries=form?.entries || [['password', 'test']]; } [Symbol.iterator](){return this.entries[Symbol.iterator]();} getAll(name){return this.entries.filter(e=>e[0]===name).map(e=>e[1]);} },
@@ -45,12 +45,12 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
       else if (/^\/api\/events\/\d+\/start$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
       else if (/^\/api\/events\/\d+\/participants$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
-      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
+      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams,event_match_slots, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
       return { ok: status === 200, status, json: async () => body };
     },
   });
-  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection }; })()`, context);
+  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts }; })()`, context);
   return { ...app, element, links, location, window, posts, setAdmin(value) { admin = value; } };
 }
 
@@ -330,6 +330,62 @@ test('Spieltagsplanung starts a day explicitly and opens only that day for match
   assert.ok(app.element('#app').innerHTML.indexOf('<h5>Heim · BSV Pfaffenhofen')<app.element('#app').innerHTML.indexOf('<h5>Gast · Gegner'));
   const form={id:'league-slot-1-1',elements:{}};
   await app.element('#app').dispatch('change',{target:{dataset:{},name:'player_a_id',value:'p1',closest:()=>form}});
+});
+
+test('AP1: league drafts keep their original version across polling and reload explicitly discards them',async()=>{
+  const events=[{id:1,name:'Parallel',kind:'Liga',date:'2026-11-01',status:'open',phase:'started',version:1}];
+  const slots=[{event_id:1,slot:1,version:1,player_a_id:'anna',target:3,table_no:1}];
+  const app=await frontend('/#spieltage/1',{events,event_match_slots:slots});
+  const form=app.element('#league-slot-1-1');
+  const fields={player_a_id:{value:'anna'},target:{value:'4'},table_no:{value:'1'}};
+  Object.assign(form,{id:'league-slot-1-1',dataset:{event:'1',slot:'1',version:'1'},elements:{namedItem:name=>fields[name]}});
+  Object.defineProperty(form,'entries',{get:()=>Object.entries(fields).map(([name,field])=>[name,field.value])});
+  app.element('#app').querySelectorAll=selector=>selector==='form'?[form]:[];
+  await app.element('#app').dispatch('input',{target:{name:'target',dataset:{},closest:()=>form}});
+  app.saveDrafts();
+  Object.assign(slots[0],{version:2,player_a_id:'ada',target:5});
+  await app.refresh(true);
+  assert.match(app.element('#app').innerHTML,/Diese Aufstellung wurde zwischenzeitlich geändert/);
+  // Model the new controls created from the server response, then restore the local draft.
+  form.dataset.version='2';fields.player_a_id.value='ada';fields.target.value='5';
+  app.restoreDrafts();
+  assert.equal(form.dataset.version,'1');assert.equal(fields.player_a_id.value,'anna');assert.equal(fields.target.value,'4');
+  await app.element('#app').dispatch('change',{target:{name:'target',dataset:{},closest:()=>form}});
+  await app.refresh(true);assert.equal(form.dataset.version,'1','repeated polling cannot rebase the draft');
+  const reload={dataset:{leagueReload:form.id}};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button[data-league-reload]'?reload:null}});
+  assert.doesNotMatch(app.element('#app').innerHTML,/Diese Aufstellung wurde zwischenzeitlich geändert/);
+  form.dataset.version='2';fields.player_a_id.value='ada';fields.target.value='5';
+  await app.element('#app').dispatch('submit',{preventDefault(){},target:form,submitter:{value:'save'}});
+  assert.equal(app.posts.at(-1).data.version,2);assert.equal(app.posts.at(-1).data.player_a_id,'ada');assert.equal(app.posts.at(-1).data.target,5);
+});
+
+test('AP1: untouched league forms do not overlay newer server values with drafts',async()=>{
+  const app=await frontend('/#uebersicht');
+  const form=app.element('#league-slot-1-1'),fields={target:{value:'3'}};
+  Object.assign(form,{id:'league-slot-1-1',dataset:{version:'1'},entries:[['target','3']],elements:{namedItem:name=>fields[name]}});
+  app.element('#app').querySelectorAll=selector=>selector==='form'?[form]:[];
+  app.saveDrafts();form.dataset.version='2';fields.target.value='5';app.restoreDrafts();
+  assert.equal(fields.target.value,'5');assert.equal(form.dataset.version,'2');
+});
+
+test('AP1: a submit racing with a server change sends the original draft version',async()=>{
+  const app=await frontend('/#uebersicht');
+  const form={id:'league-slot-1-1',dataset:{event:'1',slot:'1',version:'1'},entries:[['player_a_id','anna'],['target','4'],['table_no','1']]};
+  await app.element('#app').dispatch('input',{target:{name:'target',dataset:{},closest:()=>form}});
+  form.dataset.version='2';
+  await app.element('#app').dispatch('submit',{preventDefault(){},target:form,submitter:{value:'save'}});
+  assert.equal(app.posts[0].data.version,1,'the backend can reject the stale write');
+});
+
+test('AP1: menu changes tolerate forms whose id property is shadowed by a named field',async()=>{
+  const app=await frontend('/#spieler');
+  const fields={id:{value:'anna'}};
+  const form=app.element('#stats-filter');
+  Object.assign(form,{id:fields.id,getAttribute:()=> 'stats-filter',entries:[['id','anna']],elements:{namedItem:name=>fields[name]}});
+  app.element('#app').querySelectorAll=selector=>selector==='form'?[form]:[];
+  app.saveDrafts();fields.id.value='ada';app.restoreDrafts();
+  assert.equal(fields.id.value,'anna');
 });
 
 test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column',async()=>{

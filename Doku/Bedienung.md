@@ -115,6 +115,8 @@ Nach dem Spieltagsstart zeigt die Übersicht drei Blöcke: vier Einzel (8-Ball, 
 
 **Aufstellung speichern** erhält auch unvollständige Planungen und Tischwünsche, ohne einen Tisch zu belegen. **Partie starten** verlangt die vollständige Aufstellung, Tisch, Spielziel und eine sechsstellige Tablet-PIN. Tisch- und Spielerkonflikte werden geprüft. Am Tablet werden anschließend Ausstoßen und erster Anstoß bestätigt; erst dann beginnt die Zeitmessung. Gestartete Aufstellungen sind gesperrt; Ergebnisse lassen sich weiter über die vorhandene bestätigte Korrektur bearbeiten. Bestehende freie Partien bleiben unter Weitere Partien erhalten. Doppelteilnahmen werden für beide Spieler in der Statistik berücksichtigt.
 
+Unbearbeitete Aufstellungen übernehmen Änderungen anderer Spielleitungen bei der automatischen Aktualisierung. Eigene ungespeicherte Eingaben bleiben während dieser Aktualisierungen und beim Menüwechsel als Entwurf erhalten. Wird dieselbe Aufstellung zwischenzeitlich von jemand anderem gespeichert, erscheint ein Konflikthinweis; der ältere Entwurf kann den neuen Stand nicht überschreiben. **Entwurf verwerfen / Serverstand laden** verwirft die eigenen Eingaben und lädt die aktuelle Aufstellung. Anschließend kann sie erneut bearbeitet werden. Ein vollständiges Neuladen der Browserseite verwirft ungespeicherte Entwürfe.
+
 ### Synchronisierung nur für Heimspiele
 
 Der Spieltags-Sync übernimmt ausschließlich kommende Heimspiele des BSV Pfaffenhofen. Bereits importierte Auswärtsspieltage ohne angelegte Einzelpartien werden entfernt, auch wenn die Spieltagsübersicht schon geöffnet wurde. Manuelle Spieltage und historische Ergebnisse bleiben erhalten. In der Spieltagsübersicht steht die nuLiga-Heimmannschaft immer links (Heim), der Gegner rechts (Gast).

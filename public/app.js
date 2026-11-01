@@ -22,6 +22,7 @@ const views = { planung:['Veranstaltung planen','Veranstaltungen anlegen und syn
 let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1).split('/')[0] : 'uebersicht';
 let selectedEventId=Number(location.hash.split('/')[1])||null;
 const drafts = new Map();
+const leagueDraftVersions = new Map();
 const tournamentPanels = new Map();
 const listPages = new Map();
 function paginate(items, key, label) {
@@ -63,9 +64,30 @@ function adminNavigation(authenticated) {
     else link.removeAttribute('aria-current');
   }
 }
-function saveDrafts() { for(const panel of root.querySelectorAll('details[data-tournament-panel]'))tournamentPanels.set(Number(panel.dataset.tournamentPanel),panel.open); for (const form of root.querySelectorAll('form')) if (form.id && !['login','tablet-login','admin-password'].includes(form.id)) drafts.set(form.id, [...new FormData(form)].filter(([name])=>!['logo_file','logo_reset'].includes(name))); }
+function markLeagueDraft(e) {
+  const form=e.target.closest?.('form[id^="league-slot-"]');
+  if(form?.id?.startsWith('league-slot-') && form.dataset?.version!==undefined && e.target.name && !leagueDraftVersions.has(form.id)) leagueDraftVersions.set(form.id,Number(form.dataset.version));
+}
+root.addEventListener('input',markLeagueDraft);
+root.addEventListener('change',markLeagueDraft);
+root.addEventListener('click',e=>{
+  const button=e.target.closest('button[data-league-reload]');
+  if(!button || !button.dataset.leagueReload || busy)return;
+  const id=button.dataset.leagueReload;
+  return mutate(async()=>{drafts.delete(id);leagueDraftVersions.delete(id);message('Entwurf verworfen. Aktuelle Aufstellung geladen.');});
+});
+function saveDrafts() {
+  for(const panel of root.querySelectorAll('details[data-tournament-panel]'))tournamentPanels.set(Number(panel.dataset.tournamentPanel),panel.open);
+  for(const form of root.querySelectorAll('form')) {
+    const id=form.getAttribute?.('id')??form.id;
+    if(!id || ['login','tablet-login','admin-password'].includes(id))continue;
+    if(id.startsWith('league-slot-') && !leagueDraftVersions.has(id)){drafts.delete(id);continue;}
+    drafts.set(id,[...new FormData(form)].filter(([name])=>!['logo_file','logo_reset'].includes(name)));
+  }
+}
 function restoreDrafts() { for (const [id, entries] of drafts) {
   const form=document.getElementById(id);if(!form)continue;
+  if(leagueDraftVersions.has(id))form.dataset.version=String(leagueDraftVersions.get(id));
   if(id.startsWith('tournament-')) {
     const positions={};for(const field of form.elements){if(!field.name)continue;const values=entries.filter(([name])=>name===field.name).map(([,value])=>value);
       if(field.type==='checkbox')field.checked=values.includes(field.value);
@@ -194,7 +216,7 @@ root.addEventListener('submit', e => {
       if(action==='resolve'){payload.group=Number(data.group);payload.order=new FormData(form).getAll('order');}
       await api('/api/events/'+form.dataset.event+'/tournament/'+action,payload);drafts.delete(form.id);if(action==='preview'){const panel=form.closest('details');if(panel)panel.open=false;}form.remove();message(action==='preview'?'Auslosung als Vorschau gespeichert. Bitte prüfen und bestätigen.':action==='confirm'?'Auslosung übernommen. Partien können Tischen zugewiesen werden.':'Gleichstand entschieden.');
     }
-    if(form.id.startsWith('league-slot-')){const payload={...data,version:Number(form.dataset.version),table_no:data.table_no?Number(data.table_no):null,target:data.target?Number(data.target):null,start:e.submitter?.value==='start'};await api('/api/events/'+form.dataset.event+'/slots/'+form.dataset.slot,payload);drafts.delete(form.id);message(payload.start?'Partie dem Tisch zugewiesen.':'Aufstellung gespeichert.');}
+    if(form.id.startsWith('league-slot-')){const payload={...data,version:leagueDraftVersions.get(form.id)??Number(form.dataset.version),table_no:data.table_no?Number(data.table_no):null,target:data.target?Number(data.target):null,start:e.submitter?.value==='start'};await api('/api/events/'+form.dataset.event+'/slots/'+form.dataset.slot,payload);drafts.delete(form.id);leagueDraftVersions.delete(form.id);message(payload.start?'Partie dem Tisch zugewiesen.':'Aufstellung gespeichert.');}
     if(form.id==='nuliga-schedule-sync'){message('Spieltage werden abgerufen …');const result=await api('/api/settings/nuliga-schedule',{});message(result.created+' Spieltage neu angelegt, '+result.updated+' aktualisiert, '+result.removed+' Auswärtsspieltage entfernt. Alle neuen Spieltage sind geplant.');}
     if (form.id === 'nuliga-sync') { message('nuLiga wird abgerufen …'); const result=await api('/api/settings/nuliga',{overwrite:data.overwrite==='yes'}); drafts.delete(form.id); message('Synchronisiert: '+result.teams+' Mannschaften und '+result.players+' Spieler. '+result.created+' neu, '+result.updated+' aktualisiert; '+result.preserved+' lokale Anpassungen erhalten.'); }
     if (form.id === 'table-settings') { await api('/api/settings/tables',{table_count:Number(data.table_count),version:Number(data.version)}); drafts.delete(form.id); form.remove(); message('Tischanzahl gespeichert.'); }
@@ -275,8 +297,10 @@ function leagueBoard(event) {
       const doubles=i===4||i===5;if((i<4?1:i<6?2:3)!==round)continue;
       const slot=(state.event_match_slots||[]).find(s=>s.event_id===event.id&&s.slot===i+1)||{version:0};
       const match=state.matches.find(m=>m.id===slot.match_id),locked=!!match||event.status==='closed';
+      const formId='league-slot-'+event.id+'-'+(i+1),conflict=leagueDraftVersions.has(formId)&&leagueDraftVersions.get(formId)!==slot.version;
       const occupied=n=>state.matches.some(m=>m.status==='live'&&m.table_no===n&&m.id!==slot.match_id)||(state.rentals||[]).some(r=>r.status==='active'&&r.table_no===n);
       html+='<article class="panel league-partie"><div class="section-title"><h4>'+(i+1)+'. '+(doubles?'Doppel':'Einzel')+' · '+format[i]+'</h4><span class="pill">'+(match?labels[match.status]:'Aufstellung offen')+'</span></div><form id="league-slot-'+event.id+'-'+(i+1)+'" data-event="'+event.id+'" data-slot="'+(i+1)+'" data-version="'+slot.version+'"><fieldset '+(locked?'disabled':'')+'><div class="league-lineup"><div><h5>'+'Heim · '+esc(teams[0]?.name||'Mannschaft 1')+'</h5>'+choose('Spieler 1','player_a_id',slot.player_a_id,0)+(doubles?choose('Spieler 2','player_a2_id',slot.player_a2_id,0):'')+'</div><div><h5>'+'Gast · '+esc(teams[1]?.name||'Mannschaft 2')+'</h5>'+choose('Spieler 1','player_b_id',slot.player_b_id,1)+(doubles?choose('Spieler 2','player_b2_id',slot.player_b2_id,1):'')+'</div><div>'+selectField('Tisch','table_no',slot.table_no??'',[['','Tisch auswählen'],...Array.from({length:tableCount()},(_,n)=>[n+1,'Tisch '+(n+1)+(occupied(n+1)?' · belegt':'')])])+'<label>Spielziel ('+(format[i]==='14/1'?'Punkte':'Gewinnspiele')+')<input name="target" type="number" min="1" max="'+(format[i]==='14/1'?999:99)+'" value="'+(slot.target??'')+'"></label>'+(locked?'':'<label>Tablet-PIN zum Starten<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>')+'</div></div></fieldset>'+(locked?'':'<div class="dialog-actions"><button type="submit" value="save">Aufstellung speichern</button><button type="submit" value="start" class="primary">Partie starten</button></div>')+'</form>';
+      if(conflict)html+='<p role="status">Diese Aufstellung wurde zwischenzeitlich geändert. Dein Entwurf wurde nicht gespeichert. Lade den Serverstand, bevor du die Aufstellung erneut bearbeitest.</p><button type="button" data-league-reload="'+formId+'">Entwurf verwerfen / Serverstand laden</button>';
       if(match)html+='<p class="league-score">'+esc(match.player_a)+' <strong>'+match.a+' : '+match.b+'</strong> '+esc(match.player_b)+'</p>'+timers(match)+(match.status==='live'?'<a class="button" href="/tisch/'+match.table_no+'">Tisch öffnen ↗</a>'+finishButton(match):'')+matchAdminActions(match);
       html+='</article>';
     }
