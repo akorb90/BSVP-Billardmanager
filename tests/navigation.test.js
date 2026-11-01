@@ -540,6 +540,56 @@ test('FR-006 adjustments: sorted players, filters, free tables and live links',a
   assert.ok(output.includes('href="/tisch/1"'));
 });
 
+test('Tournament participant menu contains manual creation and an optional live name search',async()=>{
+  const event={id:1,name:'Turnier',kind:'Turnier',date:'2026-11-01',status:'open',phase:'planned',version:0};
+  const app=await frontend('/#spieltage/1',{events:[event]});
+  const html=app.element('#app').innerHTML;
+  const menu=html.slice(html.indexOf('<fieldset><legend>Teilnehmer'),html.indexOf('</fieldset>',html.indexOf('<fieldset><legend>Teilnehmer')));
+  assert.match(menu,/<summary>Spieler manuell anlegen<\/summary>/);
+  for(const name of ['first_name','last_name'])assert.match(menu,new RegExp('name="'+name+'"[^>]*form="tournament-player-1"'));
+  assert.match(menu,/<button type="submit" form="tournament-player-1">/);
+  assert.match(menu,/<input name="participant_search"[^>]*>/);
+  assert.doesNotMatch(menu.match(/<input name="participant_search"[^>]*>/)[0],/required/);
+  assert.match(html,/<span data-tournament-target-label>Gewinnspiele<\/span>/);
+
+  const rows=['Anna Müller','Anne Gast','Ben Gast'].map((name,i)=>({dataset:{name,membership:i?'external':'bsv'},hidden:false,checkbox:{checked:i===0},group:{},input:{},querySelector(selector){return selector==='[data-group-choice]'?this.group:selector==='[data-group-choice] input'?this.input:this.checkbox;}}));
+  const fields={participant_filter:{value:'all'},participant_search:{value:''},discipline:{value:'9-Ball'},mode:{value:'groups'}};
+  const label={textContent:''};
+  const form={dataset:{action:'preview'},elements:{namedItem:name=>fields[name]},querySelector:()=>label,querySelectorAll:()=>rows};
+  const search=async value=>{fields.participant_search.value=value;await app.element('#app').dispatch('input',{target:{name:'participant_search',form,dataset:{}}});};
+  await search('a');assert.deepEqual(rows.map(r=>r.hidden),[false,false,false]);
+  await search('an');assert.deepEqual(rows.map(r=>r.hidden),[false,false,true]);
+  await search('ann');assert.deepEqual(rows.map(r=>r.hidden),[false,false,true]);
+  await search('ANNA');assert.deepEqual(rows.map(r=>r.hidden),[false,true,true]);
+  await search('ann');assert.deepEqual(rows.map(r=>r.hidden),[false,false,true]);
+  fields.participant_filter.value='external';
+  await app.element('#app').dispatch('change',{target:{name:'participant_filter',dataset:{},closest:()=>form}});
+  assert.deepEqual(rows.map(r=>r.hidden),[true,false,true]);assert.equal(rows[0].checkbox.checked,true);
+  await search('');assert.deepEqual(rows.map(r=>r.hidden),[true,false,false]);
+  fields.participant_filter.value='all';await search(' müLL ');assert.deepEqual(rows.map(r=>r.hidden),[false,true,true]);
+  for(const discipline of ['14/1','8-Ball','10-Ball','9-Ball']){
+    fields.discipline.value=discipline;
+    await app.element('#app').dispatch('change',{target:{name:'discipline',dataset:{},closest:()=>form}});
+    assert.equal(label.textContent,discipline==='14/1'?'Punkte':'Gewinnspiele');
+  }
+});
+
+test('Tournament refresh preserves participant scroll and the manual creation panel',async()=>{
+  const event={id:1,name:'Turnier',kind:'Turnier',date:'2026-11-01',status:'open',phase:'planned',version:0};
+  const app=await frontend('/#spieltage/1',{events:[event]});
+  const root=app.element('#app'),list={dataset:{tournamentScroll:'1'},scrollTop:480},panel={dataset:{tournamentManual:'1'},open:true};
+  let markup=root.innerHTML;
+  Object.defineProperty(root,'innerHTML',{get:()=>markup,set:value=>{markup=value;list.scrollTop=0;panel.open=false;}});
+  root.querySelectorAll=selector=>selector==='[data-tournament-scroll]'?[list]:selector==='[data-tournament-manual]'?[panel]:[];
+  await app.refresh(true);assert.equal(list.scrollTop,480);assert.equal(panel.open,true);
+  list.scrollTop=720;panel.open=false;
+  await app.refresh(true);assert.equal(list.scrollTop,720);assert.equal(panel.open,false);
+  const planning=await frontend('/#planung',{events:[event,{...event,id:2,kind:'Liga'}]});
+  assert.ok(planning.element('#app').innerHTML.includes('>Turnier löschen</button>'));
+  assert.ok(planning.element('#app').innerHTML.includes('>Spieltag löschen</button>'));
+  assert.match(markup,/<option value="swiss"[^>]*>Schweizer System/);
+});
+
 test('Tournament group field follows selected players and assignment mode',async()=>{
   const app=await frontend('/#planung');
   const checkbox={checked:false},label={hidden:true},input={disabled:true};

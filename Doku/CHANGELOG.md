@@ -2,6 +2,18 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-006: Teilnehmerauswahl und Schweizer System — 2026-11-01
+
+- Layout-Nachbesserung: Teilnehmerliste mit fester Höhe von 24 rem, oben ausgerichteten Zeilen und reserviertem Scrollbalkenplatz. Suchtrefferzahlen einschließlich leerer Trefferliste ändern die Größe des Auswahlbereichs nicht. CSS-Eigenschaften und git diff --check geprüft; keine JavaScript-Änderung. Protokolle: data/tournament-fixed-size-2026-11-01/.
+
+- Manuelle Spieleranlage direkt in der Teilnehmerauswahl als aufklappbarer Bereich. Neue externe Spieler werden gespeichert und ausgewählt; Suchfeld und Mitgliederfilter werden zurückgesetzt, bestehende Auswahlen und Regeln bleiben erhalten. Freitextsuche nach Namen aktualisiert bei jeder Zeichenänderung und wirkt zusammen mit dem BSV-/Externenfilter. Ausgeblendete Auswahlen bleiben erhalten. Scrollposition der Teilnehmerliste und geöffnete Spieleranlage bleiben bei automatischen Aktualisierungen bestehen.
+- Spielziel heißt dynamisch **Punkte** bei 14/1 und **Gewinnspiele** bei 8-/9-/10-Ball. Turniere zeigen **Turnier löschen**, einschließlich Löschdialog.
+- Neuer Modus **Schweizer System** für 2–64 Teilnehmer: feste Rundenzahl (aufgerundeter Zweierlogarithmus der Teilnehmerzahl), zufällige erste Runde, weitere Paarungen nach vollständiger Ergebnisbestätigung mit bevorzugt ähnlichen Siegzahlen und ohne wiederholte Gegner/Freilose. Freilos zählt als Sieg ohne Rack-/Punktewertung. Gesamtrangliste nach Siegen, Buchholz, optional Differenz/erzielten Racks oder Punkten sowie begründeter Schlussentscheidung bei Restgleichständen. Ergebniskorrekturen sind nach Erzeugung einer Folgerunde und nach endgültigem Gesamtabschluss gesperrt. Vereinsvariante und Wertung in [Bedienung](Bedienung.md) dokumentiert.
+- Schweizer Runden, Freilose, Rangfolgeentscheidungen und Regeln werden vollständig über die bestehende Veranstaltungsmetadaten-Sicherung exportiert, geprüft und wiederhergestellt; keine Schemaänderung. Backupprüfung rekonstruiert alle Paarungen und prüft Rundenfortschritt, Partiebezüge und Abschluss.
+- Prüfstand: 39 gezielte Tests und Gesamtsuite 119/119 erfolgreich, keine Skips. Schweizer Paarungen für jede Teilnehmerzahl von 2–64 mit mehreren Ergebnisverläufen geprüft; API-Ablauf, Korrektursperren, beschädigte Sicherungen und vollständiger Restore in eine getrennte PostgreSQL-Datenbank erfolgreich. Isolierter Docker-/PostgreSQL-/HTTPS-Gesamttest erfolgreich. Da npm auf dem Host fehlt, die identischen Skripte direkt mit Node ausgeführt. Vorherige gezielte Läufe scheiterten an anschließend korrigierten Testsyntax-/Fixturefehlern sowie einer fehlenden Backup-Vorschau im neuen Restoretest. Protokolle: data/tournament-selection-2026-11-01/.
+
+- Lokal im bestehenden Projekt billardmanager mit beiden Compose-Dateien gebaut und bereitgestellt. App/PostgreSQL gesund, Proxy läuft; HTTPS /health liefert 200 mit vollständiger CA-/Hostnamenprüfung. Prüfsumme aller Anwendungsdaten vor und nach dem Deployment identisch. Stack bleibt aktiv; kein Commit oder Push.
+
 ## Veraltete SQLite-Komponenten entfernt — 2026-11-01
 
 - SQLite-Adapter, automatische Dateiübernahme, SQLite-Schemamigrationen und alternative Backup-Prüfung entfernt. Neue Datenbanken entstehen direkt aus dem vollständigen PostgreSQL-Schema `src/schema.sql`; bestehende PostgreSQL-Upgrades und JSON-Sicherungen der Stände 6–13 bleiben unterstützt. Betrieb, Entwicklung und Umstiegsanleitung aktualisiert. Vorhandene Daten, Secrets, archivierte Dateien und Volumes bleiben erhalten; `/data` wird weiterhin für JSON-Sicherungen vor nuLiga-Abgleichen benötigt.

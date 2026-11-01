@@ -5,6 +5,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createApp} from './helpers/database.js';
+import {swissRoundCount,swissStandings,swissPairings} from '../src/swiss.js';
 import {drawTournament,makeBracket,standings,validateOptions,roundRobin} from '../src/tournaments.js';
 
 const people=n=>Array.from({length:n},(_,i)=>({id:'p'+i,name:'Spieler '+i}));
@@ -22,6 +23,39 @@ test('FR-006: complete round robin, balanced random groups, unique KO seeds and 
   }
   assert.throws(()=>validateOptions({...options,players:people(3)}),/zwei Teilnehmer/);
   assert.throws(()=>validateOptions({...options,groupCount:1,qualifiers:4,players:people(3)}),/Qualifikanten/);
+});
+
+test('Swiss: 2–64 entrants play complete rounds without repeat opponents or repeat byes',()=>{
+  for(let n=2;n<=64;n++)for(let variant=0;variant<4;variant++){
+    const t=drawTournament({...options,mode:'swiss'},people(n)),matches=[],pairs=new Set(),byes=new Set();
+    for(let r=0;r<swissRoundCount(n);r++){
+      if(r)t.rounds.push(swissPairings(t,matches));
+      const round=t.rounds[r];assert.equal(round.length,Math.ceil(n/2));
+      assert.equal(new Set(round.flatMap(g=>[g.a,g.b]).filter(Boolean)).size,n);
+      for(const game of round){
+        if(!game.b){assert.ok(!byes.has(game.a));byes.add(game.a);continue;}
+        const pair=[game.a,game.b].sort().join('/');assert.ok(!pairs.has(pair));pairs.add(pair);
+        game.match=matches.length+1;
+        const win=(matches.length+variant+r)%3!==0;
+        matches.push({id:game.match,status:'finished',a:win?1:0,b:win?0:1});
+      }
+    }
+    const table=swissStandings(t,matches);assert.equal(table.complete,true);
+    assert.equal(table.rows.reduce((sum,r)=>sum+r.wins,0),swissRoundCount(n)*Math.ceil(n/2));
+    assert.equal(byes.size,n%2?swissRoundCount(n):0);
+  }
+});
+
+test('Swiss: score groups, Buchholz and explicit final tie decisions',()=>{
+  const t={players:people(4),rounds:[[{a:'p0',b:'p1',match:1},{a:'p2',b:'p3',match:2}]],resolutions:{},rules:'wins'};
+  const matches=[{id:1,status:'finished',a:1,b:0},{id:2,status:'finished',a:1,b:0}];
+  const next=swissPairings(t,matches);
+  assert.deepEqual(new Set(next.map(g=>[g.a,g.b].sort().join('/'))),new Set(['p0/p2','p1/p3']));
+  next.forEach((g,i)=>{g.match=i+3;matches.push({id:g.match,status:'finished',a:1,b:0});});t.rounds.push(next);
+  const tab=swissStandings(t,matches);assert.equal(tab.complete,true);
+  const wins=Object.fromEntries(tab.rows.map(r=>[r.id,r.wins]));
+  for(const row of tab.rows)assert.equal(row.buchholz,t.rounds.flat().filter(g=>[g.a,g.b].includes(row.id)).reduce((sum,g)=>sum+wins[g.a===row.id?g.b:g.a],0));
+  assert.equal(tab.tied,true);{t.resolutions[0]={order:tab.rows.map(r=>r.id).reverse(),reason:'Entscheidungsspiel'};assert.equal(swissStandings(t,matches).tied,false);}
 });
 
 test('FR-006: groups, ties, qualification, tablet, correction locks, restart and separate complete backup restore',async()=>{
@@ -98,6 +132,39 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     await action(group,'resolve',{group:0,order:g.players,reason:'Losentscheidung laut vereinbarter Spielleitungsentscheidung'});
     assert.equal((await event(group)).tournament.complete,true);assert.equal((await event(group)).tournament.rounds.length,0);
     await ok('/api/backups/preview',{backup:await ok('/api/backups/export')});
+    // Swiss rounds, backup validation, correction locks and separate restoration.
+    const swiss=(await ok('/api/events',{name:'Schweizer System',kind:'Turnier',date:'2026-11-01'})).id;
+    await action(swiss,'preview',{...options,mode:'swiss',player_ids:ids.slice(0,5)});
+    assert.equal((await event(swiss)).tournamentPreview.rounds.length,1);
+    await ok('/api/backups/preview',{backup:await ok('/api/backups/export')});
+    await action(swiss,'confirm',{pin:'123456'});
+    let firstSwiss;
+    for(let r=0;r<3;r++){
+      const draw=(await event(swiss)).tournament;assert.equal(draw.rounds.length,r+1);
+      const games=draw.rounds[r].filter(g=>g.b);
+      assert.equal(draw.rounds[r].filter(g=>!g.b).length,1);
+      for(let i=0;i<games.length;i++){
+        await finish(games[i].match,i%2?'b':'a');
+        if(r===0&&i===0)firstSwiss=await match(games[i].match);
+        if(i<games.length-1)assert.equal((await event(swiss)).tournament.rounds.length,r+1);
+      }
+      if(r===0)assert.equal((await call('/api/matches/'+firstSwiss.id+'/edit',{...firstSwiss,event_version:(await event(swiss)).version,a:0,b:1,action:'match:edit',confirmation:'SPIEL ÄNDERN'})).status,409);
+      await ok('/api/backups/preview',{backup:await ok('/api/backups/export')});
+    }
+    let swissDraw=(await event(swiss)).tournament;
+    if(swissDraw.tables[0].tied)await action(swiss,'resolve',{group:0,order:swissDraw.tables[0].rows.map(r=>r.id),reason:'Entscheidungsspiel'});
+    swissDraw=(await event(swiss)).tournament;assert.equal(swissDraw.complete,true);assert.ok(swissDraw.champion);
+    const swissBackup=await ok('/api/backups/export');
+    for(const corrupt of [t=>t.rounds[1][0].a=t.rounds[1][0].b||'missing',t=>t.rounds.pop(),t=>t.complete=false,t=>t.champion='missing']){
+      const bad=structuredClone(swissBackup),plan=bad.data.event_planning.find(p=>p.event_id===swiss),meta=JSON.parse(plan.metadata);corrupt(meta.tournament);plan.metadata=JSON.stringify(meta);bad.checksum=createHash('sha256').update(JSON.stringify(bad.data)).digest('hex');
+      assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
+    }
+    await new Promise(r=>server.close(r));await start('swiss-restore');
+    await ok('/api/backups/preview',{backup:swissBackup});
+    await ok('/api/backups/restore',{backup:swissBackup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
+    assert.deepEqual((await event(swiss)).tournament,swissDraw);
+    const swissRestored=await ok('/api/backups/export');for(const table of Object.keys(swissBackup.data))if(table!=='audit')assert.deepEqual(swissRestored.data[table],swissBackup.data[table]);
+    await ok('/api/events/'+swiss+'/close',{version:(await event(swiss)).version,action:'event:close',confirmation:'EVENT ABSCHLIESSEN'});
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true,maxRetries:5});}
 });
 

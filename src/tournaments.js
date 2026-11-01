@@ -1,5 +1,7 @@
 import {randomInt} from 'node:crypto';
 import {playerName} from './players.js';
+import {swissRoundCount,swissStandings,swissPairings} from './swiss.js';
+export {swissStandings} from './swiss.js';
 
 export const TOURNAMENT_RULES = {
   difference: 'Siege, dann Rack-/Punktedifferenz, dann erzielte Racks/Punkte. Verbleibende Gleichstände entscheidet die Spielleitung ausdrücklich mit Begründung.',
@@ -9,8 +11,8 @@ const error = message => Object.assign(new Error(message), {status:400});
 export function validateOptions(t) {
   const ids=t.players?.map(p=>p.id);
   if(!ids || ids.length<2 || ids.length>64 || new Set(ids).size!==ids.length)throw error('Bitte 2 bis 64 unterschiedliche Spieler auswählen.');
-  if(!['groups','ko','groups-ko'].includes(t.mode)||!['8-Ball','9-Ball','10-Ball','14/1'].includes(t.discipline)||!Number.isInteger(t.target)||t.target<1||t.target>(t.discipline==='14/1'?999:99)||!Object.hasOwn(TOURNAMENT_RULES,t.rules))throw error('Bitte Modus, Disziplin, gültiges Spielziel und Rangfolgeregel auswählen.');
-  if(t.mode!=='ko' && (!Number.isInteger(t.groupCount)||t.groupCount<1||t.groupCount>Math.floor(ids.length/2)))throw error('Jede Gruppe benötigt mindestens zwei Teilnehmer.');
+  if(!['groups','ko','groups-ko','swiss'].includes(t.mode)||!['8-Ball','9-Ball','10-Ball','14/1'].includes(t.discipline)||!Number.isInteger(t.target)||t.target<1||t.target>(t.discipline==='14/1'?999:99)||!Object.hasOwn(TOURNAMENT_RULES,t.rules))throw error('Bitte Modus, Disziplin, gültiges Spielziel und Rangfolgeregel auswählen.');
+  if(['groups','groups-ko'].includes(t.mode) && (!Number.isInteger(t.groupCount)||t.groupCount<1||t.groupCount>Math.floor(ids.length/2)))throw error('Jede Gruppe benötigt mindestens zwei Teilnehmer.');
   if(t.mode==='groups-ko' && (!Number.isInteger(t.qualifiers)||t.qualifiers<1||t.qualifiers>Math.floor(ids.length/t.groupCount)||t.qualifiers*t.groupCount<2))throw error('Die Qualifikanten müssen in jede Gruppe passen und zusammen mindestens zwei Spieler ergeben.');
 }
 export function drawTournament(options,players) {
@@ -18,7 +20,8 @@ export function drawTournament(options,players) {
   const t={...settings,players,groups:[],rounds:[],resolutions:{},confirmed:false,version:1};validateOptions(t);
   const ids=players.map(p=>p.id);
   for(let i=ids.length-1;i>0;i--){const j=randomInt(i+1);[ids[i],ids[j]]=[ids[j],ids[i]];}
-  if(t.mode==='ko')t.rounds=makeBracket(ids);
+  if(t.mode==='swiss'){t.players=ids.map(id=>players.find(p=>p.id===id));t.rounds=[swissPairings(t,[])];}
+  else if(t.mode==='ko')t.rounds=makeBracket(ids);
   else {t.groups=Array.from({length:t.groupCount},()=>({players:[],games:[]}));if(assignment==='manual') {
     if(!groupAssignments||ids.some(id=>!Number.isInteger(groupAssignments[id])||groupAssignments[id]<1||groupAssignments[id]>t.groupCount))throw error('Bitte jedem Teilnehmer eine gültige Gruppe zuweisen.');
     players.forEach(p=>t.groups[groupAssignments[p.id]-1].players.push(p.id));
@@ -70,6 +73,13 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
       await db.prepare("INSERT INTO matches(id,event_id,player_a,player_b,player_a_id,player_b_id,discipline,target,first,pin_hash) VALUES(?,?,?,?,?,?,?,?,'a',?)").run(game.match,id,a.name,b.name,a.id,b.id,t.discipline,t.target,pin||ms[0]?.pin_hash||null);
     };
     for(let i=0;i<Math.max(0,...t.groups.map(g=>g.games.length));i++)for(const g of t.groups)if(g.games[i])await create(g.games[i]);
+    if(t.mode==='swiss') {
+      const last=t.rounds.at(-1);
+      if(t.rounds.length<swissRoundCount(t.players.length)&&last.every(g=>!g.b||ms.find(m=>m.id===g.match)?.status==='finished'))t.rounds.push(swissPairings(t,ms));
+      for(const game of t.rounds.at(-1))await create(game);
+      const table=swissStandings(t,ms);t.complete=table.complete&&!table.tied;t.champion=t.complete?table.rows[0].id:null;
+      await save(id,meta);return;
+    }
     const tables=t.groups.map(g=>standings(t,g,ms));
     if(t.mode==='groups-ko'&&!t.rounds.length&&tables.every(s=>s.complete&&!s.tied)) {
       const qualifiers=[];for(let rank=0;rank<t.qualifiers;rank++)for(const s of (rank%2?[...tables].reverse():tables))qualifiers.push(s.rows[rank].id);
@@ -113,8 +123,8 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
         await db.prepare('UPDATE event_planning SET started=1 WHERE event_id=?').run(id);
         await progress(id,meta,pin);
       }else if(action==='resolve'){
-        if(!t||t.rounds.length||!t.groups[body.group])throw fail(409,'Diese Gruppenentscheidung ist nicht mehr möglich.');
-        const g=t.groups[body.group],s=standings(t,g,ms),order=body.order;
+        if(!t||(t.mode==='swiss'?body.group!==0:t.rounds.length||!t.groups[body.group]))throw fail(409,'Diese Rangfolgeentscheidung ist nicht mehr möglich.');
+        const g=t.mode==='swiss'?{players:t.players.map(p=>p.id)}:t.groups[body.group],s=t.mode==='swiss'?swissStandings(t,ms):standings(t,g,ms),order=body.order;
         if(!s.complete||!s.tied||!Array.isArray(order)||order.length!==g.players.length||new Set(order).size!==order.length||order.some(p=>!g.players.includes(p))||typeof body.reason!=='string'||!body.reason.trim()||body.reason.length>500)throw fail(400,'Abgeschlossene Gruppe, eindeutige Reihenfolge aller Teilnehmer und Begründung erforderlich.');
         t.resolutions[body.group]={order,reason:body.reason.trim()};await progress(id,meta);
       }else throw fail(404,'Unbekannte Turnieraktion.');
@@ -132,8 +142,8 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
         if(body.event_id!==m.event_id||body.player_a_id!==game.a||body.player_b_id!==game.b||body.discipline!==t.discipline||body.target!==t.target||body.status!==m.status)throw fail(409,'Teilnehmer, Disziplin, Spielziel und Status generierter Partien sind gesperrt.');
         if(m.status==='finished'&&(body.a!==m.a||body.b!==m.b)){
           const r=t.rounds.findIndex(round=>round.includes(game));
-          if(r<0&&(await getEvent(m.event_id)).status==='closed')throw fail(409,'Das Gruppenturnier ist endgültig abgeschlossen. Eine Korrektur könnte neue Gleichstandsentscheidungen erfordern und ist gesperrt.');
-          if(r<0?t.rounds.length>0:t.rounds.slice(r+1).flat().some(g=>g.match))throw fail(409,'Folgepartien wurden bereits erzeugt. Diese Ergebniskorrektur würde die KO-Zuordnung verändern und ist gesperrt.');
+          if((r<0||t.mode==='swiss')&&(await getEvent(m.event_id)).status==='closed')throw fail(409,'Das Gruppenturnier ist endgültig abgeschlossen. Eine Korrektur könnte neue Gleichstandsentscheidungen erfordern und ist gesperrt.');
+          if(r<0?t.rounds.length>0:t.rounds.slice(r+1).flat().some(g=>g.match))throw fail(409,'Folgepartien wurden bereits erzeugt. Diese Ergebniskorrektur würde die Turnierpaarungen verändern und ist gesperrt.');
           t.resolutions={};
           const {meta}=await load(m.event_id);meta.tournament=t;await save(m.event_id,meta);
         }
@@ -155,9 +165,9 @@ export function validateTournamentBackup(data) {
       const ids=t.players.map(p=>p.id),ms=data.matches.filter(m=>m.event_id===plan.event_id);
       for(const p of t.players)if(typeof p.name!=='string'||!p.name.trim()||p.name.length>302||!data.players.some(r=>r.id===p.id&&r.event_id===null))throw Error('tournament player');
       if(!preview&&(!plan.started||ids.some(id=>!data.event_players.some(p=>p.event_id===plan.event_id&&p.player_id===id))))throw Error('tournament participation');
-      if(t.mode==='ko'?(t.groups.length!==0):(t.groups.length!==t.groupCount))throw Error('tournament groups');
+      if(['ko','swiss'].includes(t.mode)?(t.groups.length!==0):(t.groups.length!==t.groupCount))throw Error('tournament groups');
       const grouped=t.groups.flatMap(g=>g.players);
-      if(t.mode!=='ko'&&(grouped.length!==ids.length||new Set(grouped).size!==ids.length||grouped.some(id=>!ids.includes(id))))throw Error('group members');
+      if(!['ko','swiss'].includes(t.mode)&&(grouped.length!==ids.length||new Set(grouped).size!==ids.length||grouped.some(id=>!ids.includes(id))))throw Error('group members');
       const matchIds=[];
       const checkGame=game=>{
         if(!game||!Object.hasOwn(game,'a')||!Object.hasOwn(game,'b')||!Object.hasOwn(game,'match')||[game.a,game.b].some(p=>p!==null&&!ids.includes(p))||game.a&&game.a===game.b)throw Error('tournament pairing');
@@ -168,6 +178,31 @@ export function validateTournamentBackup(data) {
           matchIds.push(game.match);
         }else if(!preview&&game.a&&game.b)throw Error('missing tournament match');
       };
+      if(t.mode==='swiss') {
+        const count=swissRoundCount(ids.length);
+        if(!t.rounds.length||t.rounds.length>count||(preview&&t.rounds.length!==1))throw Error('Swiss round count');
+        const history={...t,rounds:[],resolutions:{}};
+        for(let r=0;r<t.rounds.length;r++) {
+          const round=t.rounds[r];
+          if(!Array.isArray(round))throw Error('Swiss round');
+          const expected=swissPairings(history,ms);
+          if(round.length!==expected.length)throw Error('Swiss pair count');
+          for(let i=0;i<round.length;i++) {
+            checkGame(round[i]);
+            if(round[i].a!==expected[i].a||round[i].b!==expected[i].b)throw Error('Swiss pairing');
+          }
+          if(r<t.rounds.length-1&&round.some(g=>g.b&&ms.find(m=>m.id===g.match)?.status!=='finished'))throw Error('Swiss premature round');
+          history.rounds.push(round);
+        }
+        const tab=swissStandings(history,ms);
+        if(!preview&&tab.complete===false&&t.rounds.length<count&&t.rounds.at(-1).every(g=>!g.b||ms.find(m=>m.id===g.match)?.status==='finished'))throw Error('Swiss missing round');
+        for(const [key,res] of Object.entries(t.resolutions)) {
+          if(key!=='0'||!tab.complete||!tab.tied||preview||!Array.isArray(res.order)||res.order.length!==ids.length||new Set(res.order).size!==ids.length||res.order.some(id=>!ids.includes(id))||typeof res.reason!=='string'||!res.reason.trim()||res.reason.length>500)throw Error('Swiss resolution');
+        }
+        const resolved=swissStandings(t,ms),complete=resolved.complete&&!resolved.tied;
+        if(!preview&&(t.complete!==complete||(t.champion??null)!==(complete?resolved.rows[0].id:null)||ms.some(m=>!matchIds.includes(m.id))))throw Error('Swiss completion');
+        continue;
+      }
       for(const g of t.groups){
         if(g.players.length<2||!Array.isArray(g.games)||g.games.length!==g.players.length*(g.players.length-1)/2)throw Error('round robin');
         const pairs=new Set();for(const game of g.games){checkGame(game);if(!g.players.includes(game.a)||!g.players.includes(game.b))throw Error('group opponent');pairs.add([game.a,game.b].sort().join('/'));}

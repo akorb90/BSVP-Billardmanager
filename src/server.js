@@ -1,4 +1,4 @@
-import {tournamentService,standings} from './tournaments.js';
+import {tournamentService,standings,swissStandings} from './tournaments.js';
 import {leagueService} from './league.js';
 import {participantOccupancy} from './participant-occupancy.js';
 import {scheduleService} from './schedule.js';
@@ -61,7 +61,7 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
   const players=playerService({db,transaction,fail,text,log,openEvent,getEvent,touchEvent});
   const nuliga=nuLigaService({db,transaction,fail,log,collect:collectNuLiga});
   const schedule=scheduleService({db,transaction,fail,log,nextId,collect:collectNuLigaSchedule});
-  const eventState=async(allMatches)=>{const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);const tournament=p?JSON.parse(p.metadata).tournament:null;if(tournament)tournament.tables=tournament.groups.map(g=>standings(tournament,g,allMatches));return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null,tournament:tournament||null,tournamentPreview:p?JSON.parse(p.metadata).tournamentPreview||null:null};});};
+  const eventState=async(allMatches)=>{const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);const tournament=p?JSON.parse(p.metadata).tournament:null;if(tournament)tournament.tables=tournament.mode==='swiss'?[swissStandings(tournament,allMatches)]:tournament.groups.map(g=>standings(tournament,g,allMatches));return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null,tournament:tournament||null,tournamentPreview:p?JSON.parse(p.metadata).tournamentPreview||null:null};});};
   const eventFields = body => {
     const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
