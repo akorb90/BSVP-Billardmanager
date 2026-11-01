@@ -25,6 +25,22 @@ const drafts = new Map();
 const leagueDraftVersions = new Map();
 const tournamentPanels = new Map();
 const listPages = new Map();
+const quantity = (count,singular,plural) => count+' '+(count===1?singular:plural);
+function captureFocus() {
+  const active=document.activeElement;
+  if(!active || !root.contains(active))return null;
+  const attributes=[...active.attributes].filter(a=>['id','name','type','href','aria-label'].includes(a.name) || (a.name==='value'&&active.tagName==='BUTTON') || (a.name.startsWith('data-')&&a.name!=='data-version')).map(a=>[a.name,a.value]);
+  return {tag:active.tagName.toLowerCase(),form:active.closest('form')?.getAttribute('id'),attributes,text:active.textContent};
+}
+function restoreFocus(saved) {
+  if(!saved)return;
+  const scope=saved.form?document.getElementById(saved.form):root;
+  const candidates=[...(scope?.querySelectorAll(saved.tag)||[])].filter(el=>!el.disabled&&!el.closest('[hidden]')&&saved.attributes.every(([name,value])=>el.getAttribute(name)===value));
+  const exact=candidates.filter(el=>el.textContent===saved.text);
+  const target=exact.length===1?exact[0]:candidates.length===1?candidates[0]:null;
+  if(target){if(saved.tag==='h1')target.setAttribute('tabindex','-1');target.focus({preventScroll:true});}
+  else {const heading=root.querySelector('h1');if(heading){heading.setAttribute('tabindex','-1');heading.focus({preventScroll:true});}}
+}
 function paginate(items, key, label) {
   const paging = listPages.get(key) || { page: 1, size: 20 };
   const pages = Math.max(1, Math.ceil(items.length / paging.size));
@@ -136,7 +152,7 @@ function dashboard() {
     }).join('')}</section></section>
     <section class="planning" ${view === 'spieltage' ? '' : 'hidden'}><div class="panel"><p class="eyebrow">01 · VERANSTALTUNG</p><h2>Veranstaltung anlegen</h2><form id="event"><label>Name<input name="name" maxlength="100" placeholder="z. B. Bezirksliga · 3. Spieltag" required></label><div class="form-row"><label>Format<select name="kind"><option>Liga</option><option>Turnier</option></select></label><label>Datum<input name="date" type="date" required></label></div><button class="primary">Veranstaltung anlegen</button></form></div>
     <div class="panel"><p class="eyebrow">02 · BEGEGNUNG</p><h2>Die nächste Partie</h2><form id="match"><label>Veranstaltung<select name="event_id" required><option value="">Bitte auswählen</option>${state.events.filter(e=>e.status === 'open').map(e => `<option value="${e.id}">${esc(e.date)} · ${esc(e.name)} (${esc(e.kind)})</option>`).join('')}</select></label>${participantSelectors(null)}<div class="form-row"><label>Spieler A<input name="player_a" maxlength="302" required></label><label>Spieler B<input name="player_b" maxlength="302" required></label></div><div class="form-row"><label>Disziplin<select name="discipline"><option>8-Ball</option><option>9-Ball</option><option>10-Ball</option></select></label><label>Gewinnspiele<input name="target" type="number" value="5" min="1" max="999" required></label></div><label>Tablet-PIN (6 Ziffern)<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off" required></label><button class="primary" ${state.events.some(e=>e.status === 'open') ? '' : 'disabled'}>Begegnung planen</button></form></div></section>
-    <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div>${eventPage?.controls || ''}<div class="event-list">${eventPage ? eventPage.items.map(eventCard).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>' : ''}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Alle Begegnungen' : 'Laufende Partien'}</h2><span>${visibleMatches.length} Partien</span></div>${matchPage.controls}<section id="matches">${matchRows(matchPage.items)}</section>`;
+    <section ${view === 'spieltage' ? '' : 'hidden'}><div class="section-title"><h2>Veranstaltungen</h2></div>${eventPage?.controls || ''}<div class="event-list">${eventPage ? eventPage.items.map(eventCard).join('') || '<p>Noch keine Veranstaltungen angelegt.</p>' : ''}</div></section><div class="section-title"><h2>${view === 'ergebnisse' ? 'Abgeschlossene Partien' : view === 'spieltage' ? 'Alle Begegnungen' : 'Laufende Partien'}</h2><span>${quantity(visibleMatches.length,'Partie','Partien')}</span></div>${matchPage.controls}<section id="matches">${matchRows(matchPage.items)}</section>`;
 }
 const racks = (match,side) => match.discipline==='14/1'?Math.floor(match[side]/10):match[side];
 function matchRows(matches,asRacks=false) {
@@ -180,11 +196,11 @@ async function refresh(initial = false) {
       catch(e) { if (e.status !== 401) throw e; csrf = ''; adminNavigation(false); }
       const data = await api(`/api/tables/${table}`);
       if(data.match) delete data.match.server_now; // Clock sync must not replace focused controls.
-      if (initial || JSON.stringify(current) !== JSON.stringify(data.match)) { current = data.match; kiosk(); }
+      if (initial || JSON.stringify(current) !== JSON.stringify(data.match)) { const focus=captureFocus();current = data.match;kiosk();restoreFocus(focus); }
     } else {
       state = await api('/api/admin'); csrf = state.csrf;
-      if (initial || !root.contains(document.activeElement) || document.activeElement.tagName === 'BUTTON') {
-        saveDrafts(); dashboard(); restoreDrafts(); updateRentalPreview();
+      if (!document.querySelector('dialog[open]') && (initial || !root.contains(document.activeElement) || ['BUTTON','H1'].includes(document.activeElement.tagName))) {
+        const focus=captureFocus();saveDrafts(); dashboard(); restoreDrafts(); updateRentalPreview();restoreFocus(focus);
       }
     }
     checkWarning();
@@ -312,7 +328,7 @@ function leagueBoard(event) {
 function eventCard(event) {
   const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
   if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3>'+esc(event.name)+'</h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions">'+(event.kind==='Turnier'?'<button class="primary" data-tournament-open="'+event.id+'">Turnier vorbereiten</button>':'<button class="primary" data-event-start="'+event.id+'">Spieltag starten</button>')+'<button data-entity="event" data-action="edit" data-id="'+event.id+'">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">Spieltag löschen</button></div></article>';
-  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${matches.length} Partien</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed||event.kind==='Turnier'?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${matches.filter(m=>m.status!=='finished').length} Partien noch nicht abgeschlossen</small>`}</article>`;
+  return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${quantity(matches.length,'Partie','Partien')}</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">Veranstaltung löschen</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed||event.kind==='Turnier'?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${quantity(matches.filter(m=>m.status!=='finished').length,'Partie','Partien')} noch nicht abgeschlossen</small>`}</article>`;
 }
 function matchAdminActions(m) {
   return `<div class="entity-actions"><button data-entity="match" data-action="edit" data-id="${m.id}">Partie bearbeiten</button><button data-entity="match" data-action="delete" data-id="${m.id}">Partie löschen</button></div>`;
@@ -358,7 +374,7 @@ root.addEventListener('click',e=>{
   } else {
     const name=entity==='event'?item.name:item.player_a+' / '+item.player_b;
     content='<p><strong>'+esc(name)+'</strong></p>';
-    if(action==='delete')content+='<p>Dieser Eintrag wird gelöscht.'+(entity==='event'?' Alle '+state.matches.filter(m=>m.event_id===item.id).length+' zugehörigen Partien einschließlich ihrer Ergebnisse werden ebenfalls gelöscht.':'')+' Belegte Tische werden freigegeben. Diese Aktion kann in der Oberfläche nicht rückgängig gemacht werden.</p>';
+    if(action==='delete')content+='<p>Dieser Eintrag wird gelöscht.'+(entity==='event'?' Sämtliche zugehörigen Partien und Ergebnisse werden ebenfalls gelöscht ('+quantity(state.matches.filter(m=>m.event_id===item.id).length,'Partie','Partien')+').':'')+' Belegte Tische werden freigegeben. Diese Aktion kann in der Oberfläche nicht rückgängig gemacht werden.</p>';
     else content+='<p>Der Spielbetrieb wird abgeschlossen. Spätere Korrekturen und Löschungen erfordern eine erneute Warnbestätigung. Alle Partien müssen zuvor abgeschlossen oder gelöscht sein. Bitte die Ergebnisse vorher prüfen.</p>';
   }
   document.querySelector('#admin-dialog-content').innerHTML=content;
@@ -495,7 +511,7 @@ function rentalDashboard() {
     }).join('')+'</section><section class="planning"><div class="panel"><h2>Vermietung starten</h2><form id="rental-start" data-version="'+settings.version+'" data-base="'+settings.base_cents+'">'+
     selectField('Tisch','table_no',free[0]??'',free.map(n=>[n,'Tisch '+n]))+field('Rabatt in %','discount',0,'number','min="0" max="100" step="0.01"')+'<p>Grundpreis: '+euro(settings.base_cents)+'/h</p><p id="rental-preview" aria-live="polite"></p><button class="primary" '+(free.length?'':'disabled')+'>Vermietung starten</button></form></div>'+
     '</section>'+
-    '<h2>Buchungshistorie</h2>'+rentalPage.controls+'<div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Aktionen</th></tr></thead><tbody>'+rentalPage.items.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+r.billed_minutes+' Minuten')+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'<button data-rental-delete="'+r.id+'">Buchung löschen</button></td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
+    '<h2>Buchungshistorie</h2>'+rentalPage.controls+'<div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Aktionen</th></tr></thead><tbody>'+rentalPage.items.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+quantity(r.billed_minutes,'Minute','Minuten'))+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'<button data-rental-delete="'+r.id+'">Buchung löschen</button></td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
   tickRentals(); updateRentalPreview();
 }
 function updateRentalPreview() {
@@ -534,7 +550,7 @@ root.addEventListener('click',e=>{
       showWarning({phrase:'BUCHUNG LÖSCHEN',label:'Buchung löschen',summary:identity+'<p>Diese Buchung einschließlich ihrer Abrechnungsdaten wird aus der Historie gelöscht. '+(r.status==='active'?'Die laufende Vermietung wird entfernt und der Tisch freigegeben.':'Gespeicherter Gesamtbetrag: '+euro(r.total_cents)+'.')+' Die Löschung kann in der Oberfläche nicht rückgängig gemacht werden.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/delete',{version:r.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})});
     } else {
       const ended_at=Math.max(r.started_at,Date.now()+clockOffset), price=rentalPrice(r.started_at,ended_at,r.hourly_cents);
-      showWarning({phrase:null,label:'Vermietung abschließen',summary:identity+'<p>Endzeitpunkt: '+rentalDate(ended_at)+'<br>Dauer: '+duration(price.duration_ms)+'<br>Abrechnung: '+price.billed_minutes+' Minuten<br>Gesamtbetrag: <strong>'+euro(price.total_cents)+'</strong></p><p>Dieser Endzeitpunkt und Betrag werden gespeichert; der Tisch wird freigegeben. Abbrechen lässt die Vermietung weiterlaufen.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/finish',{version:r.version,ended_at,action:'rental:finish'})});
+      showWarning({phrase:null,label:'Vermietung abschließen',summary:identity+'<p>Endzeitpunkt: '+rentalDate(ended_at)+'<br>Dauer: '+duration(price.duration_ms)+'<br>Abrechnung: '+quantity(price.billed_minutes,'Minute','Minuten')+'<br>Gesamtbetrag: <strong>'+euro(price.total_cents)+'</strong></p><p>Dieser Endzeitpunkt und Betrag werden gespeichert; der Tisch wird freigegeben. Abbrechen lässt die Vermietung weiterlaufen.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/finish',{version:r.version,ended_at,action:'rental:finish'})});
     }
   }
   if(button.dataset.rentalEdit) {
@@ -624,12 +640,12 @@ function playersDashboard() {
   }).join('');
   const teamRows=teamPage.items.map(t=>'<tr><th scope="row">'+esc(t.name)+'</th><td>'+state.team_players.filter(tp=>tp.team_id===t.id).map(tp=>esc(fullName(players.find(p=>p.id===tp.player_id)))).join(', ')+'</td><td>'+(t.active?'Aktiv':'Archiviert')+'</td><td class="registry-actions"><button data-registry="team" data-id="'+esc(t.id)+'">Bearbeiten</button> '+(t.nuliga_profile?'<a class="button" href="'+esc(t.nuliga_profile)+'" target="_blank" rel="noopener noreferrer">nuLiga-Mannschaft ↗</a>':'<span class="muted">Kein nuLiga-Profil zugeordnet</span>')+'</td></tr>').join('');
   root.innerHTML='<div class="page-title"><h1>'+(teamView?'Mannschaften':'Spieler')+'</h1></div><section class="panel"><button data-registry="'+(teamView?'team':'player')+'">'+(teamView?'Mannschaft':'Spieler')+' anlegen</button>'+(teamView?'':'<form id="player-search"><label>Spieler suchen (Name, Mannschaft oder ID)<input name="q" value="'+esc(playerSearch)+'"></label><button>Suchen</button></form>')+(teamView?teamPage.controls:page.controls)+'<div class="registry-list"><table><thead><tr><th>'+(teamView?'Mannschaft':'Spieler')+'</th><th>'+(teamView?'Spieler':'Mannschaft')+'</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>'+(teamView?teamRows:playerRows)+'</tbody></table></div></section>';
-  if(!teamView)root.innerHTML += '<section class="panel"><h2>Partien &amp; Statistik'+(entity?' · '+esc(entity.name||fullName(entity)):'')+'</h2><p>Zeitraum nach Spieltagsdatum. Nur abgeschlossene Partien zählen als Ergebnisse. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien.</p><form id="stats-filter">'+selectField('Übersicht','kind',f.kind,[['players','Spieler'],['teams','Mannschaften']])+selectField('Eintrag','id',f.id,[['','Bitte auswählen'],...(f.kind==='players'?players:teams).map(p=>[p.id,(p.name||fullName(p))+' · ID '+p.id])])+'<div class="form-row"><label>Von<input type="date" name="from" value="'+esc(f.from)+'"></label><label>Bis<input type="date" name="to" value="'+esc(f.to)+'"></label></div>'+selectField('Disziplin','discipline',f.discipline,[['','Alle'],...['8-Ball','9-Ball','10-Ball','14/1'].map(d=>[d,d])])+'<button>Auswerten</button></form><p><strong>'+count+' Ergebnisse · '+wins+' Siege · '+losses+' Niederlagen · Racks '+won+' : '+lost+'</strong></p><p>14/1: Je 10 gelochte Kugeln zählen als 1 Rack; Restpunkte werden je Partie abgerundet.</p>'+mp.controls+matchRows(mp.items,true)+'</section>';
+  if(!teamView)root.innerHTML += '<section class="panel"><h2>Partien &amp; Statistik'+(entity?' · '+esc(entity.name||fullName(entity)):'')+'</h2><p>Zeitraum nach Spieltagsdatum. Nur abgeschlossene Partien zählen als Ergebnisse. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien.</p><form id="stats-filter">'+selectField('Übersicht','kind',f.kind,[['players','Spieler'],['teams','Mannschaften']])+selectField('Eintrag','id',f.id,[['','Bitte auswählen'],...(f.kind==='players'?players:teams).map(p=>[p.id,(p.name||fullName(p))+' · ID '+p.id])])+'<div class="form-row"><label>Von<input type="date" name="from" value="'+esc(f.from)+'"></label><label>Bis<input type="date" name="to" value="'+esc(f.to)+'"></label></div>'+selectField('Disziplin','discipline',f.discipline,[['','Alle'],...['8-Ball','9-Ball','10-Ball','14/1'].map(d=>[d,d])])+'<button>Auswerten</button></form><p><strong>'+quantity(count,'Ergebnis','Ergebnisse')+' · '+quantity(wins,'Sieg','Siege')+' · '+quantity(losses,'Niederlage','Niederlagen')+' · Racks '+won+' : '+lost+'</strong></p><p>14/1: Je 10 gelochte Kugeln zählen als 1 Rack; Restpunkte werden je Partie abgerundet.</p>'+mp.controls+matchRows(mp.items,true)+'</section>';
 }
 let registryDialog;
 function openRegistry(title,content) {
-  if(!registryDialog){registryDialog=document.createElement('dialog');registryDialog.id='registry-dialog';document.body.append(registryDialog);}
-  registryDialog.innerHTML='<h2>'+esc(title)+'</h2>'+content+'<p id="registry-error" role="alert"></p><button type="button" id="registry-cancel">Abbrechen</button>';
+  if(!registryDialog){registryDialog=document.createElement('dialog');registryDialog.id='registry-dialog';registryDialog.setAttribute('aria-labelledby','registry-title');document.body.append(registryDialog);}
+  registryDialog.innerHTML='<h2 id="registry-title">'+esc(title)+'</h2>'+content+'<p id="registry-error" role="alert"></p><button type="button" id="registry-cancel">Abbrechen</button>';
   registryDialog.querySelector('#registry-cancel').onclick=()=>registryDialog.close();
   registryDialog.onchange=e=>{
     if(e.target.matches('[data-roster-side]')) {

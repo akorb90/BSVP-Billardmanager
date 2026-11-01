@@ -31,7 +31,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
   const window = element('window');
   const context = vm.createContext({
     rentalPrice, hourlyRate,
-    document: { querySelector: element, getElementById:id=>elements.get('#'+id), querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
+    document: { querySelector:selector=>selector==='dialog[open]'?[...elements.values()].find(e=>e.open)||null:element(selector), getElementById:id=>elements.get('#'+id), querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
     FormData: class { constructor(form) { this.entries=form?.entries || [['password', 'test']]; } [Symbol.iterator](){return this.entries[Symbol.iterator]();} getAll(name){return this.entries.filter(e=>e[0]===name).map(e=>e[1]);} },
@@ -50,8 +50,8 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       return { ok: status === 200, status, json: async () => body };
     },
   });
-  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits }; })()`, context);
-  return { ...app, element, links, location, window, posts, setAdmin(value) { admin = value; } };
+  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits, captureFocus, restoreFocus, quantity }; })()`, context);
+  return { ...app, document:context.document, element, links, location, window, posts, setAdmin(value) { admin = value; } };
 }
 
 async function pageClick(app, key, step) {
@@ -166,7 +166,7 @@ test('Admin-Formulare zeigen Änderungen und binden Warnungen an die konkrete Ak
     assert.equal(app.posts.length,0);assert.equal(app.element('#warning-dialog').open,true);
     assert.equal(app.element('#warning-phrase').textContent,phrase);
     if(action==='edit')assert.match(app.element('#warning-summary').innerHTML,entity==='event'?/Alter Spieltag → Neuer Spieltag/:/Ben → Berta/);
-    if(action==='delete'&&entity==='event')assert.match(app.element('#warning-summary').innerHTML,/Alle 1 zugehörigen Partien einschließlich ihrer Ergebnisse/);
+    if(action==='delete'&&entity==='event')assert.match(app.element('#warning-summary').innerHTML,/Sämtliche zugehörigen Partien und Ergebnisse werden ebenfalls gelöscht \(1 Partie\)/);
     const input=app.element('#warning-input');input.value=phrase;input.listeners.input();
     assert.equal(app.element('#warning-save').disabled,false);
     await app.element('#warning-save').listeners.click();
@@ -434,7 +434,7 @@ test('AP4: 14/1 statistics round each match before aggregation and preserve orig
   markup=await filter('14/1');
   assert.match(markup,/3 Ergebnisse · 3 Siege · 0 Niederlagen · Racks 13 : 8/,'19:11 and 19:10 still count as wins despite equal converted racks');
   assert.doesNotMatch(markup,/Ziel 5<\/p>/,'discipline filter removes the 9-Ball match');
-  markup=await filter('9-Ball');assert.match(markup,/1 Ergebnisse · 1 Siege · 0 Niederlagen · Racks 5 : 2/);
+  markup=await filter('9-Ball');assert.match(markup,/1 Ergebnis · 1 Sieg · 0 Niederlagen · Racks 5 : 2/);
   markup=await filter('','2026-10-31');assert.match(markup,/2 Ergebnisse · 2 Siege · 0 Niederlagen · Racks 17 : 10/,'125 points plus 5 racks equals 17 racks');
   markup=await filter('14/1','2027-01-01');assert.match(markup,/0 Ergebnisse · 0 Siege · 0 Niederlagen · Racks 0 : 0/);
   assert.equal(JSON.stringify(matches),before,'statistics never rewrite stored point scores');
@@ -453,6 +453,42 @@ test('AP4: secondary doubles players, team sides and loss counts use the same ra
   }
   await app.element('#app').dispatch('change',{target:{name:'kind',value:'players',dataset:{},form:{id:{},getAttribute:()=> 'stats-filter'}}});
   assert.match(app.element('#app').innerHTML,/0 Ergebnisse · 0 Siege · 0 Niederlagen · Racks 0 : 0/,'switching entity kind clears the previous selection');
+});
+
+test('AP5: focus identities distinguish repeated actions and fall back when the action disappears',async()=>{
+  const app=await frontend('/#spieler');const root=app.element('#app');let focused;
+  function button(id,disabled=false){const attributes=[{name:'data-registry',value:'player'},{name:'data-id',value:id},{name:'disabled',value:''}];return{tagName:'BUTTON',attributes,textContent:'Bearbeiten',disabled,getAttribute:name=>attributes.find(a=>a.name===name)?.value??null,closest:()=>null,focus(){focused=id;}};}
+  const original=button('p1');app.document.activeElement=original;root.contains=el=>el===original;
+  const saved=app.captureFocus();
+  root.querySelectorAll=()=>[button('p2'),button('p1')];app.restoreFocus(saved);assert.equal(focused,'p1');
+  const heading=app.element('heading');heading.focus=()=>{focused='heading';};root.querySelector=()=>heading;
+  root.querySelectorAll=()=>[button('p2'),button('p1',true)];app.restoreFocus(saved);assert.equal(focused,'heading');assert.equal(heading.attributes.tabindex,'-1');
+});
+
+test('AP5: open named registry dialogs keep their trigger DOM intact during refresh',async()=>{
+  const players=[{id:'p',first_name:'Anna',last_name:'Test',active:1}];const app=await frontend('/#spieler',{players});
+  const button={dataset:{registry:'player'},hasAttribute:()=>false};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
+  const dialog=app.element('#registry-dialog');assert.equal(dialog.attributes['aria-labelledby'],'registry-title');assert.match(dialog.innerHTML,/<h2 id="registry-title">Spieler verwalten<\/h2>/);
+  const before=app.element('#app').innerHTML;players.push({id:'q',first_name:'Ben',last_name:'New',active:1});
+  await app.refresh(true);assert.equal(app.element('#app').innerHTML,before,'modal polling updates state without replacing the trigger');
+  dialog.close();await app.refresh(true);assert.match(app.element('#app').innerHTML,/Ben New/);
+});
+
+test('AP5: fallback heading focus continues receiving live updates',async()=>{
+  const players=[];const app=await frontend('/#spieler',{players}),root=app.element('#app');
+  const heading={tagName:'H1',attributes:[],textContent:'Spieler',closest:()=>null,setAttribute(name,value){this[name]=value;},focus(){app.document.activeElement=this;}};
+  app.document.activeElement=heading;root.contains=el=>el===heading;root.querySelectorAll=selector=>selector==='h1'?[heading]:[];
+  players.push({id:'p',first_name:'New',last_name:'Arrival',active:1});
+  await app.refresh();assert.match(root.innerHTML,/New Arrival/);assert.equal(app.document.activeElement,heading);assert.equal(heading.tabindex,'-1');
+});
+
+test('AP5: quantities use singular at one and plural at zero or two in rendered lists',async()=>{
+  const app=await frontend('/#ergebnisse',{events:[{id:1,name:'Test',date:'2026-11-01',status:'open'}],matches:[{id:1,event_id:1,player_a:'A',player_b:'B',status:'finished',a:1,b:0,target:1}]});
+  assert.match(app.element('#app').innerHTML,/>1 Partie<\/span>/);
+  for(const [n,text] of [[0,'0 Minuten'],[1,'1 Minute'],[2,'2 Minuten']])assert.equal(app.quantity(n,'Minute','Minuten'),text);
+  const rentals=await frontend('/#vermietung',{rentals:[{id:1,table_no:1,status:'finished',started_at:0,ended_at:60000,duration_ms:60000,billed_minutes:1,total_cents:15,hourly_cents:900,base_cents:900,adjustment_percent:null,version:1}]});
+  assert.match(rentals.element('#app').innerHTML,/1 Minute<\/td>/);assert.doesNotMatch(rentals.element('#app').innerHTML,/1 Minuten/);
 });
 
 test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column',async()=>{

@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit AP5: Tastaturbedienung und Texte — 2026-11-01
+
+- AP5 / UX-001 bis UX-003 behoben: Tastaturfokus bleibt beim automatischen Neuaufbau auf derselben Aktion; bei verschwundener oder deaktivierter Aktion dient die Seitenüberschrift als Ausweichziel. Offene Dialoge erhalten ihre Auslöser im Hintergrund. Dynamische Verwaltungsdialoge sind über ihre Überschrift zugänglich benannt. Mengenangaben verwenden korrekte Singularformen für Partien, Minuten, Ergebnisse, Siege und Niederlagen.
+- Browserprüfung bestätigt Fokus über mehr als vier Pollzyklen, Enter-Auslösung, Fokuszurückkehr nach Registry-/Partiedialogen und Ausweichfokus nach Vermietungsabschluss. „1 Partie“ und „1 Minute“ praktisch geprüft.
+- Prüfung: 31 gezielte Tests und Gesamtsuite mit 111 erfolgreichen Tests, keine übersprungenen Tests. Ein ursprünglicher Test erwartete noch den falschen Löschtext und wurde aktualisiert. Der abschließende isolierte Docker-/PostgreSQL-/HTTPS-Test bestand. Logs und Fortsetzungsstand unter `data/ap5-ap6-2026-11-01/`. npm-Skripte wegen fehlendem npm im PATH direkt mit Node ausgeführt.
+- Deployment: Bestehender lokaler Stack mit beiden Compose-Dateien gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS und ausgeliefertes app.js mit bestehender CA geprüft. Stack bleibt aktiv; Secrets und Datenvolumes erhalten.
+
 ## Audit AP4: 14/1-Rackstatistik und Disziplinfilter — 2026-11-01
 
 - FUNC-004 behoben: 14/1 als Statistikfilter ergänzt. Je Partie und Spielerseite zählen zehn volle Kugelpunkte als ein Rack; erst danach werden die Rackwerte summiert. 114:69 ergibt 11:6, zweimal 19 Punkte ergeben zwei Racks. Gemischte Disziplinen verwenden gemeinsame Rackzahlen.

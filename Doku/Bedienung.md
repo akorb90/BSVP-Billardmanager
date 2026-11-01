@@ -33,6 +33,8 @@ Einstellungen:
 
 ## Spieler & Mannschaften (FR-007)
 
+Die automatische Aktualisierung erhält den Tastaturfokus auf der gewählten Aktion. Enter löst weiterhin diese Aktion aus. Nach dem Schließen eines Dialogs kehrt der Fokus zum Auslöser zurück. Ist die Aktion inzwischen entfallen, etwa nach Abschluss einer Vermietung, erhält stattdessen die Seitenüberschrift den Fokus. Offene Verwaltungsdialoge tragen einen zugänglichen Namen wie „Spieler verwalten“.
+
 Im eigenen Menü **Spieler & Mannschaften** Spieler mit Vorname, optionalem zweitem Namen und Nachname anlegen. Weitere personenbezogene Angaben werden nicht erfasst. Suche nach Name oder interner ID sowie 10/20/50/100 Einträge pro Seite stehen bereit. Gleichnamige Personen behalten unterschiedliche IDs; mögliche Doppeleinträge werden vor dem Speichern angezeigt. Eine zweite Person mit gleichem Namen ausdrücklich bestätigen.
 
 BSV-Mannschaften mit Namen und Spielerzuordnung anlegen oder bearbeiten. Die Mehrfachauswahl erfolgt mit Strg/Cmd; **Archiviert** entfernt einen Spieler oder eine Mannschaft aus der künftigen Vorauswahl und erhält alle historischen Daten. Gegner können ohne BSV-Mannschaft in den Stammdaten stehen; freie Namen ohne Stammdaten bleiben ebenfalls möglich.
