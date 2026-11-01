@@ -2,7 +2,7 @@
 
 Dieses Dokument enthält ausschließlich offene oder in Umsetzung befindliche Feature Requests. Erfolgreich umgesetzte Anforderungen werden mit ihrer FR-Nummer, dem Umsetzungsdatum und dem Prüfstand in die [Release Notes](CHANGELOG.md) übernommen und hier entfernt. Bestehende FR-Nummern bleiben erhalten und werden nicht erneut vergeben.
 
-Turnierverwaltung (FR-006), Spieler- und Mannschaftsverwaltung (FR-007) sowie Datensicherung (FR-005) sind umgesetzt, siehe [Release Notes](CHANGELOG.md). Offen bleibt das Regelwerk (FR-008).
+Turnierverwaltung (FR-006), Spieler- und Mannschaftsverwaltung (FR-007) sowie Datensicherung (FR-005) sind umgesetzt, siehe [Release Notes](CHANGELOG.md). Offen sind das Regelwerk (FR-008) und die Lagerverwaltung mit Getränketracking (FR-014).
 
 ## FR-008: Aktuelles BBV-Verbandsregelwerk als Nachschlagewerk
 
@@ -16,16 +16,43 @@ Anforderungen und Abnahmekriterien:
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
 
-## FR-014: Lagerverwaltung, Getränketracking
-Dieser Feature Request muss nicht auf einmal umgesetzt werden, er kann in sinnvoll gruppierte Untertasks gespliittet werden!
-Analysiere den FR im ersten Schritt und formulieren in weiter aus, erweitere ihn um sinnvolle Funktionen. 
+## FR-014: Lagerverwaltung und Getränketracking
 
-Es wird eine Lagerverwaltung für Getränke benötigt. Hier müssen sowohl Einzelflaschen als auch ganze Kästen unterschiedlicher Formate schnell und einfach erfasst werden.
-Denkbar wäre auch ein Barcode Scanner mit Anbindung an eine Produktdatenbank, wenn dies sinnvoll umsetzbar ist.
-Bulk Eingabe auf Basis der letzten Wareneingangsbuchungen oder manuell angelegter Vorlage.
+**Status 2026-11-01:** Initialanalyse und Ausarbeitung abgeschlossen; die Anwendung ist noch nicht erweitert. Fachkonzept, Bestandsanalyse, Rechenbeispiele, Umsetzungshinweise und spätere Optionen stehen in [Lagerverwaltung und Getränketracking](Lagerverwaltung.md). Die folgenden Untertasks werden einzeln umgesetzt und abgenommen. FR-014 bleibt bis zur Umsetzung des Pflichtumfangs offen.
 
-Jedes Getränke braucht einen VK Preis, EK kann optional für Auswertungen angegeben werden. Reporting Dashboard für z.B. monatliche Auswertungen integrieren.
+Ziel: Getränke in Einzelflaschen und unterschiedlichen Gebinden verwalten, Verbrauch einer laufenden Tischvermietung zuordnen und Tischmiete sowie Getränkekosten nachvollziehbar abschließen. Keine Zahlungsabwicklung, Kassenführung oder steuerlichen Belege vorsehen; aus dieser Funktionsabgrenzung folgt keine Aussage über rechtliche Pflichten im Vereinsbetrieb.
 
-Ein vermieteter Tisch braucht ein Kommentarfeld das bei der Buchung verpflichtend befüllt werden muss. Darüber wird z.B. der Name der ausleihenden Person erfasst. Dieser muss auch in der Tischübersicht angezeigt werden.
-Auf einen vermieteten Tisch werden Getränke verbucht. Die Tischkarte zeigt auch die aktuellen Getränkekosten an. Bei Abschluss der Tischbuchung erfolgt Auflistung aller Getränke und der Tischmiete. Die Elemente müssen jeweils mit einer Checkbox bestätigt werden vor finalem Abschluss der Tischbuchung.
-Keine Kassenfunktion, da TSE Vorgaben den Rahmen sprengen.
+### FR-014.1: Getränke und Lagerbewegungen
+
+- Getränk mit Name, Flaschengröße, verpflichtendem Verkaufspreis (VK), optionalem Einkaufspreis (EK), Mindestbestand und aktivem/archiviertem Zustand verwalten. Geldbeträge in ganzen Cent; fehlender EK ist kein Nullpreis.
+- Pro Getränk mehrere benannte Gebinde mit positiver ganzzahliger Flaschenanzahl anlegen, etwa 20er- und 24er-Kasten. Bestand in einzelnen Flaschen führen. Gebindeänderungen dürfen alte Buchungen nicht verändern.
+- Anfangsbestand, Wareneingang, Verbrauch, Bruch/Eigenverbrauch und Inventurdifferenz als nachvollziehbare Bewegungen mit Zeitpunkt und gegebenenfalls Pflichtbegründung buchen. Korrekturen erfolgen durch Gegenbuchungen. Unzulässige Mengen und negative Bestände serverseitig abweisen.
+- Abnahme: Zwei 20er-Kästen und drei Einzelflaschen ergeben 43 Flaschen; Ausgabe von zwei Flaschen ergibt 41. Parallelbuchungen dürfen weder Bestand unterschreiten noch Bewegungen verdoppeln. Archivieren erhält alle historischen Bezüge.
+
+### FR-014.2: Schnellerfassung und Inventur
+
+- Mehrere Getränke mit Kästen und Einzelflaschen in einer Vorschau erfassen und gemeinsam bestätigen. Letzte Wareneingänge als neue Eingabe übernehmen oder dauerhaft gespeicherte, benannte Vorlagen nutzen. Vorlagen verändern keinen Bestand; übernommene Mengen und EK bleiben vor der Buchung editierbar.
+- Inventur mit Soll-/Istbestand, Differenz und Begründung anbieten; Mindestbestände mit einer einfachen Nachbestellliste anzeigen.
+- Abnahme: Ungültige Position oder zwischenzeitlich veränderter Bestand verhindert die gesamte Sammelbuchung. Wiederholtes Absenden derselben Buchung legt keine zweite Bewegung an. Veraltete Vorlagen mit archivierten Artikeln verlangen eine Korrektur.
+
+### FR-014.3: Mietkommentar und Getränkebuchungen
+
+- Beim Start einer Vermietung ein verpflichtendes, nach Entfernen äußerer Leerzeichen nicht leeres Kommentarfeld anbieten (beispielsweise Name der ausleihenden Person, höchstens 200 Zeichen). In Vermietungsansicht und Tischübersicht anzeigen; Änderungen nachvollziehbar protokollieren. Bestehende Vermietungen bleiben erhalten; fehlende Altkommentare ausdrücklich kennzeichnen und vor einer weiteren Getränkebuchung oder dem Abschluss ergänzen lassen.
+- Getränke mit schneller Mengeneingabe auf aktive Vermietungen buchen. Jede Position speichert Getränkebezeichnung und VK zum Buchungszeitpunkt; spätere Preisänderungen ändern bestehende Positionen nicht. Bestandsabgang und Getränkeposition gemeinsam in einer Transaktion schreiben.
+- Tischkarten zeigen Kommentar, laufende Tischmiete und aktuelle Getränkesumme getrennt. Bestehende Mietrabatte gelten weiterhin nur für die Tischmiete. Nur angemeldete Spielleitung darf Lager und Getränkebuchungen ändern; Tablet-Partiezugänge erhalten diese Berechtigung nicht.
+- Abnahme: Zwei Flaschen zu je 2,50 EUR ergeben 5,00 EUR Getränkekosten und zwei Flaschen Lagerabgang. Parallelzugriff, Wiederholung und veraltete Ansichten erzeugen keine Doppelbuchungen. Storno verlangt einen Grund und eine ausdrückliche Entscheidung über eine tatsächliche Rückgabe ins Lager.
+
+### FR-014.4: Geprüfter Vermietungsabschluss
+
+- Abschlussvorschau mit festem Endzeitpunkt, Mietdauer, Tischmiete, allen wirksamen Getränkepositionen, Getränkesumme und Gesamtsumme anzeigen. Je angezeigter Getränkeposition und für die Tischmiete eine zunächst leere Checkbox verlangen. Bestätigung bedeutet Prüfung der Aufstellung, keine Zahlungsbestätigung.
+- Finalen Abschluss nur bei vollständig bestätigter, serverseitig geprüfter Vorschau zulassen. Änderungen an Miete oder Getränken machen Vorschau und Bestätigungen ungültig. Vorschauzeitpunkt und Abschluss müssen dieselbe Mietsumme ergeben.
+- Abgeschlossene Positionen erhalten ihren Preis-/Namensstand. Nachträgliche Korrekturen müssen Abschlusswerte, Lagerbewegungen und Änderungsprotokoll konsistent halten. Vermietungen mit Getränkebewegungen dürfen nicht mitsamt diesen Bezügen spurlos gelöscht werden.
+- Abnahme: Fehlende Checkbox oder zwischenzeitliche Getränkebuchung verhindert den Abschluss. Wiederholtes Absenden desselben gültigen Abschlusses führt zu genau einem Abschluss. Altvermietungen ohne Getränke bleiben prüf- und korrigierbar.
+
+### FR-014.5: Reporting und vollständige Datensicherung
+
+- Monatsdashboard mit frei wählbarem Zeitraum: Verbrauch je Getränk, Wareneingänge, aktuelle Bestände/Mindestbestände, Getränkewerte aus abgeschlossenen Vermietungen sowie Tischmiete getrennt darstellen. Offene Vermietungen separat ausweisen. Bekannte EK und fehlende EK transparent anzeigen; keine vollständige Marge bei unvollständiger Kostenbasis behaupten. Zeit- und Korrekturzuordnung gemäß Fachkonzept verwenden.
+- Sämtliche Artikel, Gebinde, Preisstände, Bewegungen, Mietkommentare, Getränkepositionen, Abschlussbestätigungen, Vorlagen und Einstellungen in Anwendungsbackup und Wiederherstellung aufnehmen. Dies ist ab dem jeweiligen Untertask verpflichtend, nicht erst im letzten Umsetzungsschritt. Neue Tabellen automatisch einschließen und fachliche Importprüfung sowie Altbackup-Migration ergänzen; separate Betriebssicherung bleibt erforderlich.
+- Abnahme: Getrennte Testdaten vollständig exportieren und wiederherstellen, fachlich ungültige Sicherungen ohne Datenänderung ablehnen, Altbackups auf leere Getränkebestände migrieren. Monatsgrenzen, Stornos und fehlende EK gezielt testen.
+
+Reihenfolge: FR-014.1 → FR-014.2 → FR-014.3 → FR-014.4 → FR-014.5; Kommentar aus FR-014.3 kann vorgezogen werden. Barcode- und Produktdatenbankanbindung sind optionale spätere Ausbaustufen nach einer Machbarkeitsprüfung, siehe Fachkonzept. Pro Untertask betroffene Tests, einmal Gesamtsuite und bei Datenbank-/Backupänderungen zusätzlich isolierte PostgreSQL-/HTTPS-/Docker-Prüfung ausführen; anschließend lokal bereitstellen. Keine Testdaten in den laufenden Vereinsbestand übernehmen.

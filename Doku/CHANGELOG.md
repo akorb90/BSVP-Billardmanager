@@ -2,6 +2,12 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## FR-014: Initialanalyse und Anforderungsausarbeitung — 2026-11-01
+
+- Vorhandene Vermietungs-, Versions- und Backupmechanismen geprüft. Anforderungen für Artikel/Gebinde, Bewegungen, Sammelerfassung, Inventur, Mietkommentar, Getränkepositionen, Abschlussprüfung und Monatsauswertung in fünf einzeln abnehmbare Untertasks aufgeteilt.
+- [Fachkonzept](Lagerverwaltung.md) mit Bestands-/Preisregeln, Korrekturen, Altbestandsbehandlung, vollständiger Sicherung und optionaler Barcode-/Produktdatenbankprüfung ergänzt. FR-014 bleibt offen; keine Anwendungsfunktion oder Datenbank geändert.
+- Prüfstand: Dokumentationsinhalt, lokale Verweise und `git diff --check` geprüft; keine JavaScript-Tests erforderlich. Bestehendes Projekt `billardmanager` mit beiden Compose-Dateien gebaut und bereitgestellt; App/PostgreSQL gesund, Proxy läuft. HTTPS `/health` liefert 200 mit vorhandener CA und geprüfter Zertifikatskette/Hostname; Windows-Sperrprüfung auf Best effort, da die lokale CA keinen abrufbaren Sperrstatus lieferte. Erste Versuche scheiterten an nicht gestarteter Docker-Engine bzw. Sandboxzugriff. Logs unter `data/fr-014-initial-2026-11-01/`. Stack bleibt aktiv; Secrets und Datenvolumes erhalten.
+
 ## Audit abgeschlossen — 2026-11-01
 
 AP1 bis AP6 sind umgesetzt und geprüft; alle neun Findings sind bearbeitet. Der [Auditbericht](../AUDIT_REPORT.md) enthält den dauerhaften Abschlussstatus und die fortsetzbare Liste abgeschlossener Tests. Letzter Gesamtstand: 116/116 Tests ohne Skips, erfolgreiche Browser-/Docker-/PostgreSQL-/HTTPS-Prüfungen und erfülltes Performancebudget. Lokaler Stack aktiv; FR-008 sowie reale Geräte-/WLAN-/Langzeitlast bleiben außerhalb des Auditumfangs.
