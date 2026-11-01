@@ -15,3 +15,17 @@ Anforderungen und Abnahmekriterien:
 - Offizielle Dokumente direkt öffnen und, soweit technisch und rechtlich möglich, in der Anwendung durchsuchbar anzeigen. Falls eine eingebettete Anzeige nicht möglich ist, einen klaren Link zum Original anbieten.
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
+
+## FR-015: Lagerverwaltung, Getränketracking
+Dieser Feature Request muss nicht auf einmal umgesetzt werden, er kann in sinnvoll gruppierte Untertasks gespliittet werden!
+Analysiere den FR im ersten Schritt und formulieren in weiter aus, erweitere ihn um sinnvolle Funktionen. 
+
+Es wird eine Lagerverwaltung für Getränke benötigt. Hier müssen sowohl Einzelflaschen als auch ganze Kästen unterschiedlicher Formate schnell und einfach erfasst werden.
+Denkbar wäre auch ein Barcode Scanner mit Anbindung an eine Produktdatenbank, wenn dies sinnvoll umsetzbar ist.
+Bulk Eingabe auf Basis der letzten Wareneingangsbuchungen oder manuell angelegter Vorlage.
+
+Jedes Getränke braucht einen VK Preis, EK kann optional für Auswertungen angegeben werden. Reporting Dashboard für z.B. monatliche Auswertungen integrieren.
+
+Ein vermieteter Tisch braucht ein Kommentarfeld das bei der Buchung verpflichtend befüllt werden muss. Darüber wird z.B. der Name der ausleihenden Person erfasst. Dieser muss auch in der Tischübersicht angezeigt werden.
+Auf einen vermieteten Tisch werden Getränke verbucht. Die Tischkarte zeigt auch die aktuellen Getränkekosten an. Bei Abschluss der Tischbuchung erfolgt Auflistung aller Getränke und der Tischmiete. Die Elemente müssen jeweils mit einer Checkbox bestätigt werden vor finalem Abschluss der Tischbuchung.
+Keine Kassenfunktion, da TSE Vorgaben den Rahmen sprengen.
