@@ -216,3 +216,8 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 
 .tournament-players [hidden] { display: none; }
 .tournament-players [data-group-choice] input { width: 3.5rem; padding: .25rem .4rem; min-height: 2rem; }
+
+.event-sections { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.5rem; }
+.event-sections [aria-pressed="true"] { background: var(--primary); color: var(--accent-text); }
+[data-event-creation] > summary { cursor: pointer; font-weight: 700; padding: .5rem 0; }
+[data-event-creation] > form { margin-top: 1rem; }

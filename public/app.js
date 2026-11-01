@@ -18,12 +18,13 @@ function applyBranding() {
 }
 const navigation = document.querySelector('#admin-nav');
 
-const views = { planung:['Veranstaltung planen','Veranstaltungen anlegen und synchronisieren'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Spieltagsverwaltung', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+const views = { planung:['Veranstaltungsübersicht','Veranstaltungen planen und verwalten'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Veranstaltungsübersicht', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1).split('/')[0] : 'uebersicht';
 let selectedEventId=Number(location.hash.split('/')[1])||null;
 const drafts = new Map();
 const leagueDraftVersions = new Map();
-const tournamentPanels = new Map();
+const tournamentPanels = new Map(), tournamentSections = new Map();
+let eventStatus='active',eventCreationOpen=false;
 const listPages = new Map();
 let resetStatsDraft=false;
 const quantity = (count,singular,plural) => count+' '+(count===1?singular:plural);
@@ -80,7 +81,7 @@ function adminNavigation(authenticated) {
   navigation.hidden = !authenticated;
   document.querySelector('#logout').hidden = !authenticated;
   for (const link of navigation.querySelectorAll('a')) {
-    if (authenticated && link.hash === '#' + (table ? 'uebersicht' : view)) link.setAttribute('aria-current', 'page');
+    if (authenticated && link.hash === '#' + (table ? 'uebersicht' : view==='planung'?'spieltage':view)) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
 }
@@ -98,6 +99,7 @@ root.addEventListener('click',e=>{
 });
 const tournamentScrolls=new Map(),tournamentManualPanels=new Map();
 function saveDrafts() {
+  const creation=root.querySelector('[data-event-creation]');if(creation)eventCreationOpen=creation.open;
   for(const list of root.querySelectorAll('[data-tournament-scroll]'))tournamentScrolls.set(list.dataset.tournamentScroll,list.scrollTop);
   for(const panel of root.querySelectorAll('[data-tournament-manual]'))tournamentManualPanels.set(panel.dataset.tournamentManual,panel.open);
   for(const panel of root.querySelectorAll('details[data-tournament-panel]'))tournamentPanels.set(Number(panel.dataset.tournamentPanel),panel.open);
@@ -118,7 +120,7 @@ function restoreDrafts() { for (const [id, entries] of drafts) {
       else if(values.length){const index=positions[field.name]||0;field.value=values[index]??values[0];positions[field.name]=index+1;}
     }
   }else for(const [name,value] of entries){const field=form.elements.namedItem(name);if(field)field.value=value;}
-} for(const form of root.querySelectorAll('form[data-action="preview"]'))updateTournamentSelection(form); for(const list of root.querySelectorAll('[data-tournament-scroll]'))list.scrollTop=tournamentScrolls.get(list.dataset.tournamentScroll)||0; for(const panel of root.querySelectorAll('[data-tournament-manual]'))panel.open=tournamentManualPanels.get(panel.dataset.tournamentManual)||false; const form=root.querySelector('#match');if(form)updateParticipantOptions(form); }
+} for(const form of root.querySelectorAll('form[data-action="preview"]'))updateTournamentSelection(form); for(const list of root.querySelectorAll('[data-tournament-scroll]'))list.scrollTop=tournamentScrolls.get(list.dataset.tournamentScroll)||0; for(const panel of root.querySelectorAll('[data-tournament-manual]'))panel.open=tournamentManualPanels.get(panel.dataset.tournamentManual)||false; const creation=root.querySelector('[data-event-creation]');if(creation)creation.open=eventCreationOpen; const form=root.querySelector('#match');if(form)updateParticipantOptions(form); }
 function finishButton(m) { return '<button data-finish="' + m.id + '" ' + (Math.max(m.a,m.b) < m.target ? 'disabled title="Spielziel noch nicht erreicht"' : 'class="primary"') + '>Spiel abschließen</button>'; }
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const labels = { planned:'Geplant', live:'Am Tisch', finished:'Abgeschlossen' };
@@ -141,7 +143,7 @@ function login() {
   connection.textContent = 'Vereinsverwaltung'; connection.className = ''; document.querySelector('#logout').hidden = true;
 }
 function dashboard() {
-  if(view==='planung'){adminNavigation(true);planningDashboard();return;}
+  if(view==='planung'){adminNavigation(true);matchdayDashboard();return;}
   if(view==='spieltage'){adminNavigation(true);matchdayDashboard();return;}
   if(['spieler','mannschaften'].includes(view)) {adminNavigation(true);playersDashboard();return;}
   if(view==='einstellungen') { adminNavigation(true); settingsDashboard(); return; }
@@ -208,7 +210,8 @@ async function refresh(initial = false) {
       if(data.match) delete data.match.server_now; // Clock sync must not replace focused controls.
       if (initial || JSON.stringify(current) !== JSON.stringify(data.match)) { const focus=captureFocus();current = data.match;kiosk();restoreFocus(focus); }
     } else {
-      const params=new URLSearchParams({view});
+      const params=new URLSearchParams({view:view==='planung'?'spieltage':view});
+      if(['planung','spieltage'].includes(view))params.set('status',eventStatus);
       if(selectedEventId)params.set('event',selectedEventId);
       for(const [key,paging] of listPages){params.set(key+'-page',paging.page);params.set(key+'-size',paging.size);}
       for(const [key,value] of Object.entries(statsFilter))if(value)params.set(key,value);
@@ -250,7 +253,7 @@ root.addEventListener('submit', e => {
       const action=form.dataset.action,payload={...data,version:Number(data.version??form.dataset.version)};
       if(action==='preview'){if(data.assignment==='manual')payload.groupAssignments=Object.fromEntries([...new FormData(form)].filter(([k])=>k.startsWith('group:')).map(([k,v])=>[k.slice(6),Number(v)]));payload.player_ids=new FormData(form).getAll('player_ids');for(const k of ['target','groupCount','qualifiers'])payload[k]=Number(data[k]);}
       if(action==='resolve'){payload.group=Number(data.group);payload.order=new FormData(form).getAll('order');}
-      await api('/api/events/'+form.dataset.event+'/tournament/'+action,payload);drafts.delete(form.id);if(action==='preview'){const panel=form.closest('details');if(panel)panel.open=false;}form.remove();message(action==='preview'?'Auslosung als Vorschau gespeichert. Bitte prüfen und bestätigen.':action==='confirm'?'Auslosung übernommen. Partien können Tischen zugewiesen werden.':'Gleichstand entschieden.');
+      await api('/api/events/'+form.dataset.event+'/tournament/'+action,payload);drafts.delete(form.id);if(action==='preview'){const panel=form.closest('details');if(panel)panel.open=false;tournamentSections.set(Number(form.dataset.event),'settings');}if(action==='confirm')tournamentSections.set(Number(form.dataset.event),'matches');form.remove();message(action==='preview'?'Auslosung als Vorschau gespeichert. Bitte prüfen und bestätigen.':action==='confirm'?'Auslosung übernommen. Partien können Tischen zugewiesen werden.':'Gleichstand entschieden.');
     }
     if(form.id.startsWith('league-slot-')){const payload={...data,version:leagueDraftVersions.get(form.id)??Number(form.dataset.version),table_no:data.table_no?Number(data.table_no):null,target:data.target?Number(data.target):null,start:e.submitter?.value==='start'};await api('/api/events/'+form.dataset.event+'/slots/'+form.dataset.slot,payload);drafts.delete(form.id);leagueDraftVersions.delete(form.id);message(payload.start?'Partie dem Tisch zugewiesen.':'Aufstellung gespeichert.');}
     if(form.id==='nuliga-schedule-sync'){message('Spieltage werden abgerufen …');const result=await api('/api/settings/nuliga-schedule',{});message(result.created+' Spieltage neu angelegt, '+result.updated+' aktualisiert, '+result.removed+' Auswärtsspieltage entfernt. Alle neuen Spieltage sind geplant.');}
@@ -261,13 +264,14 @@ root.addEventListener('submit', e => {
       const result = await api('/api/login', data); csrf = result.csrf;
       view = 'uebersicht'; history.replaceState(null, '', '/#uebersicht');
     }
-    if (form.id === 'event') { await api('/api/events', data); form.reset(); drafts.delete('event'); }
+    if (form.id === 'event') { await api('/api/events', data); form.reset(); drafts.delete('event');eventCreationOpen=false;const creation=form.closest?.('[data-event-creation]');if(creation)creation.open=false; }
     if (form.id === 'match') { await api('/api/matches', { ...data, event_id:Number(data.event_id), target:Number(data.target) }); form.reset(); drafts.delete('match'); }
     if (form.classList.contains('start')) { const m = state.matches.find(m => m.id === Number(form.dataset.id)); await api(`/api/matches/${m.id}/start`, { table_no:Number(data.table_no), version:m.version }); }
   });
 });
 root.addEventListener('click', e => {
   const button = e.target.closest('button'); if (!button) return;
+  if(button.dataset.tournamentSection){saveDrafts();tournamentSections.set(selectedEventId,button.dataset.tournamentSection);dashboard();restoreDrafts();return;}
   if(button.dataset.tournamentOpen){selectedEventId=Number(button.dataset.tournamentOpen);view='spieltage';history.replaceState(null,'','/#spieltage/'+selectedEventId);return refresh(true);}
   if(button.dataset.eventStart&&!busy){const event=state.events.find(e=>e.id===Number(button.dataset.eventStart));if(event.kind==='Liga'){openParticipants(event,true);return;}mutate(async()=>{await api('/api/events/'+event.id+'/start',{version:event.version});selectedEventId=event.id;drafts.delete('match');view='spieltage';history.replaceState(null,'','/#spieltage/'+event.id);});return;}
   if(button.id==='table-settings-reload') { mutate(async()=>{drafts.delete('table-settings');root.querySelector('#table-settings')?.remove();}); return; }
@@ -297,26 +301,31 @@ function scheduleSyncForm() {
   const sync=state.nuliga_schedule;
   return '<h2>nuLiga-Spieltage synchronisieren</h2><p>Übernimmt kommende Heimspiele der BSV-Mannschaften als geplante Spieltage. Einzelpartien und Tische werden erst nach dem manuellen Start zugewiesen.</p><p>'+(sync?'Letzter Abgleich: '+esc(new Date(sync.synced_at).toLocaleString('de-DE'))+' · '+sync.found+' kommende Spieltage.':'Noch kein Spieltagsabgleich.')+'</p><form id="nuliga-schedule-sync"><button>Jetzt Spieltage synchronisieren</button></form>';
 }
-function planningDashboard() {
-  const planned=state.events.filter(e=>e.phase==='planned').sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
-  const page=paginate(planned,'planned-events','Geplante Spieltage');
-  root.innerHTML='<div class="page-title"><h1>Veranstaltung planen</h1></div><section class="planning"><div class="panel"><h2>Veranstaltung anlegen</h2><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Die Veranstaltung bleibt bis zum manuellen Start geplant.</p><button class="primary">Veranstaltung anlegen</button></form></div><div class="panel"><h2>nuLiga-Import</h2><p>Spieler, Mannschaften und Heimspieltage unter <a href="/#einstellungen">Einstellungen · nuLiga</a> synchronisieren.</p></div></section><section><h2>Geplante Spieltage</h2>'+page.controls+page.items.map(eventCard).join('')+'</section>';
+function eventMatchesStatus(event) {
+  return eventStatus==='all'||(eventStatus==='active'?event.status!=='closed':eventStatus==='closed'?event.status==='closed':event.status!=='closed'&&(eventStatus==='planned'?event.phase==='planned':event.phase!=='planned'));
 }
+root.addEventListener('change',e=>{
+  if(e.target.id!=='event-status'||busy)return;
+  eventStatus=e.target.value;listPages.delete('events');return refresh(true);
+});
 function matchdayDashboard() {
-  const events=state.events.filter(e=>e.phase!=='planned'||e.id===selectedEventId);
-  const selected=events.find(e=>e.id===selectedEventId);
-  const eventPage=paginate(events,'events','Spieltage');
-  const matches=state.matches.filter(m=>!selected||m.event_id===selected.id).sort((a,b)=>a.id-b.id);
-  const page=paginate(matches,'matches-spieltage','Partien');
-  root.innerHTML='<div class="page-title"><div><h1>'+(selected?esc(selected.name):'Spieltagsübersicht')+'</h1><p>'+(selected?esc(selected.date):'Gestarteten Spieltag öffnen oder eine Veranstaltung unter „Veranstaltung planen“ anlegen und starten.')+'</p></div></div>';
-  if(!selected) {root.innerHTML+='<section><h2>Spieltage</h2>'+eventPage.controls+eventPage.items.map(eventCard).join('')+'</section>';}
-  else {
-    root.innerHTML+='<p><a href="/#spieltage">Alle Spieltage</a></p>'+eventCard(selected);
-    root.innerHTML+=selected.kind==='Turnier'?tournamentBoard(selected):leagueBoard(selected);
+  const selected=state.events.find(e=>e.id===selectedEventId);
+  root.innerHTML='<div class="page-title"><div><h1>'+(selected?esc(selected.name):'Veranstaltungsübersicht')+'</h1><p>'+(selected?esc(selected.date):'Veranstaltungen anlegen, öffnen und verwalten.')+'</p></div></div>';
+  if(!selected) {
+    const page=paginate(state.events.filter(eventMatchesStatus).sort((a,b)=>{
+      const rank=e=>e.status==='closed'?2:e.phase==='planned'?1:0;
+      return rank(a)-rank(b)||(a.date||'').localeCompare(b.date||'')||a.id-b.id;
+    }),'events','Veranstaltungen');
+    root.innerHTML+='<details class="panel" data-event-creation '+(eventCreationOpen?'open':'')+'><summary>Veranstaltung anlegen</summary><form id="event">'+field('Name','name','','text','maxlength="100"')+selectField('Format','kind','Liga',[['Liga','Liga'],['Turnier','Turnier']])+field('Datum','date','','date')+'<p>Die Veranstaltung bleibt bis zum manuellen Start geplant.</p><button class="primary">Veranstaltung anlegen</button></form></details><p>nuLiga-Abgleiche unter <a href="/#einstellungen">Einstellungen · nuLiga</a>.</p>'+selectField('Veranstaltungen anzeigen','event_status',eventStatus,[['active','Laufende und geplante'],['running','Laufende'],['planned','Geplante'],['closed','Abgeschlossene'],['all','Alle']]).replace('<select name="event_status"','<select id="event-status" name="event_status"')+'<section><h2>Veranstaltungen</h2>'+page.controls+page.items.map(eventCard).join('')+(page.items.length?'':'<p>Keine Veranstaltungen in dieser Ansicht.</p>')+'</section>';
+    return;
   }
-  const linked=new Set((state.event_match_slots||[]).filter(s=>s.event_id===selected?.id).map(s=>s.match_id));
-  const additional=matches.filter(m=>!linked.has(m.id));
-  if(!selected||additional.length)root.innerHTML+='<section><h2>'+(selected?'Weitere Partien':'Partien')+'</h2>'+(!selected?page.controls:'')+matchRows(selected?additional:page.items)+'</section>';
+  root.innerHTML+='<p><a href="/#spieltage">Alle Veranstaltungen</a></p>'+eventCard(selected);
+  if(selected.kind==='Turnier'){root.innerHTML+=tournamentBoard(selected);return;}
+  if(selected.phase==='planned'){root.innerHTML+='<p>Zuerst „Spieltag starten“ wählen und die Teilnehmer bestätigen. Anschließend hier Aufstellung und Partien verwalten.</p>';return;}
+  root.innerHTML+=leagueBoard(selected);
+  const linked=new Set((state.event_match_slots||[]).filter(s=>s.event_id===selected.id).map(s=>s.match_id));
+  const additional=state.matches.filter(m=>m.event_id===selected.id&&!linked.has(m.id)).sort((a,b)=>a.id-b.id);
+  if(additional.length)root.innerHTML+='<section><h2>Weitere Partien</h2>'+matchRows(additional)+'</section>';
 }
 function leagueBoard(event) {
   const format=['8-Ball','9-Ball','10-Ball','14/1','9-Ball','10-Ball','8-Ball','9-Ball','10-Ball','14/1'];
@@ -346,7 +355,7 @@ function leagueBoard(event) {
 }
 function eventCard(event) {
   const matches=state.matches.filter(m=>m.event_id===event.id), closed=event.status==='closed';
-  if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3>'+esc(event.name)+'</h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions">'+(event.kind==='Turnier'?'<button class="primary" data-tournament-open="'+event.id+'">Turnier vorbereiten</button>':'<button class="primary" data-event-start="'+event.id+'">Spieltag starten</button>')+'<button data-entity="event" data-action="edit" data-id="'+event.id+'">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">'+(event.kind==='Turnier'?'Turnier löschen':'Spieltag löschen')+'</button></div></article>';
+  if(event.phase==='planned')return '<article class="event-card"><span class="pill">Geplant · '+esc(event.kind)+'</span><h3><a href="/#spieltage/'+event.id+'">'+esc(event.name)+'</a></h3><p>'+esc(event.date)+(event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):'')+'</p><div class="entity-actions">'+(event.kind==='Turnier'?'<button class="primary" data-tournament-open="'+event.id+'">Turnier vorbereiten</button>':'<button class="primary" data-event-start="'+event.id+'">Spieltag starten</button>')+'<button data-entity="event" data-action="edit" data-id="'+event.id+'">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="'+event.id+'">'+(event.kind==='Turnier'?'Turnier löschen':'Spieltag löschen')+'</button></div></article>';
   return `<article class="event-card"><span class="pill">${esc(event.kind)} · ${closed?'Gesamtabschluss':'Offen'}</span><h3><a href="/#spieltage/${event.id}">${esc(event.name)}</a></h3><p>${esc(event.date)}${event.schedule?' · '+esc(event.schedule.time)+' · '+esc(event.schedule.league):''} · ${quantity(event.match_count??matches.length,'Partie','Partien')}</p>${`<div class="entity-actions"><button data-entity="event" data-action="edit" data-id="${event.id}">Veranstaltung bearbeiten</button><button data-entity="event" data-action="delete" data-id="${event.id}">${event.kind==='Turnier'?'Turnier löschen':'Veranstaltung löschen'}</button>${closed?'':`<button class="primary" data-entity="event" data-action="close" data-id="${event.id}">Veranstaltung abschließen</button>`}</div>${closed||event.kind==='Turnier'?'':'<button data-participants="'+event.id+'">Teilnehmer & Mannschaften</button>'}<small>${quantity(event.pending_count??matches.filter(m=>m.status!=='finished').length,'Partie','Partien')} noch nicht abgeschlossen</small>`}</article>`;
 }
 function matchAdminActions(m) {
@@ -427,14 +436,23 @@ document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
     return latest?.version===item.version && (entity==='event' || state.events.find(e=>e.id===item.event_id)?.version===payload.event_version) && (payload.destination_version===undefined || state.events.find(e=>e.id===data.event_id)?.version===payload.destination_version);
   };
   if(!valid()) {document.querySelector('#admin-dialog-error').textContent='Daten geändert. Bitte abbrechen und erneut öffnen.';return;}
-  const run=async()=>{await api('/api/'+(entity==='event'?'events':'matches')+'/'+item.id+'/'+action,payload);adminDialog.close();};
+  const run=async()=>{
+    await api('/api/'+(entity==='event'?'events':'matches')+'/'+item.id+'/'+action,payload);
+    if(entity==='event'&&action==='delete') {
+      selectedEventId=null;view='spieltage';history.replaceState(null,'','/#spieltage');
+      drafts.delete('match');tournamentPanels.delete(item.id);tournamentSections.delete(item.id);
+      tournamentScrolls.delete(String(item.id));tournamentManualPanels.delete(String(item.id));
+      for(const id of drafts.keys())if(id.startsWith('tournament-')&&id.endsWith('-'+item.id))drafts.delete(id);
+    }
+    adminDialog.close();
+  };
   const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'}).format(new Date());
   if(action!=='edit' || (entity==='event'?(item.status==='closed'||item.date<today):(item.status==='finished'||parent?.status==='closed'))) {
     const phrase=entity==='event'?{edit:'EVENT ÄNDERN',delete:'EVENT LÖSCHEN',close:'EVENT ABSCHLIESSEN'}[action]:{edit:'SPIEL ÄNDERN',delete:'SPIEL LÖSCHEN'}[action];
     payload.action=entity+':'+action; payload.confirmation=phrase;
     const name=entity==='event'?item.name:item.player_a+' / '+item.player_b;
     const summary='<p><strong>'+esc(name)+' · #'+item.id+'</strong></p>'+(action==='edit'?changeSummary(item,data):document.querySelector('#admin-dialog-content').innerHTML);
-    showWarning({phrase,label:document.querySelector('#admin-dialog-save').textContent,summary,valid,run});
+    showWarning({phrase,label:document.querySelector('#admin-dialog-save').textContent,summary,valid,run,success:entity==='event'&&action==='delete'?(item.kind==='Turnier'?'Turnier':'Veranstaltung')+' „'+item.name+'“ wurde gelöscht.':undefined});
   } else {
     busy=true;
     try {await run();}catch(error){document.querySelector('#admin-dialog-error').textContent=error.message;}
@@ -868,11 +886,15 @@ function tournamentBoard(event) {
     if(draw.complete)out+='<p>Sportlicher Turnierablauf abgeschlossen. Gesamtabschluss oben bestätigen.</p>';
     return out;
   }
-  let html='<section class="tournament"><h2>Turnierverwaltung</h2>';
+  let html='';
   if(canDraw){const chosen=new Set(config?.players.map(p=>p.id)||state.event_players.filter(p=>p.event_id===event.id).map(p=>p.player_id));
     html+='<details data-tournament-panel="'+event.id+'" '+((tournamentPanels.get(event.id)??!config)?'open':'')+'><summary>Teilnehmer und Regeln · neue Auslosung</summary><form id="tournament-player-'+event.id+'" data-event="'+event.id+'"></form><form '+form('preview')+'>'+versionField+'<div class="form-row">'+selectField('Modus','mode',config?.mode||'groups-ko',[['groups-ko','Gruppen + KO'],['groups','Nur Gruppen'],['ko','Nur KO'],['swiss','Schweizer System']])+selectField('Disziplin','discipline',config?.discipline||'9-Ball',['8-Ball','9-Ball','10-Ball','14/1'].map(x=>[x,x]))+field('<span data-tournament-target-label>'+((config?.discipline||'9-Ball')==='14/1'?'Punkte':'Gewinnspiele')+'</span>','target',config?.target||5,'number','min="1" max="999"')+'</div><div class="form-row">'+field('Gruppenanzahl (bei Gruppen)','groupCount',config?.groupCount||2,'number','min="1" max="32"')+field('Qualifikanten je Gruppe (bei Gruppen + KO)','qualifiers',config?.qualifiers||2,'number','min="1" max="64"')+'</div>'+selectField('Rangfolge und Gleichstand','rules',config?.rules||'difference',Object.entries(rules))+'<p>Jeder gegen jeden innerhalb einer Gruppe. Restgleichstände werden nach Abschluss der Gruppen ausdrücklich mit Begründung entschieden. Maximal 64 Teilnehmer; jede Gruppe mindestens zwei.</p>'+selectField('Gruppenzuweisung','assignment','random',[['random','Zufällig'],['manual','Manuell']])+'<p>Bei ausgewählten Spielern erscheint das Gruppenfeld. Das Ändern einer Gruppennummer aktiviert die manuelle Zuweisung für alle Teilnehmer. Bei „Zufällig“ werden die eingegebenen Nummern nicht verwendet. Nur KO wird zufällig ausgelost.</p><fieldset><legend>Teilnehmer aus den Spieler-Stammdaten</legend><details data-tournament-manual="'+event.id+'"><summary>Spieler manuell anlegen</summary><p>Wird als externer Stammdatenspieler gespeichert und für dieses Turnier ausgewählt.</p>'+field('Vorname','first_name','','text','maxlength="100" form="tournament-player-'+event.id+'"')+field('Nachname','last_name','','text','maxlength="100" form="tournament-player-'+event.id+'"')+'<button type="submit" form="tournament-player-'+event.id+'">Spieler anlegen und auswählen</button></details>'+selectField('Teilnehmer filtern','participant_filter','all',[['all','Alle'],['bsv','BSV-Mitglieder'],['external','Externe Spieler']])+'<label>Teilnehmer suchen<input name="participant_search" type="search" placeholder="Name suchen" autocomplete="off"></label>'+'<div class="tournament-players" data-tournament-scroll="'+event.id+'">'+state.players.filter(p=>p.active&&!p.event_id).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')).map(p=>'<div data-tournament-player data-name="'+esc(fullName(p))+'" data-membership="'+(p.is_bsv?'bsv':'external')+'"><label><input type="checkbox" name="player_ids" value="'+esc(p.id)+'" '+(chosen.has(p.id)?'checked':'')+'>'+esc(fullName(p))+'</label><label data-group-choice hidden>Gruppe: <input aria-label="Gruppe für '+esc(fullName(p))+'" type="number" name="group:'+esc(p.id)+'" min="1" max="32" value="'+((config?.groups.findIndex(g=>g.players.includes(p.id))??-1)+1||1)+'" disabled></label></div>').join('')+'</div></fieldset><button class="primary">Auslosung als Vorschau</button></form></details>';
   }
-  if(p&&canDraw)html+='<section class="panel"><h3>Auslosungsvorschau · noch nicht übernommen</h3>'+drawView(p,true)+'<form '+form('confirm')+'>'+versionField+'<label>Tablet-PIN für Turnierpartien<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"></label><p>Bestätigung ersetzt eine bisherige Auslosung und ihre noch nicht gestarteten Partien. Danach unten die Tische zuweisen.</p><button class="primary">Diese Auslosung verbindlich übernehmen</button></form></section>';
-  if(t)html+='<h3>Bestätigter Turnierstand</h3>'+drawView(t);
-  return html+'</section>';
+  if(p&&canDraw)html+='<section class="panel"><h3>Auslosungsvorschau · noch nicht übernommen</h3>'+drawView(p,true)+'<form '+form('confirm')+'>'+versionField+'<label>Tablet-PIN für Turnierpartien<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required autocomplete="off"></label><p>Bestätigung ersetzt eine bisherige Auslosung und ihre noch nicht gestarteten Partien. Danach unter „Partien &amp; Tische“ die Tische zuweisen.</p><button class="primary">Diese Auslosung verbindlich übernehmen</button></form></section>';
+  if(!canDraw&&t)html+='<h3>Teilnehmer und Regeln</h3><p>'+esc(t.discipline)+' · '+(t.discipline==='14/1'?'Punkte':'Gewinnspiele')+': '+t.target+'</p><p>Teilnehmer und Regeln sind nach Turnierbeginn festgelegt. Die Rangfolge steht unter „Rangliste“.</p><ul>'+[...t.players].sort((a,b)=>a.name.localeCompare(b.name,'de')).map(p=>'<li>'+esc(p.name)+'</li>').join('')+'</ul>';
+  const active=tournamentSections.get(event.id)||(t&&!p?'matches':'settings');
+  const tabs=[['matches','Partien & Tische'],['ranking','Rangliste'],['settings','Teilnehmer & Regeln']];
+  const sections={matches:'<h3>Partien & Tische</h3>'+(t?matchRows(ms.sort((a,b)=>a.id-b.id)):'<p>Zuerst die Auslosung unter „Teilnehmer & Regeln“ erstellen und verbindlich übernehmen. Danach hier die Partien Tischen zuweisen.</p>'),ranking:t?drawView(t):'<p>Die Rangliste erscheint nach Übernahme der Auslosung.</p>',settings:html||'<p>Teilnehmer und Regeln sind nach Turnierbeginn festgelegt.</p>'};
+  return '<section class="tournament"><h2>Turnierverwaltung</h2><nav class="event-sections" aria-label="Turnierbereiche">'+tabs.map(([key,label])=>'<button type="button" data-tournament-section="'+key+'" aria-pressed="'+(active===key)+'">'+label+'</button>').join('')+'</nav>'+tabs.map(([key,label])=>'<section data-event-section="'+key+'" aria-label="'+label+'" '+(active===key?'':'hidden')+'>'+sections[key]+'</section>').join('')+'</section>';
+
 }

@@ -138,6 +138,9 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     assert.equal((await event(swiss)).tournamentPreview.rounds.length,1);
     await ok('/api/backups/preview',{backup:await ok('/api/backups/export')});
     await action(swiss,'confirm',{pin:'123456'});
+    const swissDetail=await ok('/api/admin/view?view=spieltage&event='+swiss);
+    assert.deepEqual(swissDetail.events.find(e=>e.id===swiss).tournament.tables,(await event(swiss)).tournament.tables);
+    assert.equal(swissDetail.matches.filter(m=>m.event_id===swiss).length,2);
     let firstSwiss;
     for(let r=0;r<3;r++){
       const draw=(await event(swiss)).tournament;assert.equal(draw.rounds.length,r+1);

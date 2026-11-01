@@ -70,7 +70,7 @@ async function pageSize(app, key, size) {
 }
 function listFixtures(count = 105) {
   return {
-    events: Array.from({ length: count }, (_, i) => ({ id: i + 1, name: 'Spieltag ' + (i + 1), status: 'closed' })),
+    events: Array.from({ length: count }, (_, i) => ({ id: i + 1, name: 'Spieltag ' + (i + 1), status: 'open',phase:'started',date:'2026-11-01' })),
     matches: Array.from({ length: count }, (_, i) => ({ id: i + 1, event_id: i + 1, status: 'finished', player_a: 'Anna ' + (i + 1), player_b: 'Ben', a: 5, b: 2, target: 5 })),
     rentals: Array.from({ length: count }, (_, i) => ({ id: i + 1, table_no: 1, status: 'finished', started_at: 1000, ended_at: 61000, duration_ms: 60000, billed_minutes: 1, hourly_cents: 900, base_cents: 900, total_cents: 15, adjustment_percent: 0 }))
   };
@@ -78,7 +78,6 @@ function listFixtures(count = 105) {
 test('FR-004: alle Listen begrenzen Einträge, blättern und erlauben jede Seitengröße', async () => {
   for (const [view, key, row] of [
     ['ergebnisse', 'matches-ergebnisse', /class="match-row"/g],
-    ['spieltage', 'matches-spieltage', /class="match-row"/g],
     ['spieltage', 'events', /class="event-card"/g],
     ['vermietung', 'rentals', /<tr><td>/g],
   ]) {
@@ -120,7 +119,7 @@ test('FR-004: Veranstaltungen und Begegnungen behalten unabhängige Seiten beim 
   const app = await frontend('/#spieltage', fixtures);
   await pageClick(app, 'events', 1);
   assert.match(app.element('#app').innerHTML, /21–25 von 25 · Seite 2 von 2/);
-  assert.match(app.element('#app').innerHTML, /1–20 von 26 · Seite 1 von 2/);
+  assert.doesNotMatch(app.element('#app').innerHTML, /class="match-row"/);
   app.location.hash = '#ergebnisse'; await app.window.dispatch('hashchange');
   assert.equal([...app.element('#app').innerHTML.matchAll(/class="match-row"/g)].length, 20);
   assert.match(app.element('#app').innerHTML, /1–20 von 25/);
@@ -198,6 +197,41 @@ test('Admin-Startseiten, Ansichten und Logo führen zur richtigen Navigation', a
     navigation(app, app.location.hash.slice(1) || 'uebersicht');
   }
   assert.match(html, /<a href="\/" class="brand">/);
+});
+
+test('Deleting an open event returns to the overview with success and never reloads the deleted detail',async()=>{
+  for(const kind of ['Turnier','Liga']) {
+    const events=[{id:1,name:'Löschtest',kind,date:'2026-11-01',phase:'planned',status:'open',version:2},{id:2,name:'Bleibt erhalten',kind:'Turnier',date:'2026-11-02',phase:'planned',status:'open',version:1}];
+    let deleted=false;
+    const app=await frontend('/#spieltage/1',{events,responseHook:async path=>{
+      if(path==='/api/events/1/delete'){deleted=true;events.splice(0,1);}
+      if(deleted&&path.startsWith('/api/admin/view?')&&new URLSearchParams(path.split('?')[1]).get('event')==='1')throw Error('Veranstaltung nicht gefunden.');
+    }});
+    const button={dataset:{entity:'event',action:'delete',id:'1'},hasAttribute:()=>false};
+    await app.element('#app').dispatch('click',{target:{closest:()=>button}});
+    await app.element('#admin-edit-form').listeners.submit({preventDefault(){},target:{entries:[]}});
+    assert.equal(app.location.hash,'#spieltage/1');assert.equal(app.posts.length,0);
+    const input=app.element('#warning-input');input.value='EVENT LÖSCHEN';input.listeners.input();
+    await app.element('#warning-save').listeners.click();
+    assert.equal(app.location.hash,'#spieltage');assert.equal(app.element('#warning-dialog').open,false);
+    assert.ok(app.element('#app').innerHTML.includes('<h1>Veranstaltungsübersicht</h1>'));
+    assert.ok(app.element('#app').innerHTML.includes('Bleibt erhalten'));
+    assert.equal(app.element('#message').textContent,(kind==='Turnier'?'Turnier':'Veranstaltung')+' „Löschtest“ wurde gelöscht.');
+    assert.equal(app.element('#connection').textContent,'● Verbunden');
+    await app.refresh(true);assert.equal(app.location.hash,'#spieltage');
+  }
+});
+
+test('Failed event deletion retains its detail and displays the error without a success message',async()=>{
+  const event={id:1,name:'Bleibt',kind:'Turnier',date:'2026-11-01',phase:'planned',status:'open',version:2};
+  const app=await frontend('/#spieltage/1',{events:[event],responseHook:async path=>{if(path==='/api/events/1/delete')throw Error('Löschen fehlgeschlagen.');}});
+  const button={dataset:{entity:'event',action:'delete',id:'1'},hasAttribute:()=>false};
+  await app.element('#app').dispatch('click',{target:{closest:()=>button}});
+  await app.element('#admin-edit-form').listeners.submit({preventDefault(){},target:{entries:[]}});
+  const input=app.element('#warning-input');input.value='EVENT LÖSCHEN';input.listeners.input();await app.element('#warning-save').listeners.click();
+  assert.equal(app.location.hash,'#spieltage/1');assert.equal(app.element('#warning-dialog').open,true);
+  assert.ok(app.element('#warning-error').textContent.includes('Löschen fehlgeschlagen.'));
+  assert.ok(!app.element('#message').textContent?.includes('wurde gelöscht'));
 });
 
 test('Admin-Menü bleibt an freien, vorbereiteten und laufenden Tischen sichtbar', async () => {
@@ -291,11 +325,11 @@ test('Farbcodes stehen unter den Farbwählern und synchronisieren in beide Richt
 
 test('FR-011: Tischanzahl steuert Übersicht, Auswahl, Vermietung, Einstellungen und zweistellige Tablet-Adressen', async()=>{
   for(const count of [1,20]) {
-    const options={table_settings:{table_count:count,version:4},events:[{id:1,status:'open'}],matches:[{id:1,event_id:1,status:'planned',player_a:'A',player_b:'B',target:5,a:0,b:0}]};
+    const options={table_settings:{table_count:count,version:4},events:[{id:1,status:'open',kind:'Turnier',tournament:{mode:'ko',discipline:'9-Ball',target:5,rules:'difference',players:[],groups:[],rounds:[],resolutions:{}}}],matches:[{id:1,event_id:1,status:'planned',player_a:'A',player_b:'B',target:5,a:0,b:0}]};
     const overview=await frontend('/#uebersicht',options), html=overview.element('#app').innerHTML;
     assert.equal((html.match(/class="table-card/g)||[]).length,count);
     assert.match(html,new RegExp('0 / '+count+' Tische belegt'));
-    const planning=await frontend('/#spieltage',options);
+    const planning=await frontend('/#spieltage/1',options);
     assert.match(planning.element('#app').innerHTML,new RegExp('option value="'+count+'">Tisch '+count));
     assert.doesNotMatch(planning.element('#app').innerHTML,new RegExp('option value="'+(count+1)+'">Tisch '+(count+1)));
     const rental=await frontend('/#vermietung',options), rentalHtml=rental.element('#app').innerHTML;
@@ -533,11 +567,43 @@ test('FR-006 adjustments: sorted players, filters, free tables and live links',a
   assert.ok(html.indexOf('Anna A')<html.indexOf('Zoe Z'));
   for(const text of ['BSV-Mitglieder','Externe Spieler','Spieler manuell anlegen','Gruppenzuweisung','group:a'])assert.ok(html.includes(text));
   const matches=[{id:1,event_id:1,status:'planned',player_a:'A',player_b:'B',a:0,b:0,target:5},{id:2,event_id:1,status:'live',table_no:1,player_a:'C',player_b:'D',a:0,b:0,target:5}];
-  const live=await frontend('/#spieltage/1',{events:[event],matches,rentals:[{table_no:2,status:'active'}],table_settings:{table_count:3}});
+  const live=await frontend('/#spieltage/1',{events:[{...event,tournament:{mode:'ko',discipline:'9-Ball',target:5,rules:'difference',players:[],groups:[],rounds:[],resolutions:{}}}],matches,rentals:[{table_no:2,status:'active'}],table_settings:{table_count:3}});
   const output=live.element('#app').innerHTML;
   assert.match(output,/<option value="3">Tisch 3/);
   assert.doesNotMatch(output,/<option value="[12]">Tisch/);
   assert.ok(output.includes('href="/tisch/1"'));
+});
+
+test('Unified event overview includes creation, status filters, planned links and no cross-event matches',async()=>{
+  const events=[{id:1,name:'Plan',kind:'Turnier',status:'open',phase:'planned',date:'2026-11-02'},{id:2,name:'Live',kind:'Liga',status:'open',phase:'started',date:'2026-11-03'},{id:3,name:'Archiv',kind:'Turnier',status:'closed',date:'2026-10-01'}];
+  const app=await frontend('/#spieltage',{events,matches:[{id:1,event_id:2,status:'planned'}]});
+  const markup=()=>app.element('#app').innerHTML;
+  assert.ok(markup().includes('<h1>Veranstaltungsübersicht</h1>'));
+  assert.ok(markup().includes('data-event-creation'));assert.ok(markup().includes('id="event"'));
+  assert.ok(markup().indexOf('href="/#spieltage/2"')<markup().indexOf('href="/#spieltage/1"'));
+  assert.ok(!markup().includes('href="/#spieltage/3"'));assert.ok(!markup().includes('class="match-row"'));
+  await app.element('#app').dispatch('change',{target:{id:'event-status',value:'closed',dataset:{}}});
+  assert.ok(markup().includes('href="/#spieltage/3"'));assert.ok(!markup().includes('href="/#spieltage/1"'));
+  assert.ok(app.gets.some(url=>url.includes('status=closed')));
+  const legacy=await frontend('/#planung',{events});assert.ok(legacy.element('#app').innerHTML.includes('Veranstaltungsübersicht'));
+  assert.ok(!html.includes('href="/#planung"'));assert.ok(html.includes('>Veranstaltungen</a>'));
+});
+
+test('Tournament manages its own matches, table assignment and persistent sections',async()=>{
+  const tournament={mode:'ko',discipline:'9-Ball',target:5,rules:'difference',players:[{id:'a',name:'Anna'},{id:'b',name:'Ben'}],groups:[],rounds:[[{a:'a',b:'b',match:41}]],resolutions:{}};
+  const event={id:1,name:'Vereinsturnier',kind:'Turnier',date:'2026-11-01',status:'open',phase:'started',version:2,tournament};
+  const match={id:41,event_id:1,status:'planned',version:3,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:5,a:0,b:0,pin_set:true};
+  const app=await frontend('/#spieltage/1',{events:[event],matches:[match,{...match,id:42,event_id:2,player_a:'Fremde Partie'}]});
+  const markup=()=>app.element('#app').innerHTML;
+  assert.ok(markup().includes('data-tournament-section="matches" aria-pressed="true"'));
+  assert.ok(markup().includes('Tisch zuweisen'));assert.ok(!markup().includes('Fremde Partie'));assert.ok(!markup().includes('Weitere Partien'));
+  assert.equal([...markup().matchAll(/class="start"/g)].length,1);
+  const button={dataset:{tournamentSection:'ranking'}};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
+  await app.refresh(true);assert.ok(markup().includes('data-tournament-section="ranking" aria-pressed="true"'));
+  await app.element('#app').dispatch('submit',{preventDefault(){},target:{id:'',dataset:{id:'41'},entries:[['table_no','2']],classList:{contains:name=>name==='start'}}});
+  assert.deepEqual(app.posts[0],{path:'/api/matches/41/start',data:{table_no:2,version:3}});
+  match.status='live';match.table_no=2;await app.refresh(true);assert.ok(markup().includes('href="/tisch/2"'));
 });
 
 test('Tournament participant menu contains manual creation and an optional live name search',async()=>{

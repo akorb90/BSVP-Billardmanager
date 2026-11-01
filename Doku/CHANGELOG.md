@@ -2,6 +2,22 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Erfolgsmeldung und Rückkehr nach Veranstaltungslöschung — 2026-11-01
+
+- Nach erfolgreichem Löschen eines Turniers oder Liga-Spieltags vor der nächsten Aktualisierung zur Veranstaltungsübersicht wechseln. Dadurch wird die gelöschte Detailadresse nicht erneut angefordert; „Veranstaltung nicht gefunden“ und eine leere Detailseite entfallen. Die Erfolgsmeldung nennt Art und Namen der gelöschten Veranstaltung. Zugehörige Turnierentwürfe und Ansichtsstände werden entfernt. Fehlgeschlagene Löschungen lassen die Detailadresse unverändert und zeigen weiterhin den Fehler im Bestätigungsdialog.
+- Prüfstand: 38 gezielte Navigationstests und Gesamtsuite 123/123 erfolgreich, ohne Skips. Regressionstests prüfen Rückkehr, Erfolgsmeldung, erneute Aktualisierung sowie erhaltene Detailansicht bei Löschfehlern. Keine Server-, Schema- oder Backupänderung. npm fehlt auf dem Host; identische Testskripte direkt mit Node ausgeführt. Logs: data/event-delete-redirect-2026-11-01/.
+
+- Lokal mit beiden Compose-Dateien im bestehenden Projekt bereitgestellt. App/PostgreSQL gesund, Proxy läuft; HTTPS /health liefert 200 mit CA-/Hostnamenprüfung. Stack aktiv, bestehende Daten/Secrets/Volumes erhalten; kein Commit oder Push.
+
+## Zentrale Veranstaltungsverwaltung und Turnierpartien — 2026-11-01
+
+- Planung und Verwaltung im Menü **Veranstaltungen** zusammengeführt. Die **Veranstaltungsübersicht** enthält oben ein aufklappbares Anlageformular und darunter standardmäßig laufende sowie geplante Veranstaltungen, laufende zuerst und geplante nach Datum. Filter für laufende, geplante, abgeschlossene und alle Veranstaltungen; Seitennavigation und vorhandene Veranstaltungslinks bleiben erhalten. Der frühere Planungslink öffnet dieselbe Oberfläche. Keine veranstaltungsübergreifende Partienliste auf der Übersicht.
+- Veranstaltungsnamen öffnen die eigene Verwaltung. Liga-Spieltage behalten Teilnehmerbestätigung, Aufstellung und Partien. Turniere haben die Bereiche **Partien & Tische**, **Rangliste** und **Teilnehmer & Regeln**; nach Bestätigung der Auslosung öffnet sich direkt die eigene Partienverwaltung mit freien Tischen und Tabletlinks. Der gewählte Turnierbereich und geöffnete Anlageformulare bleiben bei Aktualisierungen erhalten. Teilnehmer und Regeln bleiben nach Beginn lesbar.
+- Schweizer Rangliste in der tatsächlich verwendeten Detail-API korrigiert; sie enthielt zuvor nur Gruppentabellen und lieferte für Schweizer Turniere keine Gesamtrangliste. Bestehende Datenformate und Sicherungen unverändert.
+- Prüfstand: 42 gezielte Tests erfolgreich; Gesamtsuite 121/121 ohne Skips. Geprüft sind Veranstaltungsfilter/-reihenfolge, getrennte Partien, Tischzuweisung innerhalb des Turniers, Bereichserhalt und Schweizer Rangliste aus der Detail-API. Isolierter Docker-/PostgreSQL-/HTTPS-Test erfolgreich. npm fehlt auf dem Host; identische Skripte direkt mit Node ausgeführt. Der erste gezielte Lauf scheiterte an einer alten Testannahme zur inzwischen entfernten globalen Partienliste; der Tischanzahltest prüft jetzt die Veranstaltungsdetailansicht. Logs: data/event-management-2026-11-01/.
+
+- Lokal im bestehenden Compose-Projekt mit beiden Compose-Dateien gebaut und bereitgestellt. App/PostgreSQL gesund, Proxy läuft. HTTPS-Healthcheck und Auslieferung der neuen Navigation/Turnieransicht mit CA-/Hostnamenprüfung erfolgreich. Datenprüfsumme vor/nach Deployment identisch. Stack bleibt aktiv; kein Commit oder Push.
+
 ## FR-006: Teilnehmerauswahl und Schweizer System — 2026-11-01
 
 - Layout-Nachbesserung: Teilnehmerliste mit fester Höhe von 24 rem, oben ausgerichteten Zeilen und reserviertem Scrollbalkenplatz. Suchtrefferzahlen einschließlich leerer Trefferliste ändern die Größe des Auswahlbereichs nicht. CSS-Eigenschaften und git diff --check geprüft; keine JavaScript-Änderung. Protokolle: data/tournament-fixed-size-2026-11-01/.

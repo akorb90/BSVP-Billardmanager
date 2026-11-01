@@ -1,4 +1,4 @@
-import {standings} from './tournaments.js';
+import {standings,swissStandings} from './tournaments.js';
 
 // Archive reads are explicitly requested and bounded; the live poll never reads them.
 export function adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule}) {
@@ -24,7 +24,7 @@ export function adminStateService({db,fail,publicMatch,players,tables,nuliga,sch
     return rows.map(e=>{
       const p=plans.find(p=>p.event_id===e.id),meta=JSON.parse(p?.metadata||'{}'),count=counts.find(c=>c.event_id===e.id);
       const tournament=detail?meta.tournament:null;
-      if(tournament)tournament.tables=tournament.groups.map(g=>standings(tournament,g,matches));
+      if(tournament)tournament.tables=tournament.mode==='swiss'?[swissStandings(tournament,matches)]:tournament.groups.map(g=>standings(tournament,g,matches));
       return {...e,match_count:Number(count?.total||0),pending_count:Number(count?.pending||0),phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:meta.source||null,tournament:tournament||null,tournamentPreview:detail?meta.tournamentPreview||null:null};
     });
   }
@@ -56,13 +56,12 @@ export function adminStateService({db,fail,publicMatch,players,tables,nuliga,sch
         const destinations=await all("SELECT * FROM events WHERE status='open' AND id<>? ORDER BY date DESC,id DESC",[id]);
         result.events.push(...await events(destinations));
       } else {
-        const key=name==='planung'?'planned-events':'events';
-        const condition=name==='planung'?"e.status='open' AND p.started=0":"(e.status='closed' OR p.started=1 OR p.event_id IS NULL)";
-        const p=await addPage(key,'events e LEFT JOIN event_planning p ON p.event_id=e.id',condition,[],name==='planung'?'e.date,e.id':'e.date DESC,e.id DESC','e.*');
+        const legacy=name==='planung',status=params.get('status')||(legacy?'planned':'active');
+        if(!['active','running','planned','closed','all'].includes(status))throw fail(400,'Ungültiger Veranstaltungsfilter.');
+        const conditions={active:"e.status='open'",running:"e.status='open' AND (p.started=1 OR p.event_id IS NULL)",planned:"e.status='open' AND p.started=0",closed:"e.status='closed'",all:'1=1'};
+        const order="CASE WHEN e.status='closed' THEN 2 WHEN p.started=0 THEN 1 ELSE 0 END,e.date,e.id";
+        const p=await addPage(legacy?'planned-events':'events','events e LEFT JOIN event_planning p ON p.event_id=e.id',conditions[status],[],order,'e.*');
         p.items=await events(p.items);result.events=p.items;
-        if(name==='spieltage') {
-          const mp=await addPage('matches-spieltage','matches');mp.items=mp.items.map(publicMatch);result.matches=mp.items;
-        }
       }
     }
     if(name==='ergebnisse') {

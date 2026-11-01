@@ -43,6 +43,13 @@ test('AP6: authenticated bounded views, complete doubles/14-1 statistics and ind
     const away=(await get('/api/admin/view?view=spieler&kind=teams&id=away')).body;assert.deepEqual(away.statistics,{count:35,wins:0,losses:35,won:210,lost:385});
     const empty=(await get('/api/admin/view?view=spieler&kind=players&id=a&from=2026-11-02')).body;assert.equal(empty.statistics.count,0);
     const selected=(await get('/api/admin/view?view=spieltage&event=1')).body;assert.equal(selected.matches.length,35);assert.equal(selected.event_match_slots.length,1);assert.equal(selected.event_players.length,2,'selected archive and editable destination rosters');
+    const overview=(await get('/api/admin/view?view=spieltage')).body;
+    assert.deepEqual(overview.pages.events.items.map(e=>e.id),[2,3]);assert.deepEqual(overview.matches,[]);assert.ok(!overview.pages['matches-spieltage']);
+    for(const [filter,expected] of [['planned',[3]],['running',[2]],['closed',[1]],['all',[2,3,1]]]){
+      const filtered=(await get('/api/admin/view?view=spieltage&status='+filter)).body;
+      assert.deepEqual(filtered.pages.events.items.map(e=>e.id),expected);
+    }
+    assert.equal((await get('/api/admin/view?view=spieltage&status=invalid')).status,400);
     const planned=(await get('/api/admin/view?view=planung')).body;assert.deepEqual(planned.pages['planned-events'].items.map(e=>e.id),[3]);
     assert.equal((await get('/api/admin/view?view=spieltage&event=999')).status,404);
     await db.prepare('DELETE FROM matches WHERE id<=?').run(30);
