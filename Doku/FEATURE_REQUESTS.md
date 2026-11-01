@@ -16,7 +16,7 @@ Anforderungen und Abnahmekriterien:
 - Einen nachvollziehbaren Aktualisierungsweg vorsehen, damit neue offizielle Fassungen übernommen und veraltete Verweise erkannt werden. Bei nicht erreichbarer Quelle oder nicht bestätigter Aktualität einen entsprechenden Hinweis anzeigen.
 - Aus Turnier- und Liga-Spieltagen direkt zum Nachschlagewerk gelangen. Verbandsregeln als Referenz bereitstellen; Spielstände, Turnierregeln und laufende Veranstaltungen werden durch Dokumentaktualisierungen nicht automatisch geändert.
 
-## FR-015: Lagerverwaltung, Getränketracking
+## FR-014: Lagerverwaltung, Getränketracking
 Dieser Feature Request muss nicht auf einmal umgesetzt werden, er kann in sinnvoll gruppierte Untertasks gespliittet werden!
 Analysiere den FR im ersten Schritt und formulieren in weiter aus, erweitere ihn um sinnvolle Funktionen. 
 
