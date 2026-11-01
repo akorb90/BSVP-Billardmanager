@@ -8,6 +8,8 @@ Der Checkout war zu Beginn sauber. Der Auditauftrag wurde ausschließlich analyt
 
 ## A. Gesamteinschätzung
 
+**Nachtrag AP2 vom 01.11.2026:** Audit/AP1 sind als `3554534` auf `main` committed. Anschließend wurde AP2 ausdrücklich freigegeben: FUNC-002 ist durch eine gemeinsame transaktionale Teilnehmerprüfung einschließlich Doppelpartnern für Starts, Live-Änderungen und Wiederaufnahme behoben; FUNC-003 durch dynamische Formulargrenzen für 14/1-Ergebniskorrekturen. Prüfung: 48 gezielte Tests, Gesamtsuite 74/74 ohne übersprungene Tests, erfolgreicher isolierter PostgreSQL-/HTTPS-Test mit zusätzlichem Belegungsregressionstest sowie echte Browserkorrektur 125:80 → 125:79 und reine Namensänderung. AP2 ist im bestehenden lokalen Stack bereitgestellt: App und PostgreSQL gesund, Proxy aktiv, HTTPS `/health` 200 mit vorhandener CA und aktiver Zertifikatsprüfung; ausgeliefertes `app.js` stimmt mit dem geprüften Quellcode überein. Vollständiger Prüfstand: `data/ap2-2026-11-01/PROGRESS.md`. Von den ursprünglich neun Findings sind FUNC-001 bis FUNC-003 behoben; sechs Findings bleiben offen. AP2 ist noch nicht committed.
+
 **AP1-Bereitstellung nach Freigabe:** Isolierter Docker-/PostgreSQL-/HTTPS-Test erfolgreich. Bestehender lokaler Stack am 01.11.2026 mit beiden Compose-Dateien neu gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS `/health` liefert 200 mit vorhandener CA und aktiver Zertifikatsprüfung. Das ausgelieferte `app.js` entspricht dem geprüften Quellcode. Der Stack bleibt aktiv; Commit und Push wurden nicht ausgeführt.
 
 Das Projekt besitzt für seinen Umfang eine solide Grundlage: klar abgegrenzte Fachmodule, serverseitige Rechteprüfung, versionierte Änderungen, atomare Transaktionen und einen ungewöhnlich umfangreichen PostgreSQL-/HTTPS-Integrationstest. Die Anwendungssicherung erfasst Tabellen dynamisch; die zusätzliche Betriebssicherung ist ausdrücklich dokumentiert. Die Gesamtsuite besteht mit **49/49 Tests ohne übersprungene Tests**, der isolierte Dockerintegrationstest ebenfalls.
@@ -21,8 +23,8 @@ Weitere relevante Fehler betreffen den uneinheitlichen Schutz vor gleichzeitiger
 | ID | Priorität | Verifikation | Thema |
 |---|---|---|---|
 | FUNC-001 | Hoch | Nach Freigabe durch AP1 behoben; Browser/Tests bestätigt | Parallele Ligaänderungen gehen verloren |
-| FUNC-002 | Mittel | Bestätigter Fehler, API | Manuelle Partie startet bereits belegte Spieler |
-| FUNC-003 | Mittel | Bestätigter Fehler, Browser | 14/1-Ergebniskorrektur durch Maximum 99 blockiert |
+| FUNC-002 | Mittel | Durch AP2 behoben; API/PostgreSQL bestätigt | Manuelle Partie startet bereits belegte Spieler |
+| FUNC-003 | Mittel | Durch AP2 behoben; Browser/Tests bestätigt | 14/1-Ergebniskorrektur durch Maximum 99 blockiert |
 | FUNC-004 | Mittel | Bestätigter Fehler, Code; Filter im Browser | Statistik vermischt Punkte und Racks |
 | TECH-001 | Mittel | Bestätigter Fehler, API | Backupimport akzeptiert widersprüchliche Abrechnung und ungültigen PIN-Hash |
 | UX-001 | Mittel | Bestätigter Fehler, Browser | Polling entfernt Tastaturfokus |
@@ -127,7 +129,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Integrität · **Status:** bestätigter Fehler, isolierte API-Reproduktion · **Priorität:** mittel; widersprüchlicher Spielplan und doppelte Livezuordnung, kein belegter Verlust gespeicherter Ergebnisse.
 
-**Ort:** [Manueller Start](src/server.js#L329), ergänzend [Edit auf live](src/server.js#L312); vorhandene Schutzlogik in [Liga](src/league.js#L48) und [Turnier](src/tournaments.js#L131).
+**Ort (nach AP2):** [Gemeinsame Teilnehmerprüfung](src/participant-occupancy.js#L3), [Manueller und Turnierstart](src/server.js#L332), [Edit auf live](src/server.js#L318), [Liga-/Doppelstart](src/league.js#L48). Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
 
 **Reproduktion/Beleg:** Eine Turnierpartie mit verknüpften Stammdatenspielern läuft auf Tisch 1. Eine andere Turnierpartie mit überschneidender Person wird korrekt mit 409 abgewiesen. Eine manuell angelegte Ligapartie mit denselben Spieler-IDs lässt sich dagegen auf Tisch 2 mit 200 starten. Beide Partien sind anschließend live. Siehe `domain/repro-elevated.log`.
 
@@ -143,7 +145,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Formularvalidierung · **Status:** bestätigter Fehler im Browser · **Priorität:** mittel; reguläre Ergebniskorrektur blockiert.
 
-**Ort:** [Punktefelder des Bearbeitungsdialogs](public/app.js#L342). Backend und Liga unterstützen 14/1-Ziele bis 999; bestehender Testfall mit Ziel 125: `tests/league.test.js:41`.
+**Ort (nach AP2):** [Punktefelder des Bearbeitungsdialogs](public/app.js#L353), [Dynamische Grenzen](public/app.js#L325). Backend und Liga unterstützen 14/1-Ziele bis 999; bestehender Testfall mit Ziel 125: `tests/league.test.js:41`. Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
 
 **Reproduktion/Beleg:** Abgeschlossene 14/1-Partie 125:80 im Ergebnisarchiv öffnen. Punkte B auf 79 ändern und speichern. Der Browser bleibt im Dialog und meldet bei Punkte A: „Wert muss kleiner als oder gleich 99 sein.“ Read-only-DOM-Nachweis: Wert 125, Maximum 99, `rangeOverflow=true`.
 
@@ -159,7 +161,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Auswertung/Text · **Status:** bestätigter Fehler aus Berechnung und Markup; fehlender Filter zusätzlich im Browser bestätigt · **Priorität:** mittel; fachlich irreführende Kennzahl.
 
-**Ort:** [Aggregation](public/app.js#L601), [Filter und Beschriftung](public/app.js#L615).
+**Ort:** [Aggregation](public/app.js#L612), [Filter und Beschriftung](public/app.js#L626).
 
 **Reproduktion/Beleg:** Statistik eines Spielers mit abgeschlossener 14/1- und 9-Ball-Partie öffnen. „Disziplin“ enthält nur Alle/8-/9-/10-Ball. Die Aggregation addiert `m.a`/`m.b` aller Disziplinen und beschriftet die Summe stets als „Racks“. Ein Stand von 125 Punkten plus 5 Racks ergibt rechnerisch die Anzeige „Racks 130“. Der gemischte Bestand wurde nicht zusätzlich im Browser angelegt; diese Summe folgt direkt aus dem geprüften Code.
 
@@ -196,7 +198,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Bedienung/Barrierefreiheit · **Status:** bestätigter Fehler im Browser · **Priorität:** mittel; wiederkehrende Unterbrechung der Tastaturbedienung.
 
-**Ort:** [Refresh](public/app.js#L185) und [Dreisekundenintervall](public/app.js#L748). Die [Seitennavigation](public/app.js#L39) zeigt bereits eine gezielte Fokusbehandlung.
+**Ort:** [Refresh](public/app.js#L185) und [Dreisekundenintervall](public/app.js#L759). Die [Seitennavigation](public/app.js#L39) zeigt bereits eine gezielte Fokusbehandlung.
 
 **Reproduktion/Beleg:** In der Spieleransicht „Spieler anlegen“ fokussieren. Vor dem Polling ist `document.activeElement` die Schaltfläche; nach einem normalen Pollzyklus ist es `BODY`. Es gab keine andere Fokusaktion dazwischen.
 
@@ -212,7 +214,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Barrierefreiheit · **Status:** Verbesserungsvorschlag; fehlende Benennung im DOM und AX bestätigt · **Priorität:** niedrig; sichtbare Überschrift vorhanden, aber programmatische Zuordnung fehlt.
 
-**Ort:** [Registrydialog](public/app.js#L619).
+**Ort:** [Registrydialog](public/app.js#L630).
 
 **Beleg/Soll-Ist:** „Spieler anlegen“ öffnet einen Dialog mit sichtbarer Überschrift „Spieler verwalten“. Der Dialog besitzt weder `aria-label` noch `aria-labelledby`; im Accessibility Tree erscheint nur der unbenannte Container. Andere statische Dialoge verweisen bereits auf ihre Titel. Ein realer Screenreader wurde nicht eingesetzt; sein konkreter Ansagetext wird daher nicht behauptet.
 
@@ -226,7 +228,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Textqualität · **Status:** bestätigter Textfehler im Browser · **Priorität:** niedrig; Verständlichkeit bleibt gegeben, sprachliche Qualität leidet.
 
-**Ort:** [Partienzähler](public/app.js#L139), [Veranstaltungskarte](public/app.js#L314), [Historie](public/app.js#L486), [Abschlussdialog](public/app.js#L525).
+**Ort:** [Partienzähler](public/app.js#L139), [Veranstaltungskarte](public/app.js#L314), [Historie](public/app.js#L497), [Abschlussdialog](public/app.js#L536).
 
 **Reproduktion/Beleg:** Ein Ergebnis im Archiv zeigt „1 Partien“. Eine kurze Vermietung zeigt in Bestätigung und Historie „1 Minuten“.
 
@@ -240,7 +242,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Performance/Wartbarkeit · **Status:** Verbesserungsvorschlag auf belegter Implementierung; kein gemessener Leistungsfehler · **Priorität:** niedrig, solange Archivgröße und Nutzerzahl klein bleiben.
 
-**Ort:** [Adminantwort](src/server.js#L191), [Eventzustand](src/server.js#L62), [Stammdatenzustand](src/players.js#L19), [Clientpagination](public/app.js#L28), [Polling](public/app.js#L748).
+**Ort:** [Adminantwort](src/server.js#L193), [Eventzustand](src/server.js#L63), [Stammdatenzustand](src/players.js#L19), [Clientpagination](public/app.js#L28), [Polling](public/app.js#L759).
 
 **Beleg/Soll-Ist und Auswirkung:** Jede Adminaktualisierung lädt den gesamten Partienbestand sowie weitere Stammdaten-/Planungslisten. `eventState()` liest Partien erneut und berechnet Turniertabellen. Die Auswahl „20 Einträge“ begrenzt nur die nachträgliche Browserdarstellung. Bei wachsendem Archiv steigen Antwortmenge und Rechenarbeit auch für einen kleinen sichtbaren Ausschnitt. Es wurde kein belastbarer Lastschwellenwert gemessen und keine aktuelle Verzögerung behauptet.
 
@@ -252,12 +254,12 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 ## D. Empfohlene Umsetzung und Freigabeauswahl
 
-Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nach fachlicher Integrität und blockierten Nutzerabläufen. **AP1 ist nach ausdrücklicher Freigabe umgesetzt**, die übrigen Pakete sind offen.
+Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nach fachlicher Integrität und blockierten Nutzerabläufen. **AP1 und AP2 sind nach ausdrücklicher Freigabe umgesetzt**, die übrigen Pakete sind offen.
 
 | Paket | Enthaltene IDs | Umfang und Reihenfolge | Vorläufiger Aufwand |
 |---|---|---|---|
 | **AP1 – Parallele Spielleitung absichern (umgesetzt)** | FUNC-001 | Ausgangsversion und bearbeitete Entwürfe erhalten, Konflikte sichtbar machen; nach Freigabe behoben | ursprüngliche Schätzung 0,5–1,5 PT |
-| **AP2 – Fachliche Start-/Korrekturfehler beheben** | FUNC-002, FUNC-003 | Gemeinsamer Teilnehmer-Belegungsschutz plus separat reviewbare 14/1-Formulargrenzen; die kleine 14/1-Korrektur kann vorgezogen werden | ca. 0,75–2 PT |
+| **AP2 – Fachliche Start-/Korrekturfehler beheben (umgesetzt)** | FUNC-002, FUNC-003 | Gemeinsamer Teilnehmer-Belegungsschutz und dynamische 14/1-Formulargrenzen nach Freigabe behoben | ursprüngliche Schätzung ca. 0,75–2 PT |
 | **AP3 – Backupprüfung vervollständigen** | TECH-001 | Abrechnungsrelationen/Ableitungen und PIN-Hashformat prüfen; Wiederherstellung mit getrennten PG-Testdaten absichern | 1–1,5 PT |
 | **AP4 – Statistik fachlich berichtigen** | FUNC-004 | Disziplinfilter ergänzen; 14/1 je Partie und Seite mit je 10 vollen Kugelpunkten pro Rack werten (114:69 → 11:6) | ca. 0,5 PT |
 | **AP5 – Tastaturbedienung und Texte verbessern** | UX-001, UX-002, UX-003 | Fokus erhalten, Dialogtitel zuordnen, Singularformen korrigieren; Refreshänderungen mit AP1 abstimmen | ca. 0,75–1,5 PT |
@@ -265,4 +267,4 @@ Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nac
 
 Für spätere JS-Änderungen gelten die Checkoutvorgaben: zunächst passende Tests, dann einmal Gesamtsuite; bei Auth-/Backup-/DB-Eingriffen zusätzlich isolierter Dockerintegrationstest. Die gefundenen Formular- und Fokusfehler benötigen echte Browsernachweise. Nach einer freigegebenen Implementierung ist das lokale Deployment gemäß Checkoutregeln erneut zu betrachten; der vorliegende Analyseauftrag autorisiert kein Deployment.
 
-**Verbleibende Auswahl zur Freigabe:** Nach dem umgesetzten **AP1** sind **AP2 und AP3**, anschließend **AP4 und AP5** empfohlen. **AP6 zunächst nur als Messauftrag** freigeben. Alternativ kann allein die schnelle 14/1-Korrektur aus AP2 vorgezogen werden. Die übrigen Pakete werden erst nach ihrer jeweiligen Freigabe umgesetzt.
+**Verbleibende Auswahl zur Freigabe:** Nach den umgesetzten **AP1 und AP2** ist **AP3**, anschließend **AP4 und AP5** empfohlen. **AP6 zunächst nur als Messauftrag** freigeben. Die übrigen Pakete werden erst nach ihrer jeweiligen Freigabe umgesetzt.

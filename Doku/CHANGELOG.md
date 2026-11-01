@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit AP2: Spielerbelegung und 14/1-Korrekturen — 2026-11-01
+
+- FUNC-002 behoben: Gemeinsame transaktionale Teilnehmerprüfung für manuelle Starts, Liga-Einzel/-Doppel, Turnierstarts und Änderungen auf beziehungsweise innerhalb von „live“. Auch Doppelpartner werden veranstaltungsübergreifend berücksichtigt. Eigene Partien werden nicht als Konflikt gewertet; Korrekturen abgeschlossener Ergebnisse bleiben möglich.
+- FUNC-003 behoben: Punktefelder im Bearbeitungsdialog folgen dem Spielziel. 14/1-Ergebnisse über 99 Punkte lassen sich korrigieren; Ziel- und Disziplinänderungen aktualisieren die Grenzen, ohne Punkte automatisch zu ändern.
+- Prüfung: 48 gezielte Tests und Gesamtsuite mit 74 erfolgreichen Tests, keine übersprungenen Tests. Darunter alle 16 Startkombinationen manuell/Liga-Einzel/Liga-Doppel/Turnier, Live-Änderungen, Wiederaufnahme und konkurrierende Starts. Browserprüfung bestätigt 125:80 → 125:79 sowie reine Namenskorrektur und dynamische Grenzen. Erweiterter isolierter Docker-Test mit PostgreSQL und HTTPS erfolgreich. npm-Skripte wegen fehlendem npm im PATH direkt mit Node ausgeführt; Logs und Fortsetzungsstand unter `data/ap2-2026-11-01/`.
+- Deployment: Bestehendes Projekt `billardmanager` mit beiden Compose-Dateien gebaut und gestartet. App und PostgreSQL gesund, Proxy aktiv. HTTPS `/health` liefert 200 mit vorhandener CA und aktiver Zertifikatsprüfung; ausgeliefertes `app.js` entspricht dem geprüften AP2-Quellcode. Stack bleibt aktiv; bestehende Secrets und Datenvolumes erhalten.
+
 ## Audit AP1: Parallele Ligaänderungen absichern — 2026-11-01
 
 - FUNC-001 behoben: Nur bearbeitete Liga-Aufstellungen werden als lokale Entwürfe erhalten. Ihre ursprüngliche Slotversion bleibt bei automatischer Aktualisierung und Menüwechsel bestehen; veraltete Entwürfe können fremde Änderungen nicht mehr still überschreiben.

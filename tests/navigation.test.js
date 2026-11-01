@@ -50,7 +50,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       return { ok: status === 200, status, json: async () => body };
     },
   });
-  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts }; })()`, context);
+  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits }; })()`, context);
   return { ...app, element, links, location, window, posts, setAdmin(value) { admin = value; } };
 }
 
@@ -386,6 +386,29 @@ test('AP1: menu changes tolerate forms whose id property is shadowed by a named 
   app.element('#app').querySelectorAll=selector=>selector==='form'?[form]:[];
   app.saveDrafts();fields.id.value='ada';app.restoreDrafts();
   assert.equal(fields.id.value,'anna');
+});
+
+test('AP2: match correction limits support 14/1 scores and follow target/discipline changes',async()=>{
+  const event={id:1,name:'14/1',kind:'Liga',date:'2026-11-01',status:'open',version:1};
+  const match={id:1,event_id:1,player_a:'A',player_b:'B',status:'finished',discipline:'14/1',a:125,b:80,target:125,table_no:null,first:'a',version:1};
+  const app=await frontend('/#ergebnisse',{events:[event],matches:[match]});
+  const button={dataset:{entity:'match',action:'edit',id:'1'}};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button[data-entity]'?button:null}});
+  const content=app.element('#admin-dialog-content').innerHTML;
+  assert.match(content,/name="a"[^>]*value="125"[^>]*max="125"/);
+  assert.match(content,/name="b"[^>]*value="80"[^>]*max="125"/);
+  assert.match(content,/name="target"[^>]*max="999"/);
+  const fields={discipline:{value:'14/1'},target:{value:'125'},a:{value:'125'},b:{value:'79'}};
+  const form={elements:{namedItem:name=>fields[name]}};
+  app.updateMatchLimits(form);assert.equal(fields.a.max,'125');assert.equal(fields.b.max,'125');
+  fields.target.value='150';
+  await app.element('#admin-edit-form').dispatch('input',{target:{name:'target'},currentTarget:form});
+  assert.equal(fields.a.max,'150');assert.equal(fields.target.max,'999');
+  fields.discipline.value='9-Ball';
+  await app.element('#admin-edit-form').dispatch('change',{target:{name:'discipline'},currentTarget:form});
+  assert.equal(fields.target.max,'99');assert.equal(fields.a.max,'99');
+  fields.target.value='7';app.updateMatchLimits(form);assert.equal(fields.b.max,'7');
+  assert.equal(fields.a.value,'125','changing limits never silently changes recorded points');
 });
 
 test('FR-007-Fix settings keep both nuLiga forms adjacent in one ordered column',async()=>{

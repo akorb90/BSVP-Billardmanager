@@ -128,10 +128,6 @@ export function tournamentService({db,transaction,fail,getEvent,nextId,touchEven
     },
     async guardMatch(m,action,body){const {t}=await load(m.event_id);if(!t)return;const game=allGames(t).find(g=>g.match===m.id);if(!game)return;
       if(action==='delete')throw fail(409,'Generierte Turnierpartien können nicht einzeln gelöscht werden. Vor Beginn neu auslosen.');
-      if(action==='start'){
-        const live=await db.prepare("SELECT * FROM matches WHERE status='live'").all();
-        if(live.some(x=>[x.player_a_id,x.player_b_id].some(p=>p===game.a||p===game.b)))throw fail(409,'Ein Teilnehmer spielt bereits an einem anderen Tisch.');
-      }
       if(action==='edit'){
         if(body.event_id!==m.event_id||body.player_a_id!==game.a||body.player_b_id!==game.b||body.discipline!==t.discipline||body.target!==t.target||body.status!==m.status)throw fail(409,'Teilnehmer, Disziplin, Spielziel und Status generierter Partien sind gesperrt.');
         if(m.status==='finished'&&(body.a!==m.a||body.b!==m.b)){

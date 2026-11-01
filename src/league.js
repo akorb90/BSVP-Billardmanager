@@ -16,7 +16,7 @@ export function migrateLeague(db) {
   }catch(error){db.exec('ROLLBACK');throw error;}
 }
 
-export function leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin}) {
+export function leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin,assertParticipantsAvailable}) {
   return {
     state:()=>db.prepare('SELECT * FROM event_match_slots ORDER BY event_id,slot').all(),
     async initialize(eventId){for(const s of LEAGUE_SLOTS)await db.prepare('INSERT INTO event_match_slots(event_id,slot) VALUES(?,?) ON CONFLICT(event_id,slot) DO NOTHING').run(eventId,s.slot);},
@@ -45,9 +45,7 @@ export function leagueService({db,transaction,fail,log,nextId,openEvent,touchEve
         if(ids.some(id=>!id)||table===null||target===null)throw fail(400,'Vor dem Start alle Spieler, Tisch und Spielziel auswählen.');
         const pin=encodePin(body.pin);
         if(await rentals.occupied(table)||await db.prepare("SELECT 1 FROM matches WHERE status='live' AND table_no=?").get(table))throw fail(409,'Dieser Tisch ist belegt.');
-        const live=await db.prepare("SELECT * FROM matches WHERE status='live'").all();
-        const slots=await db.prepare('SELECT * FROM event_match_slots WHERE match_id IS NOT NULL').all();
-        if(live.some(m=>{const slot=slots.find(s=>s.match_id===m.id);return ids.some(id=>[m.player_a_id,m.player_b_id,slot?.player_a2_id,slot?.player_b2_id].includes(id));}))throw fail(409,'Ein ausgewählter Spieler ist bereits an einer laufenden Partie beteiligt.');
+        await assertParticipantsAvailable(ids);
         const teamA=a.team_id?await db.prepare('SELECT * FROM teams WHERE id=?').get(a.team_id):null;
         const teamB=b.team_id?await db.prepare('SELECT * FROM teams WHERE id=?').get(b.team_id):null;
         const name=side=>[people['player_'+side+'_id'],...(spec.doubles?[people['player_'+side+'2_id']]:[])].map(playerName).join(' / ');

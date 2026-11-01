@@ -322,6 +322,17 @@ function field(label,name,value,type='text',extra='') {
 function selectField(label,name,value,options) {
   return '<label>'+label+'<select name="'+esc(name)+'">'+options.map(([v,l])=>'<option value="'+esc(v)+'" '+(String(v)===String(value)?'selected':'')+'>'+esc(l)+'</option>').join('')+'</select></label>';
 }
+function updateMatchLimits(form) {
+  const discipline=form?.elements?.namedItem?.('discipline'),target=form?.elements?.namedItem?.('target');
+  if(!discipline || !target)return;
+  const limit=discipline.value==='14/1'?999:99;
+  target.max=String(limit);
+  const scoreLimit=String(Math.min(limit,Math.max(1,Number(target.value)||limit)));
+  for(const name of ['a','b']){const field=form.elements.namedItem(name);if(field)field.max=scoreLimit;}
+}
+for(const type of ['input','change'])document.querySelector('#admin-edit-form').addEventListener(type,e=>{
+  if(['discipline','target'].includes(e.target.name))updateMatchLimits(e.currentTarget);
+});
 root.addEventListener('click',e=>{
   const button=e.target.closest('button[data-entity]'); if(!button||busy||table)return;
   const entity=button.dataset.entity, action=button.dataset.action;
@@ -338,8 +349,8 @@ root.addEventListener('click',e=>{
   } else if(action==='edit') {
     content=participantSelectors(item)+'<p>Abgeschlossene Partien sind nach Warnbestätigung korrigierbar. Nach Gesamtabschluss bleiben Status und Veranstaltungszuordnung erhalten.</p>'+selectField('Veranstaltung','event_id',item.event_id,state.events.filter(e=>e.id===item.event_id || (state.events.find(v=>v.id===item.event_id)?.status==='open' && e.status==='open')).map(e=>[e.id,e.name]))+
       '<div class="form-row">'+field('Spieler A','player_a',item.player_a,'text','maxlength="302"')+field('Spieler B','player_b',item.player_b,'text','maxlength="302"')+'</div>'+
-      '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball','14/1'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field(item.discipline==='14/1'?'Spielziel (Punkte)':'Gewinnspiele','target',item.target,'number','min="1" max="999"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
-      '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="99"')+field('Punkte B','b',item.b,'number','min="0" max="99"')+'</div>'+
+      '<div class="form-row">'+selectField('Disziplin','discipline',item.discipline,['8-Ball','9-Ball','10-Ball','14/1'].map(v=>[v,v]))+selectField('Gewinner Ausstoßen','lag_winner',item.lag_winner??'',[['','Noch nicht erfasst'],['a',item.player_a],['b',item.player_b]])+field(item.discipline==='14/1'?'Spielziel (Punkte)':'Gewinnspiele','target',item.target,'number','min="1" max="'+(item.discipline==='14/1'?999:99)+'"')+selectField('Erstes Break','first',item.first,[['a','Spieler A'],['b','Spieler B']])+'</div>'+
+      '<div class="form-row">'+field('Punkte A','a',item.a,'number','min="0" max="'+item.target+'"')+field('Punkte B','b',item.b,'number','min="0" max="'+item.target+'"')+'</div>'+
       '<div class="form-row">'+selectField('Status','status',item.status,state.events.find(e=>e.id===item.event_id)?.status==='closed'?[['finished','Abgeschlossen']]:Object.entries(labels))+selectField('Tisch','table_no',item.table_no??'',[['','Kein Tisch'],...Array.from({length:Math.max(tableCount(),item.table_no || 0)},(_,i)=>[i+1,'Tisch '+(i+1)])])+'</div>'+
       '<label>'+ (item.pin_set ? 'Neue Tablet-PIN (leer lassen zum Beibehalten)' : 'Tablet-PIN nachtragen') +'<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="off"></label>'+
       '<small>Geplant: 0:0 und kein Tisch. Am Tisch: freier Tisch erforderlich. Abgeschlossen: genau ein Spieler hat das Spielziel erreicht.</small>';

@@ -234,6 +234,16 @@ try {
   let tournamentState=(await request('/api/admin')).body;
   const semi=tournamentState.matches.find(m=>m.event_id===tournament);
   assert.equal((await request('/api/matches/'+semi.id+'/start',{version:0,table_no:1,lag_winner:'a',first:'a'})).status,200);
+  const occupancyEvent=(await request('/api/events',{name:'Isolierter Belegungstest',kind:'Liga',date:'2026-11-01'})).body.id;
+  assert.equal((await request(`/api/events/${occupancyEvent}/start`,{version:0})).status,200);
+  assert.equal((await request(`/api/events/${occupancyEvent}/participants`,{version:1,team_ids:[],player_ids:[semi.player_a_id,semi.player_b_id]})).status,200);
+  const occupiedMatch=await request('/api/matches',{event_id:occupancyEvent,player_a_id:semi.player_a_id,player_b_id:semi.player_b_id,discipline:'9-Ball',target:1,pin:'123456'});
+  assert.equal(occupiedMatch.status,201);
+  assert.equal((await request(`/api/matches/${occupiedMatch.body.id}/start`,{version:0,table_no:2})).status,409);
+  const occupancyState=(await request('/api/admin')).body,plannedOccupied=occupancyState.matches.find(m=>m.id===occupiedMatch.body.id);
+  assert.equal((await request(`/api/matches/${plannedOccupied.id}/edit`,{...plannedOccupied,status:'live',table_no:2,event_version:occupancyState.events.find(e=>e.id===occupancyEvent).version})).status,409);
+  assert.equal((await request(`/api/events/${occupancyEvent}/delete`,{version:occupancyState.events.find(e=>e.id===occupancyEvent).version,action:'event:delete',confirmation:'EVENT LÖSCHEN'})).status,200);
+  console.log('PASS: PostgreSQL shared participant occupancy rejects manual starts and live edits against a running tournament');
   assert.equal((await request('/api/matches/'+semi.id+'/score',{version:1,side:'a',delta:1})).status,200);
   assert.equal((await request('/api/matches/'+semi.id+'/finish',{version:2,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'})).status,200);
   tournamentState=(await request('/api/admin')).body;

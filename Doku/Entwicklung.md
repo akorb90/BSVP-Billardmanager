@@ -61,7 +61,7 @@ Stand: 2026-10-29, logisches Datenschema **13** (`SCHEMA_VERSION` in `src/databa
 | --- | --- |
 | Browser | `public/index.html`, `public/app.js`, `public/style.css`; `public/rental-pricing.js` für die Preisberechnung |
 | HTTP und Sicherheit | `src/server.js`: Routen, Anmeldung, Sitzungen, CSRF/Origin und Rechte; `src/config.js`: Sicherheitskonfiguration |
-| Spielbetrieb | `src/domain.js`, `src/tables.js`, `src/rentals.js`: Regeln, Tischbelegung und Vermietung |
+| Spielbetrieb | `src/domain.js`, `src/tables.js`, `src/participant-occupancy.js`, `src/rentals.js`: Regeln, Tisch- und Spielerbelegung sowie Vermietung |
 | Veranstaltungen und Stammdaten | `src/players.js`, `src/schedule.js`, `src/league.js`, `src/tournaments.js`: Spieler/Mannschaften, Planung, Liga-Aufstellungen, Gruppen und KO |
 | nuLiga | `src/nuliga.js` und `scripts/nuliga-sync.js`: externe Vereinsdaten und Synchronisierung |
 | Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/legacy-db.js`: SQLite-Altbestände und isolierte Kompatibilitätstests |

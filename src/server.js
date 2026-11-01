@@ -1,5 +1,6 @@
 import {tournamentService,standings} from './tournaments.js';
 import {leagueService} from './league.js';
+import {participantOccupancy} from './participant-occupancy.js';
 import {scheduleService} from './schedule.js';
 import { playerService } from './players.js';
 import { nuLigaService } from './nuliga.js';
@@ -71,7 +72,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
     const salt=randomBytes(16).toString('hex');
     return salt+':'+scryptSync(pin,salt,64).toString('hex');
   };
-  const league=leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin});
+  const assertParticipantsAvailable=participantOccupancy({db,fail});
+  const league=leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin,assertParticipantsAvailable});
   const tournaments=tournamentService({db,transaction,fail,getEvent,nextId,touchEvent,log,encodePin});
   const authorizedTablet = (auth,m) => auth && m && m.status==='live' && auth.id===m.id && auth.table===m.table_no && auth.revision===m.auth_version;
   const liveAt = async number => await db.prepare("SELECT m.*, e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.table_no=? AND m.status='live'").get(number);
@@ -312,8 +314,9 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             if ((a===target && b===target) || (status==='finished' && Math.max(a,b)!==target) || (status==='planned' && (a!==0 || b!==0 || number!==null)) || (status==='live' && number===null)) throw fail(400,'Punkte, Tisch und Status passen nicht zusammen. Geplant: 0:0 ohne Tisch. Laufend: Tisch nötig. Beendet: genau ein Gewinner am Spielziel.');
             if (status==='live') await tables.activeNumber(number);
             if (status==='live' && ((await rentals.occupied(number)) || (await db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live' AND id<>?").get(number,id)))) throw fail(409,'Dieser Tisch ist belegt.');
-            await db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a,302),text(body.player_b,302),body.discipline,target,body.first,a,b,status,number,id);
             const links=await players.resolve(event,body,m);
+            if(status==='live')await assertParticipantsAvailable([links.player_a_id,links.player_b_id],id);
+            await db.prepare('UPDATE matches SET event_id=?,player_a=?,player_b=?,discipline=?,target=?,first=?,a=?,b=?,status=?,table_no=?,version=version+1 WHERE id=?').run(event,text(body.player_a,302),text(body.player_b,302),body.discipline,target,body.first,a,b,status,number,id);
             await db.prepare('UPDATE matches SET player_a=?,player_b=?,player_a_id=?,player_b_id=?,team_a_id=?,team_b_id=?,team_a_name=?,team_b_name=? WHERE id=?').run(links.player_a,links.player_b,links.player_a_id,links.player_b_id,links.team_a_id,links.team_b_id,links.team_a_name,links.team_b_name,id);
             if(fixed)await db.prepare('UPDATE event_match_slots SET target=?,table_no=?,version=version+1 WHERE match_id=?').run(target,number,id);
             if(body.pin !== undefined && body.pin !== '') await db.prepare('UPDATE matches SET pin_hash=? WHERE id=?').run(encodePin(body.pin),id);
@@ -330,6 +333,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
             if (m.status !== 'planned') throw fail(409, 'Begegnung ist bereits gestartet.');
             const number = await tables.activeNumber(body.table_no);
             if ((await rentals.occupied(number)) || (await db.prepare("SELECT id FROM matches WHERE table_no=? AND status='live'").get(number))) throw fail(409, 'Dieser Tisch ist belegt.');
+            await assertParticipantsAvailable([m.player_a_id,m.player_b_id],id);
             await db.prepare("UPDATE matches SET table_no=?,status='live',version=version+1 WHERE id=?").run(number, id);
             if(body.lag_winner!==undefined || body.first!==undefined) {
               if(!['a','b'].includes(body.lag_winner) || !['a','b'].includes(body.first)) throw fail(400,'Ausstoßen und erstes Break auswählen.');

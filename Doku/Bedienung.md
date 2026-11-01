@@ -117,6 +117,10 @@ Nach dem Spieltagsstart zeigt die Übersicht drei Blöcke: vier Einzel (8-Ball, 
 
 Unbearbeitete Aufstellungen übernehmen Änderungen anderer Spielleitungen bei der automatischen Aktualisierung. Eigene ungespeicherte Eingaben bleiben während dieser Aktualisierungen und beim Menüwechsel als Entwurf erhalten. Wird dieselbe Aufstellung zwischenzeitlich von jemand anderem gespeichert, erscheint ein Konflikthinweis; der ältere Entwurf kann den neuen Stand nicht überschreiben. **Entwurf verwerfen / Serverstand laden** verwirft die eigenen Eingaben und lädt die aktuelle Aufstellung. Anschließend kann sie erneut bearbeitet werden. Ein vollständiges Neuladen der Browserseite verwirft ungespeicherte Entwürfe.
 
+Verknüpfte Spieler können immer nur an einer laufenden Partie teilnehmen. Dies gilt veranstaltungsübergreifend für manuelle Partien, Liga-Einzel, beide Spieler eines Doppels und Turniere sowie beim Wiederaufnehmen oder Ändern einer laufenden Partie. Reine Korrekturen abgeschlossener Ergebnisse belegen keine Spieler. Freie Namen ohne Stammdatenzuordnung können nicht zuverlässig als dieselbe Person erkannt werden.
+
+Bei Ergebniskorrekturen richten sich die Punktefelder nach dem eingestellten Spielziel. 14/1 unterstützt bis zu 999 Punkte; ein Ergebnis von 125:80 kann beispielsweise nach Warnbestätigung auf 125:79 korrigiert werden. Bei Änderung von Disziplin oder Spielziel aktualisiert der Dialog die Grenzen, ohne vorhandene Punktestände automatisch zu verändern.
+
 ### Synchronisierung nur für Heimspiele
 
 Der Spieltags-Sync übernimmt ausschließlich kommende Heimspiele des BSV Pfaffenhofen. Bereits importierte Auswärtsspieltage ohne angelegte Einzelpartien werden entfernt, auch wenn die Spieltagsübersicht schon geöffnet wurde. Manuelle Spieltage und historische Ergebnisse bleiben erhalten. In der Spieltagsübersicht steht die nuLiga-Heimmannschaft immer links (Heim), der Gegner rechts (Gast).
