@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test",
+    "test": "node scripts/test.js",
     "test:docker": "node scripts/docker-smoke.js",
     "setup": "node scripts/setup.js"
   },

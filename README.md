@@ -37,7 +37,7 @@ docker compose -f compose.yaml ps
 
 `pull` lädt die aktuelle Version; `up` übernimmt sie in den laufenden Stack. Daten, Zugangsdaten und HTTPS-Zertifikate bleiben in den bisherigen Volumes und Dateien erhalten. Nach dem Update erneut anmelden und [https://localhost/health](https://localhost/health) aufrufen. Kein `down -v` verwenden.
 
-**Beim ersten PostgreSQL-Update (FR-012):** Auch die neue `compose.yaml` übernehmen; ein reines Image-Update genügt nicht. Das vorhandene SQLite-Volume und die Sicherheitsdatei beibehalten. Die App übernimmt alle Daten einmalig und prüft sie; die alte Datei bleibt als Rückfallstand erhalten. Details zu Sicherung und Rückkehr: [Datensicherung](Doku/Datensicherung.md).
+**Datenbank:** PostgreSQL 17 ist erforderlich. Neuinstallationen werden direkt mit dem aktuellen Schema initialisiert; bestehende PostgreSQL-Datenbanken werden bei Bedarf aktualisiert. Die frühere automatische SQLite-Übernahme ist entfernt. Ältere Installationen vor dem Update über eine kompatible Zwischenversion nach PostgreSQL überführen oder eine unterstützte JSON-Sicherung importieren. Details: [Datensicherung](Doku/Datensicherung.md).
 
 Für Updates sind weder ein Git-Download noch ein lokaler Image-Build erforderlich. Änderungen an Installationsdateien werden in den [Release Notes](Doku/CHANGELOG.md) genannt. Für den Wechsel einer bisherigen Quellcode-Installation und feste Versionen siehe [Deployment](Doku/Deployment.md).
 

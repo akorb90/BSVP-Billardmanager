@@ -6,18 +6,18 @@ import {scryptSync,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 test('FR-007: identities, explicit participants, history, archive, restart and separate restore',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'players-')),config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('k'.repeat(40))};
   let server,base,cookie='',csrf='';
-  const start=async file=>{server=await createApp({dbPath:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;cookie='';csrf='';};
+  const start=async file=>{server=await createApp({dbKey:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;cookie='';csrf='';};
   const call=async(path,data,auth=true)=>{const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(auth?{Cookie:cookie,'X-CSRF-Token':csrf}:{})},body:data?JSON.stringify(data):undefined});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};};
   const login=async()=>{const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;};
   const state=async()=>(await call('/api/admin')).body;
   const save=async(path,data)=>{const r=await call(path,data);assert.equal(r.status,200,JSON.stringify(r.body));return r.body.id;};
   try {
-    await start('source.sqlite');await login();
+    await start('source');await login();
     const person={first_name:'Anna',second_name:'Maria',last_name:'Müller'};
     assert.equal((await call('/api/players',person,false)).status,401);
     assert.equal((await call('/api/players',{...person,last_name:''})).status,400);
@@ -48,9 +48,9 @@ test('FR-007: identities, explicit participants, history, archive, restart and s
     assert.equal(backup.data.event_players.length,2);assert.equal(backup.data.team_players[0].player_id,b);
     const bad=structuredClone(backup);bad.data.matches[0].player_a_id='missing';bad.checksum=createHash('sha256').update(JSON.stringify(bad.data)).digest('hex');
     assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
-    await new Promise(r=>server.close(r));await start('source.sqlite');await login();
+    await new Promise(r=>server.close(r));await start('source');await login();
     assert.equal((await state()).matches.find(m=>m.id===mid).team_a_id,team);
-    await new Promise(r=>server.close(r));await start('target.sqlite');await login();
+    await new Promise(r=>server.close(r));await start('target');await login();
     assert.equal((await call('/api/backups/preview',{backup})).status,200);
     assert.equal((await call('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);await login();
     const restored=(await call('/api/backups/export')).body;

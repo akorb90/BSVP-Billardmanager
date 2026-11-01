@@ -2,9 +2,7 @@
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { createHash, scryptSync } from 'node:crypto';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { openDatabase } from './src/database.js';
 import { backupService } from './src/backup.js';
 import { nuLigaService } from './src/nuliga.js';
@@ -17,7 +15,6 @@ await admin.connect();
 const prefix = 'fr012_' + Date.now();
 const names = ['source', 'target', 'invalid', 'upgrade'].map(n => prefix + '_' + n);
 const url = name => { const u = new URL(process.env.DATABASE_URL); u.pathname = '/' + name; return u.toString(); };
-const dir = mkdtempSync(join(tmpdir(), 'fr012-'));
 const handles = new Set();
 const open = async options => { const db = await openDatabase({ config, ...options }); handles.add(db); return db; };
 const close = async db => { await db.close(); handles.delete(db); };
@@ -25,9 +22,8 @@ const service = db => backupService({ db, transaction: fn => db.transaction(fn),
 const digest = data => createHash('sha256').update(JSON.stringify(data)).digest('hex');
 try {
   for (const name of names) await admin.query(`CREATE DATABASE "${name}"`);
-  const path = join(dir, 'legacy.sqlite');
-  const sqlite = await open({ dbPath: path });
-  await sqlite.exec(`INSERT INTO events VALUES(7,'Migration äöü 🎱','Liga','2026-10-28','open',12);
+  let source = await open({ databaseUrl: url(names[0]) });
+  await source.exec(`INSERT INTO events VALUES(7,'Migration äöü 🎱','Liga','2026-10-28','open',12);
     INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,table_no,a,b,status,version,pin_hash,auth_version,lag_winner,setup_done,started_at,running_since,rack_since,elapsed_ms)
     VALUES(9,7,'Anna','Ben','9-Ball',5,'b',12,2,1,'live',4,'${config.adminHash}',3,'a',1,1793000000000,1793000010000,1793000020000,12345);
     UPDATE table_settings SET table_count=20,version=2;
@@ -39,35 +35,33 @@ try {
     INSERT INTO pin_attempts VALUES(12,4,1793999999999);
     INSERT INTO audit VALUES(45,'2026-10-28 12:34:56','admin','fixture',9,'{"preserved":true}');
     UPDATE branding SET club_name='Migration Verein',primary_color='#147eb7',version=5;`);
-  await sqlite.prepare('UPDATE branding SET logo=?').run('data:image/png;base64,' + readFileSync('./public/assets/bsv-logo.png').toString('base64'));
-  await sqlite.exec(`INSERT INTO players(id,first_name,second_name,last_name,active,version) VALUES('p1','Anna','Maria','Altname',1,0),('p2','Ben','','Gegner',1,0);
+  await source.prepare('UPDATE branding SET logo=?').run('data:image/png;base64,' + readFileSync('./public/assets/bsv-logo.png').toString('base64'));
+  await source.exec(`INSERT INTO players(id,first_name,second_name,last_name,active,version) VALUES('p1','Anna','Maria','Altname',1,0),('p2','Ben','','Gegner',1,0);
     INSERT INTO teams VALUES('t1','BSV I',1,0);
     INSERT INTO team_players VALUES('t1','p1');
     INSERT INTO event_teams VALUES(7,'t1');
     INSERT INTO event_players VALUES(7,'p1','t1'),(7,'p2',NULL);
     UPDATE matches SET player_a_id='p1',player_b_id='p2',team_a_id='t1',team_a_name='Historisches Team' WHERE id=9;`);
-  await sqlite.exec("INSERT INTO players(id,first_name,last_name,event_id) VALUES('guest','Gast','Spieltag',7);INSERT INTO event_players VALUES(7,'guest','t1');");
+  await source.exec("INSERT INTO players(id,first_name,last_name,event_id) VALUES('guest','Gast','Spieltag',7);INSERT INTO event_players VALUES(7,'guest','t1');");
   const syncFixture={players:[{source_id:'555',first_name:'Import',second_name:'',last_name:'Spieler'}],teams:[{source_id:'666',name:'Importierter Gegner',player_ids:['555']}],leagues:[{name:'Testliga'}]};
-  const sync=nuLigaService({db:sqlite,transaction:fn=>sqlite.transaction(fn),log:async()=>{},fail:(status,message)=>Object.assign(new Error(message),{status}),collect:async()=>syncFixture});
+  const sync=nuLigaService({db:source,transaction:fn=>source.transaction(fn),log:async()=>{},fail:(status,message)=>Object.assign(new Error(message),{status}),collect:async()=>syncFixture});
   assert.equal((await sync.sync()).created,2);
   assert.equal((await sync.sync()).created,0);
-  await sqlite.prepare('INSERT INTO event_planning VALUES(7,1,?,?)').run('existing-source',JSON.stringify({source:{time:'14:00'}}));
-  await sqlite.prepare('INSERT INTO nuliga_schedule_sync VALUES(1,?,?)').run('2026-10-28T12:00:00Z',JSON.stringify({found:1,created:1}));
-  await sqlite.prepare('INSERT INTO event_match_slots(event_id,slot,match_id,player_a_id,player_b_id,table_no,target) VALUES(7,2,9,?,?,12,5)').run('p1','p2');
-  const expected = JSON.parse(JSON.stringify(await (await service(sqlite)).export()));
-  await close(sqlite);
-  const original = readFileSync(path);
-  let source = await open({ databaseUrl: url(names[0]), legacyPath: path });
+  await source.prepare('INSERT INTO event_planning VALUES(7,1,?,?)').run('existing-source',JSON.stringify({source:{time:'14:00'}}));
+  await source.prepare('INSERT INTO nuliga_schedule_sync VALUES(1,?,?)').run('2026-10-28T12:00:00Z',JSON.stringify({found:1,created:1}));
+  await source.prepare('INSERT INTO event_match_slots(event_id,slot,match_id,player_a_id,player_b_id,table_no,target) VALUES(7,2,9,?,?,12,5)').run('p1','p2');
+  const expected = JSON.parse(JSON.stringify(await (await service(source)).export()));
+  await close(source);
+  source = await open({ databaseUrl: url(names[0]) });
   let backups = await service(source);
   assert.deepEqual((await backups.export()).data, expected.data);
-  assert.deepEqual(readFileSync(path), original, 'legacy database remains unchanged');
   await source.prepare("INSERT INTO events VALUES(8,'Postgres only','Turnier','2026-10-29','open',0)").run();
   await source.prepare("INSERT INTO event_planning VALUES(8,1,NULL,'{}')").run();
   await source.prepare("UPDATE entity_ids SET value=8 WHERE name='events'").run();
   await close(source);
-  source = await open({ databaseUrl: url(names[0]), legacyPath: path });
+  source = await open({ databaseUrl: url(names[0]) });
   backups = await service(source);
-  assert.equal((await backups.export()).data.events.length, 2, 'restart never reimports legacy data');
+  assert.equal((await backups.export()).data.events.length, 2, 'restart preserves application data');
   const target = await open({ databaseUrl: url(names[1]) });
   const targetBackups = await service(target), session = {};
   await targetBackups.preview(expected, session);
@@ -124,17 +118,21 @@ try {
   assert.equal((await upgrade.prepare("SELECT * FROM players WHERE id='existing'").get()).event_id,null);
   assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,13);
   await close(upgrade);
-  // An incompatible source must roll back schema creation and must not mark migration complete.
-  const badPath = join(dir, 'bad.sqlite'), bad = await open({ dbPath: badPath });
-  await bad.exec('CREATE TABLE incompatible(id INTEGER PRIMARY KEY, value BLOB); INSERT INTO incompatible VALUES(1,zeroblob(3))');
-  await close(bad);
-  await assert.rejects(open({ databaseUrl: url(names[2]), legacyPath: badPath }));
+  // Unknown tables must prevent initialization without leaving a partial schema.
+  const invalidUrl = new URL(url(names[2])); invalidUrl.password = password;
+  const invalid = new pg.Client({connectionString:invalidUrl.toString()});
+  await invalid.connect();
+  try {
+    await invalid.query('CREATE TABLE incompatible(id BIGINT PRIMARY KEY)');
+    await assert.rejects(open({databaseUrl:url(names[2])}), /unbekannte Tabellen/);
+    assert.equal((await invalid.query("SELECT to_regclass('public._schema') AS name")).rows[0].name,null);
+    await invalid.query('DROP TABLE incompatible');
+  } finally { await invalid.end(); }
   const recovered = await open({ databaseUrl: url(names[2]) });
   assert.equal((await (await service(recovered)).export()).data.events.length, 0);
-  console.log('PASS: full SQLite migration, unchanged source, restart, separate-database restore, validation rollback, identity, future tables and failed-migration rollback');
+  console.log('PASS: native PostgreSQL initialization, restart, separate-database restore, validation rollback, identity, future tables and initialization rollback');
 } finally {
   for (const db of handles) await db.close();
   for (const name of names) await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
   await admin.end();
-  rmSync(dir, { recursive: true, force: true });
 }

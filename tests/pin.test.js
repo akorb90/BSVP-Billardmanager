@@ -4,14 +4,14 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scryptSync} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
-import {createApp} from '../src/server.js';
+import {openTestDatabase} from './helpers/database.js';
+import {createApp} from './helpers/database.js';
 
 test('PIN schützt Partien, widerruft Sitzungen und begrenzt Versuche persistent',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'billard-pin-')),dbPath=join(dir,'db.sqlite');
+  const dir=mkdtempSync(join(tmpdir(),'billard-pin-')),dbKey=join(dir,'db');
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('old-key'.repeat(8))};
   let server,base,cookie,csrf;
-  async function start(){server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbKey,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function call(path,data,token){
     if(data && /\/matches\/\d+\/edit$/.test(path)) {const snapshot=(await call('/api/admin')).body;const m=snapshot.matches.find(m=>m.id===Number(path.split('/')[3]));data={...data,event_version:snapshot.events.find(e=>e.id===m.event_id).version,action:'match:edit',confirmation:'SPIEL ÄNDERN'};}
 const response=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(token===undefined?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token})},body:data?JSON.stringify(data):undefined});return {status:response.status,body:await response.json(),cookie:response.headers.get('set-cookie')};}
@@ -60,12 +60,12 @@ const response=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'
     assert.equal((await call('/api/tables/2/login',{pin:'654321'},'')).status,429);
     // Lockout is per table; other tables can still authenticate.
     assert.equal((await call('/api/tables/3/login',{pin:'234567'},'')).status,200);
-    const db=new DatabaseSync(dbPath);
-    const encoded=db.prepare('SELECT pin_hash FROM matches WHERE id=1').get().pin_hash;
+    const db=await openTestDatabase(dbKey);
+    const encoded=(await db.prepare('SELECT pin_hash FROM matches WHERE id=1').get()).pin_hash;
     assert.match(encoded,/^[a-f0-9]{32}:[a-f0-9]{128}$/);
-    const audit=JSON.stringify(db.prepare('SELECT detail FROM audit').all());
+    const audit=JSON.stringify((await db.prepare('SELECT detail FROM audit').all()));
     assert.ok(!audit.includes('234567'));assert.ok(!audit.includes('pin_hash'));assert.ok(!audit.includes(encoded));
-    db.prepare('UPDATE pin_attempts SET until=0 WHERE table_no=2').run();db.close();
+    await db.prepare('UPDATE pin_attempts SET until=0 WHERE table_no=2').run();await db.close();
     assert.equal((await call('/api/tables/2/login',{pin:'654321'},'')).status,200);
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
 });

@@ -4,14 +4,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scryptSync, createHash } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
-import { createApp } from '../src/server.js';
+import { createApp } from './helpers/database.js';
 
-test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vollständiger Restore', async () => {
+test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Historie und vollständiger Restore', async () => {
   const dir=mkdtempSync(join(tmpdir(),'billard-tables-'));
   const config={adminHash:'salt:'+scryptSync('test-password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie='',csrf='';
-  async function start(name='source.sqlite') { server=await createApp({dbPath:join(dir,name),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;cookie='';csrf=''; }
+  async function start(name='source') { server=await createApp({dbKey:join(dir,name),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;cookie='';csrf=''; }
   const stop=()=>new Promise(r=>server.close(r));
   async function call(path,data,headers={}) { const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf,...headers},body:data?JSON.stringify(data):undefined});return {status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():await r.text(),cookie:r.headers.get('set-cookie')}; }
   async function login(){const r=await call('/api/login',{password:'test-password'});assert.equal(r.status,200);cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
@@ -26,20 +25,8 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
     await call('/api/matches/1/start',{table_no:8,version:0,lag_winner:'a',first:'a'});
     await call('/api/rentals',{table_no:7,settings_version:0});
     const original=(await call('/api/backups/export')).body;
-    // Recreate the installed schema-7 CHECK constraints and a populated older database.
+    // Restart the populated PostgreSQL database without changing its contents.
     await stop();
-    const db=new DatabaseSync(join(dir,'source.sqlite'));
-    try {
-      db.exec('BEGIN');
-      for(const name of ['matches','rentals']) {
-        const sql=db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name).sql;
-        const indexes=db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL").all(name);
-        db.exec(sql.replace(/CREATE TABLE\s+"?\w+"?/i,`CREATE TABLE ${name}_old`).replace('BETWEEN 1 AND 20','BETWEEN 1 AND 8'));
-        db.exec(`INSERT INTO ${name}_old SELECT * FROM ${name};DROP TABLE ${name};ALTER TABLE ${name}_old RENAME TO ${name};`);
-        for(const row of indexes)db.exec(row.sql);
-      }
-      db.exec('DROP TABLE event_match_slots;DROP TABLE event_planning;DROP TABLE nuliga_schedule_sync;DROP TABLE nuliga_entities;DROP TABLE nuliga_sync;DROP TABLE players;DROP TABLE teams;DROP TABLE team_players;DROP TABLE event_players;DROP TABLE event_teams;ALTER TABLE matches DROP COLUMN player_a_id;ALTER TABLE matches DROP COLUMN player_b_id;ALTER TABLE matches DROP COLUMN team_a_id;ALTER TABLE matches DROP COLUMN team_b_id;ALTER TABLE matches DROP COLUMN team_a_name;ALTER TABLE matches DROP COLUMN team_b_name;DROP TABLE table_settings;PRAGMA user_version=7;COMMIT');
-    } finally {db.close();}
     await start();
     assert.equal((await save(20,0)).status,401);await login();
     const migrated=(await call('/api/backups/export')).body;
@@ -63,14 +50,14 @@ test('FR-011: Migration, 1–20 Tische, Belegungsschutz, Tablet, Historie und vo
     const backup=(await call('/api/backups/export')).body;
     assert.equal(backup.schema,13);assert.equal(backup.data.table_settings[0].table_count,20);
     assert.equal(backup.data.audit.at(-1).action,'start');assert.ok(backup.data.audit.some(a=>a.action==='settings:tables'));
-    await stop();await start('target.sqlite');await login();
+    await stop();await start('target');await login();
     for(const change of [b=>b.data.table_settings=[],b=>b.data.table_settings[0].table_count=21,b=>b.data.table_settings[0].table_count=1,b=>delete b.data.table_settings]) {
       const bad=structuredClone(backup);change(bad);resign(bad);assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
     }
     assert.equal((await call('/api/backups/preview',{backup})).status,200);assert.equal((await restore(backup)).status,200);await login();
     const imported=(await call('/api/backups/export')).body;
     for(const key of Object.keys(backup.data))if(key!=='audit')assert.deepEqual(imported.data[key],backup.data[key]);
-    await stop();await start('target.sqlite');await login();assert.equal((await call('/api/admin')).body.table_settings.table_count,20);
+    await stop();await start('target');await login();assert.equal((await call('/api/admin')).body.table_settings.table_count,20);
     // Remove only the isolated test rental/match, then reduce to the lower boundary.
     for(const r of backup.data.rentals)await call(`/api/rentals/${r.id}/delete`,{version:r.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'});
     const m=(await call('/api/admin')).body.matches.find(m=>m.id===2);

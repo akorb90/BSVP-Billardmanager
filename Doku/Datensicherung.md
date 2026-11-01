@@ -44,15 +44,11 @@ Bei einem Fehler die App gestoppt lassen, Ursache beheben und mit der zuvor erst
 
 Zusätzlich **unverändert** `secrets/config.json`, `.env`, Installationsdateien und beide Caddy-Volumes verschlüsselt sichern. Der interne Datenbankzugang wird deterministisch aus dem SHA-256 der bestehenden Secrets-Datei abgeleitet; sie ist daher auch nach dem Umstieg erforderlich und darf nicht neu formatiert oder ersetzt werden. Beim Neuaufbau eines Datenbankvolumes muss dieselbe Datei verfügbar sein. Passwortänderungen in der Anwendung verändern diese Datei nicht. Externe Sicherheitskonfiguration und HTTPS-Schlüssel bleiben eine separate Betriebssicherung; diese ersetzt niemals den vollständigen Anwendungs-Export.
 
-### Übernahme bisheriger SQLite-Installationen (FR-012)
+### Frühere Installationen und Rückkehrstände
 
-Vor dem ersten Start der neuen Version die bisherige JSON-Sicherung und Betriebssicherung erstellen. Dieselbe Compose-Projektzuordnung sowie das vorhandene `billard_data`-Volume beibehalten. Beim ersten Start einer leeren PostgreSQL-Datenbank erstellt die App eine konsistente SQLite-Kopie einschließlich vorhandener WAL-Inhalte, führt nötige alte Schemamigrationen nur auf der Kopie aus und übernimmt sämtliche Tabellen in einer PostgreSQL-Transaktion. Jede übernommene Zeile wird verglichen. Erst danach wird die erfolgreiche Initialisierung vermerkt. Bei Fehlern wird die Transaktion zurückgerollt und die App startet nicht mit einem halbfertigen Datenbestand.
+Die automatische Übernahme von SQLite-Dateien ist seit 2026-11-01 entfernt. Noch nicht umgestellte Installationen vor dem Update mit einer kompatiblen Zwischenversion nach PostgreSQL überführen oder dort eine unterstützte JSON-Sicherung erzeugen. Die aktuelle App öffnet alte Datenbankdateien nicht mehr. Der JSON-Import unterstützt Schema 6–13, ergänzt ältere gültige Sicherungen und prüft sämtliche Anwendungstabellen und Einstellungen vor der vollständigen Wiederherstellung.
 
-Die ursprüngliche `/data/billard.sqlite` bleibt unverändert als Rückfallstand im alten Volume. Bei späteren Starts wird sie nicht erneut eingelesen. Ab dem Umstieg ist ausschließlich PostgreSQL aktuell; die SQLite-Datei enthält spätere Änderungen nicht. Bestehende JSON-Sicherungen der Schemaversionen 6, 7 und 8 bleiben importierbar. Das JSON-Datenschema bleibt Version 8. Interne PostgreSQL-Schemametadaten sind keine Anwendungsdaten; sämtliche Anwendungstabellen werden automatisch gesichert. Fehlen Tabellen oder Spalten im Upload, wird der Import abgewiesen.
-
-Für eine Rückkehr zur vorherigen App-Version vor dem Umstieg den alten Image-Digest und die bisherigen Compose-Dateien sichern. App und PostgreSQL stoppen, alte Compose-Dateien und altes Image wieder einsetzen und das unveränderte SQLite-Volume verwenden. Dabei gehen alle nach der Umstellung entstandenen Änderungen verloren; vorher einen aktuellen PostgreSQL-Dump und JSON-Export extern sichern. Eine alte App darf niemals unbemerkt als vermeintlich aktueller Datenstand weiterlaufen.
-
-`docker compose down` erhält Volumes. **`docker compose down -v` löscht Datenbank und CA dauerhaft.**
+Vor dem Update Image-Digest, Compose-Dateien, JSON-Export und konsistenten PostgreSQL-Dump extern sichern. Für eine Rückkehr passende App und dazugehörigen Datenbankstand gemeinsam wiederherstellen. Bereits vorhandene archivierte Datenbankdateien und Volumes nicht ungeprüft löschen; sie werden von dieser Bereinigung nicht verändert. Das `/data`-Volume bleibt für JSON-Sicherungen vor nuLiga-Abgleichen erhalten. Die separate Betriebssicherung von Installation, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt zusätzlich verpflichtend.
 
 ## Spieler und Mannschaften (Schema 9)
 

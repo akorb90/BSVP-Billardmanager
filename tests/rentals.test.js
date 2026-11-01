@@ -4,8 +4,8 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scryptSync} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
-import {createApp} from '../src/server.js';
+import {openTestDatabase} from './helpers/database.js';
+import {createApp} from './helpers/database.js';
 import {rentalPrice,hourlyRate} from '../public/rental-pricing.js';
 
 test('Minutengenaue Cent-Abrechnung und Prozentpreise einschließlich Grenzwerte',()=>{
@@ -22,10 +22,10 @@ test('Minutengenaue Cent-Abrechnung und Prozentpreise einschließlich Grenzwerte
 });
 
 test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'billard-rentals-')),dbPath=join(dir,'db.sqlite');
+  const dir=mkdtempSync(join(tmpdir(),'billard-rentals-')),dbKey=join(dir,'db');
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie,csrf,token='';
-  async function start(){server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbKey,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function call(path,data,admin=true,headers={}){const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(admin?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token}),...headers},body:data?JSON.stringify(data):undefined});return{status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};}
   async function login(){const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;}
   const state=async()=>(await call('/api/admin')).body;
@@ -96,11 +96,11 @@ test('Vermietung: Rechte, Konflikte, Persistenz, Abschluss, Korrektur und Audit'
     assert.equal((await call('/api/rentals/settings',{version:0,base_euros:10,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'})).status,409);
     const discountedStart=await call('/api/rentals',{table_no:7,settings_version:1,discount:20});
     assert.equal(discountedStart.body.hourly_cents,960);assert.equal(discountedStart.body.adjustment_percent,-20);
-    const db=new DatabaseSync(dbPath);
-    assert.equal(db.prepare("SELECT count(*) AS n FROM audit WHERE action='rental:finish'").get().n,1);
-    const audit=JSON.parse(db.prepare("SELECT detail FROM audit WHERE action='rental:edit' ORDER BY id LIMIT 1").get().detail);
+    const db=await openTestDatabase(dbKey);
+    assert.equal((await db.prepare("SELECT count(*) AS n FROM audit WHERE action='rental:finish'").get()).n,1);
+    const audit=JSON.parse((await db.prepare("SELECT detail FROM audit WHERE action='rental:edit' ORDER BY id LIMIT 1").get()).detail);
     assert.deepEqual(audit.before,end); assert.deepEqual(audit.after,corrected);
-    const deleted=db.prepare("SELECT detail FROM audit WHERE action='rental:delete' ORDER BY id").all().map(r=>JSON.parse(r.detail));
-    assert.deepEqual(deleted[0].before,discounted);assert.equal(deleted[1].before.status,'active');db.close();
+    const deleted=(await db.prepare("SELECT detail FROM audit WHERE action='rental:delete' ORDER BY id").all()).map(r=>JSON.parse(r.detail));
+    assert.deepEqual(deleted[0].before,discounted);assert.equal(deleted[1].before.status,'active');await db.close();
   } finally {if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
 });

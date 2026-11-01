@@ -4,18 +4,18 @@ import {scryptSync,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 test('Ten fixed games save lineups without starting, support doubles and 14/1, protect occupancy and restore all identities',async()=>{
   const dir=mkdtempSync(join(tmpdir(),'league-')),config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie='',csrf='';
-  const start=async file=>{server=await createApp({dbPath:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;};
+  const start=async file=>{server=await createApp({dbKey:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;};
   const call=async(path,body,auth=true)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(auth?{Cookie:cookie,'X-CSRF-Token':csrf}:{})},body:body?JSON.stringify(body):undefined});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')};};
   const ok=async(path,body)=>{const r=await call(path,body);assert.ok([200,201].includes(r.status),JSON.stringify(r.data));return r.data;};
   const login=async()=>{const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.data.csrf;};
   const state=()=>ok('/api/admin');
   try {
-    await start('source.sqlite');await login();
+    await start('source');await login();
     const people=[];for(const name of ['Anna','Ada','Ben','Bert'])people.push((await ok('/api/players',{first_name:name,last_name:'Test'})).id);
     const home=(await ok('/api/teams',{name:'BSV Pfaffenhofen',player_ids:people.slice(0,2)})).id,away=(await ok('/api/teams',{name:'Gegner',player_ids:people.slice(2)})).id;
     const event=(await ok('/api/events',{name:'Fester Spieltag',kind:'Liga',date:'2026-11-07'})).id;
@@ -44,7 +44,7 @@ test('Ten fixed games save lineups without starting, support doubles and 14/1, p
     snapshot=await state();m=snapshot.matches.find(x=>x.id===m.id);assert.equal((await call('/api/matches/'+m.id+'/edit',{...m,discipline:'8-Ball',event_version:snapshot.events.find(e=>e.id===event).version})).status,409);
     const backup=await ok('/api/backups/export');assert.equal(backup.data.event_match_slots.find(s=>s.slot===5).player_a2_id,people[1]);
     const bad=structuredClone(backup);bad.data.event_match_slots.find(s=>s.slot===5).player_b2_id='missing';bad.checksum=createHash('sha256').update(JSON.stringify(bad.data)).digest('hex');assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
-    await new Promise(r=>server.close(r));await start('target.sqlite');await login();await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
+    await new Promise(r=>server.close(r));await start('target');await login();await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
     const restored=await ok('/api/backups/export');for(const name of Object.keys(backup.data))if(name!=='audit')assert.deepEqual(restored.data[name],backup.data[name]);
     const old=structuredClone(backup);old.schema=11;delete old.data.event_match_slots;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}

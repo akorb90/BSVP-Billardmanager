@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+import {openTestDatabase} from './helpers/database.js';
 import {scryptSync} from 'node:crypto';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 const config={adminHash:`salt:${scryptSync('password','salt',64).toString('hex')}`,tables:Array.from({length:8},(_,i)=>String(i).repeat(40))};
 test('Veranstaltungen und Partien bleiben nach bestätigtem Gesamtabschluss korrigierbar',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'billard-events-')), path=join(dir,'db.sqlite');
+  const dir=mkdtempSync(join(tmpdir(),'billard-events-')), path=join(dir,'db');
   let server,base,cookie,csrf,tabletToken;
-  async function start(){server=await createApp({dbPath:path,config}); await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+  async function start(){server=await createApp({dbKey:path,config}); await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
   async function request(path,data,admin=true){
     if(data && admin && /\/(edit|delete|close)$/.test(path)) {
       const action=path.split('/').at(-1), entity=path.includes('/events/')?'event':'match';
@@ -85,29 +85,10 @@ const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://
     await new Promise(r=>server.close(r)); await start(); await login();
     assert.equal((await event(eid)).status,'closed');
     assert.equal((await match(mid)).b,1);
-    const db=new DatabaseSync(path);
-    assert.equal(db.prepare('PRAGMA user_version').get().user_version,13);
-    const deleted=db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get();
+    const db=await openTestDatabase(path);
+    assert.equal((await db.prepare('SELECT version FROM _schema WHERE id=1').get()).version,13);
+    const deleted=(await db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get());
     assert.equal(JSON.parse(deleted.detail).matches[0].id,movable);
-    db.close();
+    await db.close();
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
-});
-
-test('Migration übernimmt bestehende Version-1-Daten und ist wiederholbar',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'billard-migration-')),path=join(dir,'legacy.sqlite');
-  try{
-    const legacy=new DatabaseSync(path);
-    legacy.exec(`CREATE TABLE events(id INTEGER PRIMARY KEY,name TEXT NOT NULL,kind TEXT NOT NULL,date TEXT NOT NULL);
-      CREATE TABLE matches(id INTEGER PRIMARY KEY,event_id INTEGER NOT NULL REFERENCES events(id),player_a TEXT NOT NULL,player_b TEXT NOT NULL,discipline TEXT NOT NULL,target INTEGER NOT NULL,first TEXT NOT NULL,table_no INTEGER,a INTEGER DEFAULT 0,b INTEGER DEFAULT 0,status TEXT DEFAULT 'planned',version INTEGER DEFAULT 0);
-      INSERT INTO events VALUES(7,'Altbestand','Liga','2026-10-26');
-      INSERT INTO matches VALUES(9,7,'Alt A','Alt B','8-Ball',5,'a',1,5,3,'finished',12);
-      PRAGMA user_version=1;`); legacy.close();
-    for(let i=0;i<2;i++){
-      const server=await createApp({dbPath:path,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));await new Promise(r=>server.close(r));
-    }
-    const db=new DatabaseSync(path);
-    assert.equal(db.prepare('SELECT status FROM events WHERE id=7').get().status,'open');
-    assert.deepEqual({...db.prepare('SELECT a,b,version FROM matches WHERE id=9').get()},{a:5,b:3,version:12});
-    assert.equal(db.prepare("SELECT value FROM entity_ids WHERE name='matches'").get().value,9);db.close();
-  }finally{rmSync(dir,{recursive:true,force:true});}
 });

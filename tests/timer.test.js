@@ -4,13 +4,13 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scryptSync} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
-import {createApp} from '../src/server.js';
+import {openTestDatabase} from './helpers/database.js';
+import {createApp} from './helpers/database.js';
 test('Vorbereitung ist Pflicht, Timer bleiben erhalten und stoppen beim Abschluss',async()=>{
- const dir=mkdtempSync(join(tmpdir(),'billard-time-')),dbPath=join(dir,'db.sqlite');
+ const dir=mkdtempSync(join(tmpdir(),'billard-time-')),dbKey=join(dir,'db');
  const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
  let server,base,cookie,csrf,token='';
- async function start(){server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
+ async function start(){server=await createApp({dbKey,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base=`http://127.0.0.1:${server.address().port}`;}
  async function call(path,data,admin=true){
     if(data && /\/matches\/\d+\/edit$/.test(path)) {const snapshot=(await call('/api/admin')).body;const m=snapshot.matches.find(m=>m.id===Number(path.split('/')[3]));data={...data,event_version:snapshot.events.find(e=>e.id===m.event_id).version,action:'match:edit',confirmation:'SPIEL ÄNDERN'};}
 const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(admin?{Cookie:cookie||'','X-CSRF-Token':csrf||''}:{Authorization:'Bearer '+token})},body:data?JSON.stringify(data):undefined});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};}
@@ -26,8 +26,8 @@ const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://
  r=await call('/api/matches/1/begin',{lag_winner:'a',first:'b',version:1},false);
  assert.equal(r.status,200);assert.equal(r.body.breaker,'b');assert.equal(r.body.lag_winner,'a');assert.ok(r.body.started_at>0);
  assert.equal((await call('/api/matches/1/begin',{lag_winner:'b',first:'a',version:2},false)).status,409);
- const db=new DatabaseSync(dbPath),earlier=Date.now()-61000;
- db.prepare('UPDATE matches SET running_since=?,started_at=?,rack_since=? WHERE id=1').run(earlier,earlier,earlier+57000);db.close();
+ const db=await openTestDatabase(dbKey),earlier=Date.now()-61000;
+ await db.prepare('UPDATE matches SET running_since=?,started_at=?,rack_since=? WHERE id=1').run(earlier,earlier,earlier+57000);await db.close();
  await new Promise(r=>server.close(r));await start();await login();
  token=(await call('/api/tables/1/login',{pin:'012345'},false)).body.token;
  let m=(await call('/api/tables/1',undefined,false)).body.match;assert.equal(m.started_at,earlier);assert.equal(m.running_since,earlier);

@@ -9,7 +9,7 @@ import { tableService } from './tables.js';
 import { backupService, BACKUP_LIMIT } from './backup.js';
 import { loadConfig } from './config.js';
 import { rentalService } from './rentals.js';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { openDatabase } from './database.js';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ import { changeScore, breaker } from './domain.js';
 import { brandingService, LOGO_LIMIT } from './branding.js';
 import {adminStateService} from './admin-state.js';
 
-export async function createApp({ dbPath, databaseUrl, legacyPath, config, origin = 'http://localhost:3000', collectNuLiga, collectNuLigaSchedule }) {
+export async function createApp({ databaseUrl, config, origin = 'http://localhost:3000', collectNuLiga, collectNuLigaSchedule }) {
   const allowedOrigins = new Set([new URL(origin).origin]);
   const localOrigin = new URL(origin);
   for (const hostname of ['localhost', '127.0.0.1']) {
@@ -25,7 +25,7 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
     allowedOrigins.add(localOrigin.origin);
   }
   if (!config.adminHash || config.tables?.length !== 8 || config.tables.some(k => typeof k !== 'string' || k.length < 32)) throw new Error('Ungültige Sicherheitskonfiguration; npm run setup ausführen.');
-  const db = await openDatabase({dbPath, databaseUrl, legacyPath, config});
+  const db = await openDatabase({databaseUrl, config});
   const adminHash = async () => (await db.prepare('SELECT password_hash FROM admin_credentials WHERE id=1').get()).password_hash;
   const sessions = new Map(), attempts = new Map(), tabletSessions = new Map();
   const hash = s => createHash('sha256').update(s).digest('hex');
@@ -392,9 +392,8 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
   return server;
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  mkdirSync(process.env.DATA_DIR || 'data', { recursive: true });
   const config = loadConfig(process.env.CONFIG_FILE || 'secrets/config.json');
-  const server = await createApp({ databaseUrl: process.env.DATABASE_URL, legacyPath: `${process.env.DATA_DIR || 'data'}/billard.sqlite`, config, origin: process.env.APP_ORIGIN || 'http://localhost:3000' });
+  const server = await createApp({ databaseUrl: process.env.DATABASE_URL, config, origin: process.env.APP_ORIGIN || 'http://localhost:3000' });
   server.listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Billardmanager hört auf Port ' + (process.env.PORT || 3000)));
   for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => server.close());
 }

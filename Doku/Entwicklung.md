@@ -28,7 +28,7 @@ npm test
 npm start
 ```
 
-Die Anwendung benötigt PostgreSQL. Der lokale Compose-Stack stellt diesen Dienst ohne öffentlichen Datenbankport bereit. Für einen externen Entwicklungsserver `DATABASE_URL` mit Zugangsdaten setzen; im Compose-Stack liest `DATABASE_PASSWORD_CONFIG` die bestehende Sicherheitsdatei und leitet daraus das interne Passwort ab. `APP_ORIGIN`, `PORT`, `DATA_DIR` (nur Altbestand) und `CONFIG_FILE` bleiben konfigurierbar. Der PostgreSQL-Treiber `pg` wird mit `npm ci` aus der Lockdatei installiert. SQLite ist nur noch für Altbestandsübernahme und isolierte Kompatibilitätstests enthalten. Der Server startet ohne PostgreSQL-Konfiguration nicht versehentlich mit einer lokalen SQLite-Datei.
+Die Anwendung benötigt PostgreSQL. Der lokale Compose-Stack stellt diesen Dienst ohne öffentlichen Datenbankport bereit. Für einen externen Entwicklungsserver `DATABASE_URL` mit Zugangsdaten setzen; im Compose-Stack liest `DATABASE_PASSWORD_CONFIG` die bestehende Sicherheitsdatei und leitet daraus das interne Passwort ab. `APP_ORIGIN`, `PORT`, `DATA_DIR` (JSON-Sicherungen vor nuLiga-Abgleichen) und `CONFIG_FILE` bleiben konfigurierbar. Der PostgreSQL-Treiber `pg` wird mit `npm ci` aus der Lockdatei installiert. Initialisierung, Betrieb und Funktionstests verwenden ausschließlich PostgreSQL. Ohne PostgreSQL-Konfiguration startet der Server nicht. `npm test` startet einen eigenen kurzlebigen PostgreSQL-17-Container an einem zufälligen Loopback-Port; jede Testdatei erhält getrennte Datenbanken. Dafür muss Docker laufen. Einzelne Tests: `node scripts/test.js tests/<name>.test.js`; intern läuft `node --test`. Eigene Testdatenbanken und Container werden danach entfernt, der laufende Vereinsstack bleibt unberührt.
 
 Die Tests prüfen Breakwechsel einschließlich Korrekturen, ungültige Punkte, vollständigen Spielablauf, Authentifizierung, CSRF/Origin, Tischisolation, doppelte Tischbelegung, konkurrierende Punkteingaben, Ergebnisabschluss, Persistenz nach Neustart und Login-Limit.
 
@@ -47,7 +47,7 @@ Geprüft werden die echte TLS-Zertifikatskette über die temporäre Caddy-CA, Fr
 
 Nach dem Lauf werden ausschließlich die Container und Volumes dieses Testprojekts entfernt. Das gebaute Testimage bleibt als Build-Cache erhalten. Der lokale Bericht `data/docker-test-*/result.json`, temporäre Test-Secrets und das öffentliche CA-Zertifikat bleiben im von Git ausgeschlossenen Testordner; diese Zugangsdaten gelten nur für den bereits entfernten Teststack. Bei hartem Prozessabbruch kann dessen Compose-Projekt bestehen bleiben: dann das konkret ausgegebene Projekt gezielt über Docker Desktop aufräumen, niemals pauschal Produktionsvolumes löschen.
 
-Der vollständige Docker-Test prüft auch Backup-Export/Import sowie eine vollständige SQLite-Übernahme und Wiederherstellung zwischen getrennten PostgreSQL-Datenbanken: Einstellungen, Logo, Farben, Hashes, Zeiten, Preise, Historie, neue Tabellen, fehlgeschlagene Migrationen und fehlerhafte Importe. Echte Tablets im Vereins-WLAN und die Zertifikatsinstallation auf den Geräten sind separat zu prüfen.
+Der vollständige Docker-Test prüft auch Backup-Export/Import sowie die direkte PostgreSQL-Initialisierung, Schema-Upgrades und Wiederherstellung zwischen getrennten PostgreSQL-Datenbanken: Einstellungen, Logo, Farben, Hashes, Zeiten, Preise, Historie, neue Tabellen, fehlgeschlagene Migrationen und fehlerhafte Importe. Echte Tablets im Vereins-WLAN und die Zertifikatsinstallation auf den Geräten sind separat zu prüfen.
 
 ## Aktuelle Architektur
 
@@ -64,10 +64,10 @@ Stand: 2026-10-29, logisches Datenschema **13** (`SCHEMA_VERSION` in `src/databa
 | Spielbetrieb | `src/domain.js`, `src/tables.js`, `src/participant-occupancy.js`, `src/rentals.js`: Regeln, Tisch- und Spielerbelegung sowie Vermietung |
 | Veranstaltungen und Stammdaten | `src/players.js`, `src/schedule.js`, `src/league.js`, `src/tournaments.js`: Spieler/Mannschaften, Planung, Liga-Aufstellungen, Gruppen und KO |
 | nuLiga | `src/nuliga.js` und `scripts/nuliga-sync.js`: externe Vereinsdaten und Synchronisierung |
-| Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/legacy-db.js`: SQLite-Altbestände und isolierte Kompatibilitätstests |
+| Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/schema.sql`: vollständiges PostgreSQL-Ausgangsschema |
 | Einstellungen und Sicherung | `src/branding.js`, `src/backup.js`: Vereinsgestaltung, vollständiger Export, Prüfung und Wiederherstellung |
 
-SQL-Werte werden parametrisiert übergeben. Transaktionen nutzen eine feste Pool-Verbindung und eine gemeinsame transaktionale Advisory-Sperre für atomare Prüfungen und Änderungen, insbesondere bei Versionen und Tischbelegung. Das SQLite-Verfahren ist kein produktiver Ersatzbetrieb: Der Server benötigt PostgreSQL.
+SQL-Werte werden parametrisiert übergeben. Transaktionen nutzen eine feste Pool-Verbindung und eine gemeinsame transaktionale Advisory-Sperre für atomare Prüfungen und Änderungen, insbesondere bei Versionen und Tischbelegung. Der Server und die Datenbanktests benötigen PostgreSQL.
 
 Das aktuelle Datenmodell umfasst Veranstaltungen und Partien mit Zeiten, Ergebnissen und PIN-Hashes, Änderungsprotokoll und ID-Zähler, Vermietungen und Preise, Admin-Hash, Vereinsgestaltung, Tischanzahl, Spieler/Mannschaften und historische Zuordnungen, nuLiga-Zuordnungen und Sync-Stände, Spieltagsplanung, Liga-Aufstellungen und Spieltagsgäste. Turniere speichern ihre Regeln, Auslosungen und Fortschritte in `event_planning.metadata` (Turnierformat 1) und verwenden reguläre `matches`; sie erfordern keine zusätzliche Schemaversion.
 
@@ -75,7 +75,7 @@ Exporte ermitteln alle Anwendungstabellen und Spalten aus dem installierten Sche
 
 Die Tischanzahl ist zwischen 1 und 20 einstellbar. Neue Belegungen müssen innerhalb dieser Grenze liegen; historische Tischzuordnungen bleiben bei einer Verringerung erhalten. Vermietungen verwenden den gespeicherten Grundpreis und einen Rabatt von 0 bis 100 Prozent.
 
-Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1–13, PostgreSQL-Upgrades, SQLite-Übernahme und ältere Sicherungen. Geplante Erweiterungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
+Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1–13, PostgreSQL-Upgrades und ältere JSON-Sicherungen. Geplante Erweiterungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
 ## Lokale Ausgaben
 

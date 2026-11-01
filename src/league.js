@@ -4,18 +4,6 @@ export const LEAGUE_SLOTS=['8-Ball','9-Ball','10-Ball','14/1','9-Ball','10-Ball'
 export const leagueSchema=`CREATE TABLE event_match_slots(event_id INTEGER NOT NULL,slot INTEGER NOT NULL CHECK(slot BETWEEN 1 AND 10),match_id INTEGER UNIQUE,player_a_id TEXT,player_a2_id TEXT,player_b_id TEXT,player_b2_id TEXT,table_no INTEGER CHECK(table_no BETWEEN 1 AND 20),target INTEGER CHECK(target BETWEEN 1 AND 999),version INTEGER NOT NULL DEFAULT 0 CHECK(version>=0),PRIMARY KEY(event_id,slot));
 INSERT INTO event_match_slots(event_id,slot) SELECT e.id,s.slot FROM events e CROSS JOIN (SELECT 1 AS slot UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10) s;`;
 
-export function migrateLeague(db) {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const sql=db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='matches'").get().sql;
-    const indexes=db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='matches' AND sql IS NOT NULL").all();
-    db.exec(sql.replace(/CREATE TABLE\s+"?matches"?/i,'CREATE TABLE matches_expanded').replace(/target BETWEEN 1 AND 99\b/,'target BETWEEN 1 AND 999'));
-    db.exec('INSERT INTO matches_expanded SELECT * FROM matches;DROP TABLE matches;ALTER TABLE matches_expanded RENAME TO matches;');
-    for(const index of indexes)db.exec(index.sql);
-    db.exec(leagueSchema+'PRAGMA user_version=12;COMMIT;');
-  }catch(error){db.exec('ROLLBACK');throw error;}
-}
-
 export function leagueService({db,transaction,fail,log,nextId,openEvent,touchEvent,tables,rentals,encodePin,assertParticipantsAvailable}) {
   return {
     state:()=>db.prepare('SELECT * FROM event_match_slots ORDER BY event_id,slot').all(),

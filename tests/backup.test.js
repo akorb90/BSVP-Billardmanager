@@ -4,13 +4,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scryptSync, createHash } from 'node:crypto';
-import { createApp } from '../src/server.js';
+import { createApp } from './helpers/database.js';
 
 test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre und Neustart', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'billard-backup-'));
   const config = { adminHash: 'salt:'+scryptSync('original-password','salt',64).toString('hex'), tables:Array(8).fill('x'.repeat(40)) };
   let server, base, cookie='', csrf='';
-  const start = async name => { server=await createApp({dbPath:join(dir,name),config}); await new Promise(r=>server.listen(0,'127.0.0.1',r)); base=`http://127.0.0.1:${server.address().port}`; };
+  const start = async name => { server=await createApp({dbKey:join(dir,name),config}); await new Promise(r=>server.listen(0,'127.0.0.1',r)); base=`http://127.0.0.1:${server.address().port}`; };
   const stop = () => new Promise(r=>server.close(r));
   async function call(path, data, headers={}) {
     const res=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf,...headers},body:data?JSON.stringify(data):undefined});
@@ -20,7 +20,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
   const restore = backup => call('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});
   const resign = backup => { backup.checksum=createHash('sha256').update(JSON.stringify(backup.data)).digest('hex');return backup; };
   try {
-    await start('source.sqlite');
+    await start('source');
     assert.equal((await call('/api/backups/export')).status,401);
     assert.equal((await call('/api/backups/preview',{backup:{}})).status,401);
     await login();
@@ -52,7 +52,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
     await call('/api/events',{name:'Zwischenzeitliche Änderung',kind:'Turnier',date:'2026-10-29'});
     assert.equal((await restore(backup)).status,409);
     // A fresh installation gets every application table, including the changed password.
-    await stop();await start('target.sqlite');cookie='';csrf='';await login();
+    await stop();await start('target');cookie='';csrf='';await login();
     await call('/api/events',{name:'Zu ersetzen',kind:'Liga',date:'2026-10-28'});
     const preview=await call('/api/backups/preview',{backup});assert.equal(preview.status,200);assert.equal(preview.body.events,1);
     const oldCookie=cookie,oldCsrf=csrf;
@@ -67,7 +67,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
     assert.equal((await call('/api/tables/1',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).body.match.a,1);
     await call('/api/backups/preview',{backup});assert.equal((await restore(backup)).status,200);
     assert.equal((await call('/api/tables/1',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).status,401);
-    await stop();await start('target.sqlite');cookie='';csrf='';
+    await stop();await start('target');cookie='';csrf='';
     assert.equal((await login('backup-password-2026')).status,200);
     assert.equal((await call('/api/admin')).body.rental_settings.base_cents,1200);
     assert.equal((await call('/api/events',{name:'Nach Import',kind:'Liga',date:'2026-10-28'})).body.id,2);

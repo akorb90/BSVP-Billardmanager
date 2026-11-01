@@ -4,13 +4,13 @@ import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scryptSync} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
+import {openTestDatabase} from './helpers/database.js';
 import vm from 'node:vm';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 test('FR-002: exact confirmations, parent conflicts, closed corrections, deletion and audit',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'billard-confirm-')),dbPath=join(dir,'db.sqlite');
-  const server=await createApp({dbPath,config:{adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))}});
+  const dir=mkdtempSync(join(tmpdir(),'billard-confirm-')),dbKey=join(dir,'db');
+  const server=await createApp({dbKey,config:{adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   let cookie='',csrf='';
   const call=async(path,data,admin=true)=>{
@@ -63,13 +63,13 @@ test('FR-002: exact confirmations, parent conflicts, closed corrections, deletio
     assert.equal((await call('/api/events/1/delete',eventDelete)).status,200);
     assert.equal((await state()).matches.length,0);
     // Also exercise deleting a single finished match from a closed event.
-    const db=new DatabaseSync(dbPath);
-    const audit=db.prepare('SELECT action,detail FROM audit ORDER BY id').all();
+    const db=await openTestDatabase(dbKey);
+    const audit=(await db.prepare('SELECT action,detail FROM audit ORDER BY id').all());
     const correction=JSON.parse(audit.find(r=>r.action==='edit').detail);
     assert.equal(correction.before.a,1);assert.equal(correction.before.b,0);
     const deleted=JSON.parse(audit.find(r=>r.action==='event:delete').detail);
     assert.equal(deleted.before.status,'closed');assert.equal(deleted.matches[0].b,1);
-    assert.ok(!JSON.stringify(audit).includes('pin_hash'));db.close();
+    assert.ok(!JSON.stringify(audit).includes('pin_hash'));await db.close();
   } finally {await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
 });
 

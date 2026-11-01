@@ -20,7 +20,7 @@ Bei `denied` oder `manifest unknown` zunächst die erfolgreiche Veröffentlichun
 
 ## PostgreSQL-Umstellung (FR-012)
 
-Die aktualisierte `compose.yaml` ist zwingend erforderlich: Sie ergänzt PostgreSQL 17 als Dienst `db`, ein internes Datenbanknetz, Healthcheck und das Volume `postgres_data`. Es wird kein Datenbankport veröffentlicht. App und Datenbank verwenden den SHA-256 der unveränderten vorhandenen `secrets/config.json` als internen Datenbankzugang; keine neuen Zugangsdaten erzeugen und die Datei nicht neu formatieren. Der Benutzerzugang bleibt unverändert. Der erste App-Start übernimmt den SQLite-Altbestand atomar in die leere Datenbank; spätere Starts verwenden ausschließlich PostgreSQL. Vorher die [vollständige Sicherung einschließlich Rückkehrstand](Datensicherung.md) erstellen. Bestehende `.env`, Projektzuordnung, SQLite- und Caddy-Volumes erhalten.
+Die aktualisierte `compose.yaml` ist zwingend erforderlich: Sie ergänzt PostgreSQL 17 als Dienst `db`, ein internes Datenbanknetz, Healthcheck und das Volume `postgres_data`. Es wird kein Datenbankport veröffentlicht. App und Datenbank verwenden den SHA-256 der unveränderten vorhandenen `secrets/config.json` als internen Datenbankzugang; keine neuen Zugangsdaten erzeugen und die Datei nicht neu formatieren. Der Benutzerzugang bleibt unverändert. Leere Datenbanken werden direkt aus `src/schema.sql` initialisiert; bestehende PostgreSQL-Datenbanken werden transaktional aktualisiert. Eine automatische Übernahme alter Datenbankdateien findet nicht mehr statt. Vorher die [vollständige Sicherung einschließlich Rückkehrstand](Datensicherung.md) erstellen. Bestehende `.env`, Projektzuordnung, Sicherheitsdatei und Daten-/Caddy-Volumes erhalten.
 
 ## Bestehende Installation umstellen
 

@@ -106,8 +106,7 @@ export async function backupService({ db, transaction, fail, log }) {
         for(const r of data.nuliga_schedule_sync){const summary=JSON.parse(r.summary);if(!Number.isFinite(Date.parse(r.synced_at))||!summary||!Number.isSafeInteger(summary.found))throw Error('schedule sync');}
         validateTournamentBackup(data);
         await replace(backup.data);
-        if (db.dialect === 'postgres') await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
-        else if ((await db.prepare('PRAGMA foreign_key_check').all()).length) throw new Error('foreign key');
+        await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         const tableSettings=await check.prepare('SELECT * FROM table_settings').all();
         if (tableSettings.length!==1) throw new Error('table settings');
         const count=tableSettings[0].table_count;

@@ -89,7 +89,7 @@ export function adminStateService({db,fail,publicMatch,players,tables,nuliga,sch
         parts.push(`SELECT m.${side} AS own,m.${other} AS opponent,CASE WHEN m.discipline='14/1' THEN CAST(m.${side}/10 AS INTEGER) ELSE m.${side} END AS won,CASE WHEN m.discipline='14/1' THEN CAST(m.${other}/10 AS INTEGER) ELSE m.${other} END AS lost FROM ${from} WHERE ${id?belongs(side):'1=0'} AND m.status='finished'${filters.length?' AND '+filters.join(' AND '):''}`);
         aggregateArgs.push(...(id?sideArgs():[]),...args);
       }
-      result.statistics=await one(`SELECT COUNT(*) AS count,COALESCE(SUM(CASE WHEN own>opponent THEN 1 ELSE 0 END),0) AS wins,COALESCE(SUM(CASE WHEN own<opponent THEN 1 ELSE 0 END),0) AS losses,COALESCE(SUM(won),0) AS won,COALESCE(SUM(lost),0) AS lost FROM (${parts.join(' UNION ALL ')}) sides`,aggregateArgs);
+      result.statistics=await one(`SELECT COUNT(*) AS count,COALESCE(SUM(CASE WHEN own>opponent THEN 1 ELSE 0 END),0) AS wins,COALESCE(SUM(CASE WHEN own<opponent THEN 1 ELSE 0 END),0) AS losses,CAST(COALESCE(SUM(won),0) AS BIGINT) AS won,CAST(COALESCE(SUM(lost),0) AS BIGINT) AS lost FROM (${parts.join(' UNION ALL ')}) sides`,aggregateArgs);
     }
     if(name==='planung'||name==='spieltage')Object.assign(result,await players.state(result.events.filter(e=>e.id===Number(params.get('event'))||e.status==='open').map(e=>e.id)));
     const missing=[...new Set(result.matches.map(m=>m.event_id))].filter(id=>!result.events.some(e=>e.id===id));

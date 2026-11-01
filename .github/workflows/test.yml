@@ -16,7 +16,7 @@ jobs:
       - run: npm ci
       - run: node --check src/server.js
       - run: node --check public/app.js
-      - run: node --test
+      - run: npm test
       - run: docker compose --env-file .env.example config --quiet
       - run: docker compose --env-file .env.example -f compose.yaml config --quiet
       - run: node scripts/docker-smoke.js

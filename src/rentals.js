@@ -14,18 +14,6 @@ export function validateRentalRecord(rental) {
   } else throw new Error('Ungültiger Buchungsstatus.');
 }
 
-export function migrateRentals(db) {
-  db.exec(`BEGIN IMMEDIATE;
-    CREATE TABLE rental_settings(id INTEGER PRIMARY KEY CHECK(id=1), base_cents INTEGER NOT NULL DEFAULT 900, version INTEGER NOT NULL DEFAULT 0);
-    INSERT INTO rental_settings(id) VALUES(1);
-    CREATE TABLE rentals(id INTEGER PRIMARY KEY, table_no INTEGER NOT NULL CHECK(table_no BETWEEN 1 AND 8),
-      started_at INTEGER NOT NULL, ended_at INTEGER, hourly_cents INTEGER NOT NULL, base_cents INTEGER NOT NULL,
-      adjustment_percent REAL, duration_ms INTEGER, billed_minutes INTEGER, total_cents INTEGER,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','finished')), version INTEGER NOT NULL DEFAULT 0);
-    CREATE UNIQUE INDEX rented_table ON rentals(table_no) WHERE status='active';
-    PRAGMA user_version=5; COMMIT;`);
-}
-
 export async function rentalService({db, transaction, fail, integer, log, activeTable}) {
   await db.prepare("INSERT INTO entity_ids(name,value) VALUES('rentals',(SELECT COALESCE(MAX(id),0) FROM rentals)) ON CONFLICT(name) DO NOTHING").run();
   const confirm = (body, action, phrase) => {

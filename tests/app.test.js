@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scryptSync } from 'node:crypto';
-import { createApp } from '../src/server.js';
+import { createApp } from './helpers/database.js';
 import { changeScore, breaker } from '../src/domain.js';
 
 test('Wechselbreak folgt der Rackzahl, einschließlich Korrekturen', () => {
@@ -23,7 +23,7 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
   const config = { adminHash:`salt:${scryptSync('test-password','salt',64).toString('hex')}`, tables:Array.from({length:8},(_,i) => `table-${i}-` + 'x'.repeat(40)) };
   let server, base, cookie='', csrf='';
   const start = async () => {
-    server = await createApp({ dbPath:join(dir,'test.sqlite'),config,origin:'http://localhost:3000' });
+    server = await createApp({ dbKey:join(dir,'test'),config,origin:'http://localhost:3000' });
     await new Promise(resolve => server.listen(0,'127.0.0.1',resolve)); base = `http://127.0.0.1:${server.address().port}`;
   };
   const request = async (path, data, { admin=true, key, origin='http://localhost:3000', csrfValue=csrf }={}) => {
@@ -91,7 +91,7 @@ test('Spieltag, Tischrechte, Konflikte, Abschluss und Persistenz', async () => {
 
 test('Login-Versuche sind begrenzt', async () => {
   const config={adminHash:`salt:${scryptSync('password','salt',64).toString('hex')}`,tables:Array(8).fill('a'.repeat(40))};
-  const server=await createApp({dbPath:':memory:',config});
+  const server=await createApp({config});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try {
     for(let i=0;i<11;i++) {
@@ -103,7 +103,7 @@ test('Login-Versuche sind begrenzt', async () => {
 
 test('CORS erlaubt nur explizite Origins und behält CSRF-Schutz bei', async () => {
   const config = { adminHash:`salt:${scryptSync('password','salt',64).toString('hex')}`, tables:Array(8).fill('x'.repeat(40)) };
-  const server = await createApp({ dbPath:':memory:', config, origin:'https://localhost' });
+  const server = await createApp({  config, origin:'https://localhost' });
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const preflight = origin => fetch(base+'/api/login', { method:'OPTIONS',headers:{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type, x-csrf-token, authorization'} });

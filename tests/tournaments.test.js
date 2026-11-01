@@ -4,7 +4,7 @@ import {scryptSync,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 import {drawTournament,makeBracket,standings,validateOptions,roundRobin} from '../src/tournaments.js';
 
 const people=n=>Array.from({length:n},(_,i)=>({id:'p'+i,name:'Spieler '+i}));
@@ -30,7 +30,7 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
   const call=async(path,data,auth={})=>{const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie||'','X-CSRF-Token':csrf||'',...auth},body:data?JSON.stringify(data):undefined});return {status:r.status,body:await r.json(),cookie:r.headers.get('set-cookie')};};
   const ok=async(path,data,auth)=>{const r=await call(path,data,auth);assert.ok([200,201].includes(r.status),path+': '+JSON.stringify(r.body));return r.body;};
   const login=async()=>{const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.body.csrf;};
-  const start=async file=>{server=await createApp({dbPath:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;await login();};
+  const start=async file=>{server=await createApp({dbKey:join(dir,file),config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;await login();};
   const state=()=>ok('/api/admin');
   const event=async id=>(await state()).events.find(e=>e.id===id);
   const action=async(id,action,data={})=>ok('/api/events/'+id+'/tournament/'+action,{version:(await event(id)).version,...data});
@@ -44,7 +44,7 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     await ok('/api/matches/'+id+'/finish',{version:m.version,action:'match:finish',confirmation:'SPIEL ABSCHLIESSEN'},auth);
   }
   try{
-    await start('source.sqlite');const ids=[];
+    await start('source');const ids=[];
     for(let i=0;i<6;i++)ids.push((await ok('/api/players',{first_name:'Spieler',last_name:String(i)})).id);
     const id=(await ok('/api/events',{name:'Gruppen und KO',kind:'Turnier',date:'2026-10-29'})).id;
     const data={...options,player_ids:ids,assignment:'manual',groupAssignments:Object.fromEntries(ids.map((id,i)=>[id,i<3?1:2]))};
@@ -73,8 +73,8 @@ test('FR-006: groups, ties, qualification, tablet, correction locks, restart and
     for(const corrupt of [t=>t.rounds[0][0].a=ids[5],t=>t.groups[0].games.pop(),t=>t.resolutions[0].order=[ids[0]],t=>t.champion='missing']){
       const bad=structuredClone(backup),p=bad.data.event_planning.find(p=>p.event_id===id),meta=JSON.parse(p.metadata);corrupt(meta.tournament);p.metadata=JSON.stringify(meta);bad.checksum=createHash('sha256').update(JSON.stringify(bad.data)).digest('hex');assert.equal((await call('/api/backups/preview',{backup:bad})).status,400);
     }
-    await new Promise(r=>server.close(r));await start('source.sqlite');assert.deepEqual((await event(id)).tournament,t);
-    await new Promise(r=>server.close(r));await start('restore.sqlite');
+    await new Promise(r=>server.close(r));await start('source');assert.deepEqual((await event(id)).tournament,t);
+    await new Promise(r=>server.close(r));await start('restore');
     await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
     const restored=await ok('/api/backups/export');for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(restored.data[table],backup.data[table]);
     await ok('/api/events/'+id+'/close',{version:(await event(id)).version,action:'event:close',confirmation:'EVENT ABSCHLIESSEN'});

@@ -4,8 +4,8 @@ import {scryptSync,createHash} from 'node:crypto';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
-import {createApp} from '../src/server.js';
+import {openTestDatabase} from './helpers/database.js';
+import {createApp} from './helpers/database.js';
 import {collectNuLigaSchedule} from '../src/schedule.js';
 
 test('Complete nuLiga schedule uses carried dates, filters results, past dates and other clubs',async()=>{
@@ -28,13 +28,13 @@ test('Scheduled events require explicit start; sync deduplicates and preserves a
   const registry={players:[{source_id:'1',first_name:'Anna',second_name:'',last_name:'BSV'},{source_id:'2',first_name:'Ben',second_name:'',last_name:'Gast'}],teams:[{source_id:'11',name:'BSV Pfaffenhofen',player_ids:['1']},{source_id:'22',name:'Gegner',player_ids:['2']}],leagues:[]};
   const fixture={source_id:'group:123',name:'BSV Pfaffenhofen – Gegner',date:'2026-11-07',time:'14:00',home:'BSV Pfaffenhofen',away:'Gegner',home_source_id:'11',away_source_id:'22',league:'Testliga',number:'123',url:'https://bbv-billard.liga.nu/'};
   let records=[{...fixture}],broken=false,server,base,cookie='',csrf='';
-  const start=async file=>{server=await createApp({dbPath:join(directory,file),config,collectNuLiga:async()=>registry,collectNuLigaSchedule:async()=>{if(broken)throw Error('Abruf fehlgeschlagen');return records;}});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;};
+  const start=async file=>{server=await createApp({dbKey:join(directory,file),config,collectNuLiga:async()=>registry,collectNuLigaSchedule:async()=>{if(broken)throw Error('Abruf fehlgeschlagen');return records;}});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;};
   const call=async(path,body,auth=true)=>{const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',...(auth?{Cookie:cookie,'X-CSRF-Token':csrf}:{})},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')};};
   const ok=async(path,body)=>{const r=await call(path,body);assert.ok([200,201].includes(r.status),JSON.stringify(r.data));return r.data;};
   const login=async()=>{const r=await call('/api/login',{password:'password'});cookie=r.cookie.split(';')[0];csrf=r.data.csrf;};
   const state=()=>ok('/api/admin');
   try {
-    await start('source.sqlite');await login();
+    await start('source');await login();
     assert.equal((await call('/api/settings/nuliga-schedule',{},false)).status,401);
     assert.equal((await call('/api/settings/nuliga-schedule',{})).status,409,'Missing registry aborts import atomically');assert.equal((await state()).events.length,0);
     await ok('/api/settings/nuliga',{});
@@ -51,11 +51,11 @@ test('Scheduled events require explicit start; sync deduplicates and preserves a
     records=[{...fixture,date:'2026-12-01'},{...fixture,source_id:'group:124',date:'2026-12-02'}];const result=await ok('/api/settings/nuliga-schedule',{});assert.equal(result.created,1);assert.equal(result.preserved,1);assert.equal((await state()).events.find(e=>e.id===event.id).date,'2026-11-08');
     const manual=await ok('/api/events',{name:'Manuell',kind:'Turnier',date:'2026-12-03'});assert.equal((await state()).events.find(e=>e.id===manual.id).phase,'planned');
     const obsolete=await ok('/api/events',{name:'Auswärtsimport',kind:'Liga',date:'2026-12-04'});
-    const raw=new DatabaseSync(join(directory,'source.sqlite'));raw.prepare('UPDATE event_planning SET source_id=?,started=1,metadata=? WHERE event_id=?').run('old:away',JSON.stringify({source:{...fixture,home:'Gegner',away:'BSV Pfaffenhofen'}}),obsolete.id);raw.close();
+    const raw=await openTestDatabase(join(directory,'source'));await raw.prepare('UPDATE event_planning SET source_id=?,started=1,metadata=? WHERE event_id=?').run('old:away',JSON.stringify({source:{...fixture,home:'Gegner',away:'BSV Pfaffenhofen'}}),obsolete.id);await raw.close();
     assert.equal((await ok('/api/settings/nuliga-schedule',{})).removed,1);assert.ok(!(await state()).events.some(e=>e.id===obsolete.id));
     const backup=await ok('/api/backups/export');assert.equal(backup.data.nuliga_schedule_sync.length,1);assert.equal(backup.data.event_planning.length,3);
     broken=true;assert.equal((await call('/api/settings/nuliga-schedule',{})).status,502);assert.deepEqual((await ok('/api/backups/export')).data,backup.data);broken=false;
-    await new Promise(r=>server.close(r));await start('target.sqlite');await login();await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
+    await new Promise(r=>server.close(r));await start('target');await login();await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
     const restored=await ok('/api/backups/export');for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(restored.data[table],backup.data[table]);
     assert.equal((await state()).events.filter(e=>e.phase==='planned').length,2);
     assert.equal((await ok('/api/settings/nuliga-schedule',{})).created,0);

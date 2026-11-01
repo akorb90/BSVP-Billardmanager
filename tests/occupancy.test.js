@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scryptSync} from 'node:crypto';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 async function fixture(t) {
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
-  const server=await createApp({dbPath:':memory:',config});
+  const server=await createApp({config});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   t.after(()=>new Promise(r=>server.close(r)));
   const base='http://127.0.0.1:'+server.address().port;let cookie='',csrf='';

@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scryptSync,createHash} from 'node:crypto';
-import {createApp} from '../src/server.js';
+import {createApp} from './helpers/database.js';
 
 test('AP3: semantic import validation rejects each inconsistent field atomically and preserves valid and legacy backups',async t=>{
   const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let server,base,cookie='',csrf='';
   const stop=()=>new Promise(r=>server.close(r));
   t.after(async()=>{if(server?.listening)await stop();});
-  async function start(){server=await createApp({dbPath:':memory:',config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;cookie='';csrf='';await login();}
+  async function start(){server=await createApp({config});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port;cookie='';csrf='';await login();}
   async function call(path,body){const r=await fetch(base+path,{method:body?'POST':'GET',headers:{Origin:'http://localhost:3000','Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf},body:body?JSON.stringify(body):undefined});return{status:r.status,data:await r.json(),cookie:r.headers.get('set-cookie')};}
   async function ok(path,body){const r=await call(path,body);assert.ok([200,201].includes(r.status),path+': '+JSON.stringify(r.data));return r.data;}
   async function login(){const r=await call('/api/login',{password:'password'});assert.equal(r.status,200);cookie=r.cookie.split(';')[0];csrf=r.data.csrf;}

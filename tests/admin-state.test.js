@@ -4,15 +4,15 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {scryptSync} from 'node:crypto';
-import {createApp} from '../src/server.js';
-import {openDatabase} from '../src/database.js';
+import {createApp} from './helpers/database.js';
+import {openDatabase} from './helpers/database.js';
 
 test('AP6: authenticated bounded views, complete doubles/14-1 statistics and independent live state',async()=>{
-  const dir=mkdtempSync(join(tmpdir(),'admin-pages-')),dbPath=join(dir,'test.sqlite');
+  const dir=mkdtempSync(join(tmpdir(),'admin-pages-')),dbKey=join(dir,'test');
   const config={adminHash:'test:'+scryptSync('test-only','test',64).toString('hex'),tables:Array(8).fill('x'.repeat(40))};
   let db,server;
   try {
-    db=await openDatabase({dbPath,config});
+    db=await openDatabase({dbKey,config});
     await db.exec(`INSERT INTO players(id,first_name,last_name) VALUES('a','Anna','A'),('b','Ben','B'),('double','Dora','D');
       INSERT INTO teams(id,name) VALUES('home','Heim'),('away','Gast');
       INSERT INTO events(id,name,kind,date,status) VALUES(1,'Archiv','Liga','2026-11-01','closed'),(2,'Live','Liga','2026-11-02','open'),(3,'Plan','Liga','2026-11-03','open');
@@ -22,7 +22,7 @@ test('AP6: authenticated bounded views, complete doubles/14-1 statistics and ind
     for(let id=1;id<=35;id++)await insert.run(id);
     await db.exec(`INSERT INTO event_match_slots(event_id,slot,match_id,player_a_id,player_a2_id,player_b_id) VALUES(1,5,1,'a','double','b');
       INSERT INTO matches(id,event_id,player_a,player_b,discipline,target,first,status,table_no) VALUES(36,2,'Live A','Live B','9-Ball',5,'a','live',1);`);
-    server=await createApp({dbPath,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+    server=await createApp({dbKey,config});await new Promise(r=>server.listen(0,'127.0.0.1',r));
     const base='http://127.0.0.1:'+server.address().port;
     const login=await fetch(base+'/api/login',{method:'POST',headers:{Origin:'http://localhost:3000','Content-Type':'application/json'},body:JSON.stringify({password:'test-only'})});
     const cookie=login.headers.get('set-cookie').split(';')[0];

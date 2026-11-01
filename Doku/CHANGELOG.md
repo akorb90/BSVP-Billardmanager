@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Veraltete SQLite-Komponenten entfernt — 2026-11-01
+
+- SQLite-Adapter, automatische Dateiübernahme, SQLite-Schemamigrationen und alternative Backup-Prüfung entfernt. Neue Datenbanken entstehen direkt aus dem vollständigen PostgreSQL-Schema `src/schema.sql`; bestehende PostgreSQL-Upgrades und JSON-Sicherungen der Stände 6–13 bleiben unterstützt. Betrieb, Entwicklung und Umstiegsanleitung aktualisiert. Vorhandene Daten, Secrets, archivierte Dateien und Volumes bleiben erhalten; `/data` wird weiterhin für JSON-Sicherungen vor nuLiga-Abgleichen benötigt.
+- Funktionstests vollständig auf isoliertes PostgreSQL 17 umgestellt. `npm test` startet einen eigenen kurzlebigen Container und führt bis zu vier Testdateien parallel mit getrennten Datenbanken aus; CI verwendet denselben Einstieg. Der überholte SQLite-Version-1-Migrationstest entfällt. Die PostgreSQL-Tests deckten außerdem als Text gelieferte Statistiksummen auf; diese werden jetzt als Ganzzahlen ausgegeben.
+- Prüfstand: 34 gezielte Datenbank-/Backup-Tests und ein gezielter Statistiktest erfolgreich; abschließende Gesamtsuite 115/115 ohne Skips. Vollständiger isolierter Docker-/PostgreSQL-/HTTPS-Test erfolgreich, einschließlich Initialisierung, Upgrades, getrenntem vollständigem Restore, neuer Tabellen, ungültiger Importe und Rollback. Da auf dem Host `npm` fehlt, die identischen Skripte direkt mit Node ausgeführt. Vorherige Läufe scheiterten am PostgreSQL-Verbindungslimit bzw. am anschließend behobenen Statistikfehler. Aktiver Code und Tests enthalten keine SQLite-Verweise mehr; `git diff --check` erfolgreich. Protokolle: `data/component-cleanup/`.
+- Lokal im bestehenden Projekt `billardmanager` mit beiden Compose-Dateien gebaut und bereitgestellt. App und PostgreSQL gesund, Proxy läuft; HTTPS `/health` liefert 200 mit vollständiger CA-/Hostnamenprüfung. Prüfsumme sämtlicher Anwendungsdaten vor und nach dem Deployment identisch. Stack bleibt aktiv. Kein Commit oder Push.
+
 ## FR-014: Initialanalyse und Anforderungsausarbeitung — 2026-11-01
 
 - Vorhandene Vermietungs-, Versions- und Backupmechanismen geprüft. Anforderungen für Artikel/Gebinde, Bewegungen, Sammelerfassung, Inventur, Mietkommentar, Getränkepositionen, Abschlussprüfung und Monatsauswertung in fünf einzeln abnehmbare Untertasks aufgeteilt.
