@@ -15,6 +15,7 @@ import { openDatabase } from './database.js';
 import { fileURLToPath } from 'node:url';
 import { changeScore, breaker } from './domain.js';
 import { brandingService, LOGO_LIMIT } from './branding.js';
+import {adminStateService} from './admin-state.js';
 
 export async function createApp({ dbPath, databaseUrl, legacyPath, config, origin = 'http://localhost:3000', collectNuLiga, collectNuLigaSchedule }) {
   const allowedOrigins = new Set([new URL(origin).origin]);
@@ -60,13 +61,14 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
   const players=playerService({db,transaction,fail,text,log,openEvent,getEvent,touchEvent});
   const nuliga=nuLigaService({db,transaction,fail,log,collect:collectNuLiga});
   const schedule=scheduleService({db,transaction,fail,log,nextId,collect:collectNuLigaSchedule});
-  const eventState=async()=>{const allMatches=await db.prepare('SELECT * FROM matches').all();const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);const tournament=p?JSON.parse(p.metadata).tournament:null;if(tournament)tournament.tables=tournament.groups.map(g=>standings(tournament,g,allMatches));return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null,tournament:tournament||null,tournamentPreview:p?JSON.parse(p.metadata).tournamentPreview||null:null};});};
+  const eventState=async(allMatches)=>{const plans=await db.prepare('SELECT * FROM event_planning').all();return (await db.prepare('SELECT * FROM events ORDER BY date DESC,id DESC').all()).map(e=>{const p=plans.find(p=>p.event_id===e.id);const tournament=p?JSON.parse(p.metadata).tournament:null;if(tournament)tournament.tables=tournament.groups.map(g=>standings(tournament,g,allMatches));return {...e,phase:e.status==='closed'?'closed':p&&!p.started?'planned':'started',schedule:p?JSON.parse(p.metadata).source||null:null,tournament:tournament||null,tournamentPreview:p?JSON.parse(p.metadata).tournamentPreview||null:null};});};
   const eventFields = body => {
     const name = text(body.name), kind = text(body.kind), date = text(body.date), parsed = new Date(date);
     if (!['Liga','Turnier'].includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0,10) !== date) throw fail(400, 'Ungültige Veranstaltung.');
     return {name,kind,date};
   };
   const publicMatch = m => { if (!m) return m; const {pin_hash,auth_version,...safe}=m; return {...safe,pin_set:!!pin_hash,breaker:breaker(m),server_now:Date.now()}; };
+  const adminState=adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule});
   const encodePin = pin => {
     if (typeof pin !== 'string' || !/^[0-9]{6}$/.test(pin)) throw fail(400,'Die PIN muss genau sechs Ziffern enthalten.');
     const salt=randomBytes(16).toString('hex');
@@ -190,7 +192,10 @@ export async function createApp({ dbPath, databaseUrl, legacyPath, config, origi
         return json(res,200,{ok:true});
       }
       if (req.method === 'POST' && url.pathname === '/api/logout') { admin(); sessions.delete(hash(sid)); res.setHeader('Set-Cookie', 'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'); return json(res, 200, {}); }
-      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); return json(res, 200, { ...await players.state(), nuliga:await nuliga.state(), nuliga_schedule:await schedule.state(), event_match_slots:await league.state(), table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await eventState(), matches: (await db.prepare('SELECT * FROM matches ORDER BY id DESC').all()).map(publicMatch) }); }
+      if (req.method === 'GET' && url.pathname === '/api/admin/live') { admin(); return json(res,200,{...await adminState.live(),csrf:session.csrf}); }
+      if (req.method === 'GET' && url.pathname === '/api/admin/view') { admin(); return json(res,200,await adminState.view(url.searchParams)); }
+      // Kept for existing integrations; the browser uses scoped live/view reads.
+      if (req.method === 'GET' && url.pathname === '/api/admin') { admin(); const matches=await db.prepare('SELECT * FROM matches ORDER BY id DESC').all();return json(res, 200, { ...await players.state(), nuliga:await nuliga.state(), nuliga_schedule:await schedule.state(), event_match_slots:await league.state(), table_settings:await tables.get(), ...await rentals.state(), csrf: session.csrf, events: await eventState(matches), matches: matches.map(publicMatch) }); }
       if (req.method === 'POST' && (url.pathname === '/api/rentals' || url.pathname.startsWith('/api/rentals/'))) {
         admin(); return json(res, url.pathname === '/api/rentals' ? 201 : 200, await rentals.handle(url.pathname,body));
       }

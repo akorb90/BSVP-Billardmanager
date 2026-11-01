@@ -8,8 +8,8 @@ const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8'
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
-async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
-  const posts=[];
+async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], serverPages=false, responseHook, table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
+  const posts=[],gets=[];
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -35,8 +35,9 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
     FormData: class { constructor(form) { this.entries=form?.entries || [['password', 'test']]; } [Symbol.iterator](){return this.entries[Symbol.iterator]();} getAll(name){return this.entries.filter(e=>e[0]===name).map(e=>e[1]);} },
-    AbortSignal, setInterval() {},
+    AbortSignal, URLSearchParams, setInterval() {},
     fetch: async (path,options) => {
+      if(!options?.body)gets.push(path);
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
       if (path === '/api/branding') { body={club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}; }
@@ -45,13 +46,19 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
       else if (/^\/api\/events\/\d+\/start$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
       else if (/^\/api\/events\/\d+\/participants$/.test(path)) {const event=events.find(e=>e.id===Number(path.split('/')[3]));event.phase='started';event.version++;body={ok:true};}
-      else if (path === '/api/admin') { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams,event_match_slots, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
+      else if ((path === '/api/admin/live'||path.startsWith('/api/admin/view?'))) { status = admin ? 200 : 401; body = admin ? { csrf: 'csrf', events, matches, rentals, players,teams,team_players,event_players,event_teams,event_match_slots, rental_settings, table_settings } : { error: 'Bitte anmelden.' }; }
       else { status = admin || tablet || !match ? 200 : 401; body = { match }; }
+      if(serverPages&&status===200&&path==='/api/admin/live')body={csrf:'csrf',matches:matches.filter(m=>m.status==='live'),events:[],rentals:[],rental_settings,table_settings};
+      if(serverPages&&status===200&&path.startsWith('/api/admin/view?')){
+        const params=new URLSearchParams(path.split('?')[1]),key='matches-ergebnisse',size=Number(params.get(key+'-size')||20),total=matches.length,page=Math.min(Number(params.get(key+'-page')||1),Math.max(1,Math.ceil(total/size))),items=matches.slice((page-1)*size,page*size);
+        body={...body,matches:items,pages:{[key]:{page,size,total,items}}};
+      }
+      if(responseHook)await responseHook(path,body);
       return { ok: status === 200, status, json: async () => body };
     },
   });
-  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits, captureFocus, restoreFocus, quantity }; })()`, context);
-  return { ...app, document:context.document, element, links, location, window, posts, setAdmin(value) { admin = value; } };
+  const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits, captureFocus, restoreFocus, quantity, drafts }; })()`, context);
+  return { ...app, document:context.document, element, links, location, window, posts, gets, setAdmin(value) { admin = value; } };
 }
 
 async function pageClick(app, key, step) {
@@ -547,4 +554,51 @@ test('Tournament group field follows selected players and assignment mode',async
   await app.element('#app').dispatch('change',{target:{name:'group:a',dataset:{},closest(){return form;}}});
   assert.equal(fields.assignment.value,'manual');
   fields.assignment.value='manual';fields.mode.value='ko';app.updateTournamentSelection(form);assert.equal(label.hidden,true);
+});
+
+
+test('AP6: server pages retain global totals, clamp after deletion and never fetch the full admin archive',async()=>{
+  const fixtures=listFixtures(105),app=await frontend('/#ergebnisse',{...fixtures,serverPages:true});
+  const markup=()=>app.element('#app').innerHTML;
+  assert.match(markup(),/1–20 von 105/);assert.match(markup(),/105 Partien/);assert.equal([...markup().matchAll(/class="match-row"/g)].length,20);
+  await pageClick(app,'matches-ergebnisse',1);assert.match(markup(),/21–40 von 105/);
+  await pageSize(app,'matches-ergebnisse',100);assert.match(markup(),/1–100 von 105/);
+  await pageClick(app,'matches-ergebnisse',1);assert.match(markup(),/101–105 von 105/);
+  fixtures.matches.splice(5);await app.refresh(true);assert.match(markup(),/1–5 von 5/);
+  assert.ok(app.gets.some(path=>path.includes('matches-ergebnisse-page=2')));
+  assert.ok(app.gets.every(path=>path!=='/api/admin'));
+});
+
+test('AP6: delayed previous view responses cannot replace the current navigation',async()=>{
+  let release,hold=false;const started=new Promise(resolve=>release=resolve);let unblock;
+  const gate=new Promise(resolve=>unblock=resolve);
+  const app=await frontend('/#ergebnisse',{...listFixtures(25),serverPages:true,responseHook:async path=>{if(hold&&path.startsWith('/api/admin/view?')){hold=false;release();await gate;}}});
+  hold=true;const stale=app.refresh();await started;
+  app.location.hash='#vermietung';await app.window.dispatch('hashchange',{});
+  assert.match(app.element('#app').innerHTML,/Tischvermietung/);
+  unblock();await stale;assert.match(app.element('#app').innerHTML,/Tischvermietung/);
+  assert.doesNotMatch(app.element('#app').innerHTML,/Abgeschlossene Partien/);
+});
+
+test('AP6: delayed authentication failures from a previous view cannot log out a newer view',async()=>{
+  let release,hold=false;const started=new Promise(resolve=>release=resolve);let unblock;
+  const gate=new Promise(resolve=>unblock=resolve);
+  const app=await frontend('/#ergebnisse',{...listFixtures(25),serverPages:true,responseHook:async path=>{if(hold&&path.startsWith('/api/admin/view?')){hold=false;release();await gate;throw Object.assign(Error('old unauthorized response'),{status:401});}}});
+  hold=true;const stale=app.refresh();await started;
+  app.location.hash='#vermietung';await app.window.dispatch('hashchange',{});
+  assert.match(app.element('#app').innerHTML,/Tischvermietung/);
+  unblock();await stale;assert.match(app.element('#app').innerHTML,/Tischvermietung/);
+  assert.doesNotMatch(app.element('#app').innerHTML,/Abgeschlossene Partien/);
+});
+
+
+test('AP6: explicit statistics selection cannot be overwritten by the previous form draft',async()=>{
+  const app=await frontend('/#spieler',{players:[{id:'p',first_name:'Anna',last_name:'Audit',active:1}]});
+  const form={getAttribute:()=> 'stats-filter',entries:[['kind','players'],['id','']],elements:{namedItem(){return null;}}};
+  app.element('#app').querySelectorAll=selector=>selector==='form'?[form]:[];
+  app.saveDrafts();assert.ok(app.drafts.has('stats-filter'));
+  const button={dataset:{stat:'players',id:'p'},hasAttribute:()=>false};
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
+  assert.equal(app.drafts.has('stats-filter'),false);
+  assert.match(app.element('#app').innerHTML,/<option value="p" selected>/);
 });

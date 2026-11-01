@@ -20,14 +20,16 @@ export function playerService({db,transaction,fail,text,log,openEvent,getEvent,t
   const get = async (table,id) => {const row=await db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(id);if(!row)throw fail(400,'Spieler oder Mannschaft nicht gefunden.');return row;};
   const ids = value => {if(!Array.isArray(value)||value.length>200||value.some(v=>typeof v!=='string')||new Set(value).size!==value.length)throw fail(400,'Bitte eindeutige Einträge auswählen (maximal 200).');return value;};
   return {
-    async state() {
+    async state(eventIds) {
       const teams=await all('teams'),members=await all('team_players'),sources=await all('nuliga_entities');
       const teamSources=new Map(sources.filter(s=>s.kind==='team').map(s=>[s.local_id,JSON.parse(s.snapshot)]));
       const ownTeams=new Set(teams.filter(t=>/^BSV Pfaffenhofen(?:\s+[IVX]+)?$/i.test(teamSources.get(t.id)?.name||t.name)).map(t=>t.id));
       const profiles=new Map(sources.filter(s=>s.kind==='player').map(s=>[s.local_id,'https://bbv-billard.liga.nu/cgi-bin/WebObjects/nuLigaBILLARDDE.woa/wa/playerPortrait?federation=BBV&person='+encodeURIComponent(s.source_id)]));
-      const players=(await all('players')).map(p=>({...p,is_bsv:members.some(m=>m.player_id===p.id&&ownTeams.has(m.team_id)),nuliga_profile:profiles.get(p.id)||null}));
+      const selected=async table=>eventIds===undefined?all(table):eventIds.length?db.prepare(`SELECT * FROM ${table} WHERE event_id IN (${eventIds.map(()=>'?').join(',')})`).all(...eventIds):[];
+      const people=eventIds===undefined?await all('players'):await db.prepare(`SELECT * FROM players WHERE event_id IS NULL${eventIds.length?' OR event_id IN ('+eventIds.map(()=>'?').join(',')+')':''}`).all(...eventIds);
+      const players=people.map(p=>({...p,is_bsv:members.some(m=>m.player_id===p.id&&ownTeams.has(m.team_id)),nuliga_profile:profiles.get(p.id)||null}));
       const teamProfiles=new Map(sources.filter(s=>s.kind==='team').map(s=>[s.local_id,'https://bbv-billard.liga.nu/cgi-bin/WebObjects/nuLigaBILLARDDE.woa/wa/teamPortrait?teamtable='+encodeURIComponent(s.source_id)]));
-      return {players,teams:teams.map(t=>({...t,nuliga_profile:teamProfiles.get(t.id)||null})),team_players:members,event_players:await all('event_players'),event_teams:await all('event_teams')};
+      return {players,teams:teams.map(t=>({...t,nuliga_profile:teamProfiles.get(t.id)||null})),team_players:members,event_players:await selected('event_players'),event_teams:await selected('event_teams')};
     },
     async save(kind,body) {return transaction(async()=>{
       const table=kind==='player'?'players':'teams', before=body.id?await get(table,body.id):null;

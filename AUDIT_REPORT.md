@@ -1,5 +1,25 @@
 # Audit des BSVP Billardmanagers
 
+## Auditabschluss — 01.11.2026
+
+AP1 bis AP6 einschließlich des zusätzlich freigegebenen API-/Pollingumbaus sind abgeschlossen. Alle neun ursprünglichen Findings sind behoben beziehungsweise im Fall TECH-002 für den Browser umgesetzt und nachgemessen. Die folgenden älteren Nachträge dokumentieren den jeweiligen Zwischenstand; maßgeblich ist dieser Abschluss. AP6 und die Abschlussdokumentation werden gemeinsam mit diesem Stand versioniert.
+
+| Arbeitspaket | Gezielte Tests | Gesamtsuite am jeweiligen Abschluss | Zusätzlicher Nachweis | Lokale vollständige Protokolle |
+|---|---:|---:|---|---|
+| AP1 — parallele Ligaänderungen | 21/21 | 53/53 | Browser mit getrennten Sitzungen; isolierter Docker-/HTTPS-Test | `data/ap1-2026-11-01/` |
+| AP2 — Teilnehmerbelegung und Korrekturgrenzen | 48/48 | 74/74 | Browserkorrektur 14/1; PostgreSQL-/HTTPS-Test | `data/ap2-2026-11-01/` |
+| AP3 — semantische Backupprüfung | 36/36 | 105/105 | Getrennte PostgreSQL-Datenbanken, negative und vollständige gültige/Legacy-Restores | `data/ap3-2026-11-01/` |
+| AP4 — 14/1-Rackstatistik | 27/27 | 107/107 | Browser mit Disziplin-/Datumsfiltern; Docker-/HTTPS-Test | `data/ap4-2026-11-01/` |
+| AP5 — Fokus, Dialognamen, Singularformen | 31/31 | 111/111 | Echte Tastatur-/Browserprüfung; Docker-/HTTPS-Test | `data/ap5-ap6-2026-11-01/` |
+| AP6 — Livezustand, Archivseiten, vollständige Statistik | 36/36 | 116/116 | Browser, zwei isolierte PostgreSQL-/HTTPS-Läufe, Budgetmessung | `data/ap6-implementation-2026-11-01/` |
+
+Die Suitezahlen sind kumulative Stände, keine zu addierenden Einzelmengen; alle genannten Abschlussläufe ohne übersprungene Tests. Frühere Fehlversuche und deren Korrekturen bleiben in den jeweiligen Nachträgen und vollständigen lokalen Logs dokumentiert. Aktuell maßgeblich: `targeted-complete-fixed.log` (36/36), `full-suite-complete.log` (116/116), `docker-benchmark.log`, `docker-final.log`, `https.log` und `final-verification.log` im AP6-Protokollordner. Die Logs unter `data/` bleiben lokal; diese Prüfliste und die [Messrohdaten](Doku/Performance.md) sind versioniert.
+
+Das vereinbarte Performancebudget ist im isolierten Container-Test erfüllt: 4.046 Bytes Liveantwort und p95 6,95 ms bei 10.000 Archivpartien, acht Livepartien und zehn Clients. Das lokale Deployment ist aktiv; App/PostgreSQL gesund, Proxy läuft. HTTPS mit bestehender CA sowie ausgelieferter Client und Backendmodule wurden geprüft. Secrets und dauerhafte Datenvolumes wurden erhalten.
+
+Außerhalb dieses Audits bleiben FR-008 (Verbandsregelwerk) sowie reale WLAN-/Geräte-/Turnier-/Langzeitlasttests. Der vollständige Legacy-Admin-Endpunkt bleibt für Integrationen verfügbar; der Browser nutzt ausschließlich die neuen getrennten Lesezugriffe. Diese Grenzen verhindern den Abschluss der beauftragten Auditpakete nicht.
+
+
 **Stand:** 01.11.2026 · **Basis:** `main`, Commit `0a7fc5899ead3cf5f701fb332f1ae1c39dfe56ed`.
 
 Der Checkout war zu Beginn sauber. Der Auditauftrag wurde ausschließlich analytisch bearbeitet. Anwendungscode, Konfiguration, Sicherheitsdateien und Produktionsdaten wurden nicht geändert. Es gab keinen Commit, Push oder Deployment. Temporäre Prüfprogramme und vollständige Testlogs liegen im ignorierten Ordner `data/audit-2026-11-01/`.
@@ -7,6 +27,10 @@ Der Checkout war zu Beginn sauber. Der Auditauftrag wurde ausschließlich analyt
 **Nachtrag nach Freigabe vom 01.11.2026:** AP1 (FUNC-001) wurde anschließend ausdrücklich freigegeben und umgesetzt. Bearbeitete Ligaentwürfe behalten ihre Ausgangsversion, unbearbeitete Formulare übernehmen neue Serverwerte; bei Konflikten kann der Entwurf bewusst verworfen und der Serverstand geladen werden. Gezielte Navigationstests: 21/21; Gesamtsuite: 53/53, keine übersprungenen Tests. Zwei getrennte synthetische Adminsitzungen, mehrere Pollzyklen, Zurücknavigation, Konfliktablehnung und anschließendes Speichern wurden im Browser geprüft. Prüf- und Bereitstellungsstand wird unter `data/ap1-2026-11-01/PROGRESS.md` fortgeschrieben. Die folgenden Auditbefunde beschreiben den ursprünglichen Stand; FUNC-001 ist durch diesen Nachtrag als behoben gekennzeichnet. FUNC-004 wurde auf die gewünschte 14/1-Wertung mit zehn vollen Kugelpunkten je Rack angepasst; AP4 ist weiterhin offen.
 
 ## A. Gesamteinschätzung
+
+**Aktueller Nachtrag AP5/AP6 vom 01.11.2026:** AP5 ist als `ae03efa` committed und lokal HTTPS-geprüft. Nach der Ausgangsmessung wurde der API-/Pollingumbau einschließlich Budget ausdrücklich freigegeben und umgesetzt. Der Browser verwendet getrennten Livezustand, serverseitig begrenzte Archivseiten und vollständige Statistikaggregate. 36 gezielte Tests, Gesamtsuite 116/116 ohne Skips, Browserprüfung und isolierter PostgreSQL-/HTTPS-Lauf samt Benchmark bestanden. Bei 10.000 Archivpartien plus acht laufenden Partien und zehn Clients: 4.046 Bytes Liveantwort, p95 6,95 ms; das vereinbarte Budget von 256 KiB/500 ms ist in dieser Messreihe erfüllt. Alle neun ursprünglichen Findings sind damit bearbeitet; TECH-002 ist für den Browser behoben. Der vollständige Admin-Endpunkt bleibt für Integrationen verfügbar. AP6 ist Teil des Abschlussstands. [Messbericht, Basis-/Nachmessung und Grenzen](Doku/Performance.md). Fortsetzungsstand: `data/ap6-implementation-2026-11-01/PROGRESS.md`.
+
+**AP6-Bereitstellung:** Bestehender lokaler Stack erfolgreich gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS /health 200 mit bestehender CA und aktiver Zertifikatsprüfung. Ausgeliefertes app.js und geänderte Backendmodule per SHA-256 bestätigt. Secrets und dauerhafte Datenvolumes erhalten; Stack bleibt aktiv. Der Push ist mit dem Auditabschluss beauftragt.
 
 **Nachtrag AP4 vom 01.11.2026:** AP3 wurde als `e420ec4` auf `main` committed. Das anschließend freigegebene AP4 behebt FUNC-004: 14/1-Filter ergänzt, Rackwertung vor der Summierung je Partie/Seite mit `Math.floor(punkte / 10)` (114:69 → 11:6). Statistische Partienlisten zeigen Racks und die zugehörigen Originalpunkte. Datums-/Disziplinfilter, Spieler, Doppelpartner und Mannschaftsseiten nutzen dieselbe Regel; Sieg/Niederlage bleibt am tatsächlichen Punktestand orientiert. Die Statistikformularerkennung wurde wegen des Feldnamens `id` korrigiert. Prüfung: 27 gezielte Tests, Gesamtsuite 107/107 ohne übersprungene Tests sowie erfolgreiche Browserprüfung. Der erste Gesamtlauf scheiterte an einer fehlenden Hilfsfunktion im isolierten Statistik-Testaufbau; der Aufbau wurde um den echten Quellcode und einen 14/1-Fall ergänzt, danach bestanden alle Tests. Aktueller Prüf-/Bereitstellungsstand: `data/ap4-2026-11-01/PROGRESS.md`. Fünf von neun ursprünglichen Findings sind behoben; vier bleiben offen. AP4 ist noch nicht committed.
 
@@ -35,10 +59,10 @@ Weitere relevante Fehler betreffen den uneinheitlichen Schutz vor gleichzeitiger
 | FUNC-003 | Mittel | Durch AP2 behoben; Browser/Tests bestätigt | 14/1-Ergebniskorrektur durch Maximum 99 blockiert |
 | FUNC-004 | Mittel | Durch AP4 behoben; Browser/Tests bestätigt | Statistik vermischt Punkte und Racks |
 | TECH-001 | Mittel | Durch AP3 behoben; API/PostgreSQL bestätigt | Backupimport akzeptiert widersprüchliche Abrechnung und ungültigen PIN-Hash |
-| UX-001 | Mittel | Bestätigter Fehler, Browser | Polling entfernt Tastaturfokus |
-| UX-002 | Niedrig | Verbesserungsvorschlag, DOM/AX bestätigt | Verwaltungsdialog ohne zugänglichen Namen |
-| UX-003 | Niedrig | Bestätigter Textfehler, Browser | Singularformen bei Partien und Minuten |
-| TECH-002 | Niedrig | Verbesserungsvorschlag, Code bestätigt | Vollständiger Adminbestand bei jedem Polling |
+| UX-001 | Mittel | Durch AP5 behoben; Browser/Tests bestätigt | Polling entfernt Tastaturfokus |
+| UX-002 | Niedrig | Durch AP5 umgesetzt; benannter Dialog im Browser bestätigt | Verwaltungsdialog ohne zugänglichen Namen |
+| UX-003 | Niedrig | Durch AP5 behoben; Browser/Tests bestätigt | Singularformen bei Partien und Minuten |
+| TECH-002 | Niedrig | Durch AP6 im Browser behoben; Budgetmessung bestätigt | Vollständiger Adminbestand bei jedem Polling |
 
 ## B. Prüfungsumfang und Verfahren
 
@@ -119,7 +143,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Zustandsverwaltung · **Status:** bestätigter Fehler, Browser und API · **Priorität:** hoch, weil Änderungen anderer Spielleitungen still verloren gehen.
 
-**Ort (nach AP1 aktualisierte Verweise):** [Entwurfsverwaltung](public/app.js#L67), [Pollingrender](public/app.js#L186), [Liga-Submit](public/app.js#L220), [Slotformular](public/app.js#L303); [Versionsprüfung und Speicherung](src/league.js#L28).
+**Ort (nach AP1 aktualisierte Verweise):** [Entwurfsverwaltung](public/app.js#L83), [Pollingrender](public/app.js#L202), [Liga-Submit](public/app.js#L236), [Slotformular](public/app.js#L319); [Versionsprüfung und Speicherung](src/league.js#L28).
 
 **Reproduktion/Beleg:** Browser A öffnet Slot 1 mit Anna, Ziel 3, Version 1. Eine zweite Adminsitzung speichert Ada, Ziel 5: Serverversion 2 (`concurrency-before.log`). Nach normalem Polling zeigt A weiterhin Anna/Ziel 3, sein Formular hat aber bereits `data-version="2"`. A klickt „Aufstellung speichern“: erfolgreich. Die abschließende API-Lesekontrolle ergibt Anna/Ziel 3/Version 3 (`concurrency-after.log`). Selbst eine bewusste lokale Änderung in A ist dafür nicht erforderlich.
 
@@ -153,7 +177,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Formularvalidierung · **Status:** bestätigter Fehler im Browser · **Priorität:** mittel; reguläre Ergebniskorrektur blockiert.
 
-**Ort (nach AP2):** [Punktefelder des Bearbeitungsdialogs](public/app.js#L354), [Dynamische Grenzen](public/app.js#L326). Backend und Liga unterstützen 14/1-Ziele bis 999; bestehender Testfall mit Ziel 125: `tests/league.test.js:41`. Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
+**Ort (nach AP2):** [Punktefelder des Bearbeitungsdialogs](public/app.js#L370), [Dynamische Grenzen](public/app.js#L342). Backend und Liga unterstützen 14/1-Ziele bis 999; bestehender Testfall mit Ziel 125: `tests/league.test.js:41`. Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
 
 **Reproduktion/Beleg:** Abgeschlossene 14/1-Partie 125:80 im Ergebnisarchiv öffnen. Punkte B auf 79 ändern und speichern. Der Browser bleibt im Dialog und meldet bei Punkte A: „Wert muss kleiner als oder gleich 99 sein.“ Read-only-DOM-Nachweis: Wert 125, Maximum 99, `rangeOverflow=true`.
 
@@ -169,7 +193,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Fachfunktion/Auswertung/Text · **Status:** bestätigter Fehler aus Berechnung und Markup; fehlender Filter zusätzlich im Browser bestätigt · **Priorität:** mittel; fachlich irreführende Kennzahl.
 
-**Ort (nach AP4):** [Rackumrechnung und statistische Ergebnisanzeige](public/app.js#L141), [Aggregation](public/app.js#L617), [Filter und Beschriftung](public/app.js#L627). Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
+**Ort (nach AP4):** [Rackumrechnung und statistische Ergebnisanzeige](public/app.js#L157), [Aggregation](public/app.js#L633), [Filter und Beschriftung](public/app.js#L643). Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
 
 **Reproduktion/Beleg:** Statistik eines Spielers mit abgeschlossener 14/1- und 9-Ball-Partie öffnen. „Disziplin“ enthält nur Alle/8-/9-/10-Ball. Die Aggregation addiert `m.a`/`m.b` aller Disziplinen und beschriftet die Summe stets als „Racks“. Ein Stand von 125 Punkten plus 5 Racks ergibt rechnerisch die Anzeige „Racks 130“. Der gemischte Bestand wurde nicht zusätzlich im Browser angelegt; diese Summe folgt direkt aus dem geprüften Code.
 
@@ -206,7 +230,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Bedienung/Barrierefreiheit · **Status:** bestätigter Fehler im Browser · **Priorität:** mittel; wiederkehrende Unterbrechung der Tastaturbedienung.
 
-**Ort:** [Refresh](public/app.js#L186) und [Dreisekundenintervall](public/app.js#L761). Die [Seitennavigation](public/app.js#L39) zeigt bereits eine gezielte Fokusbehandlung.
+**Ort:** [Refresh](public/app.js#L202) und [Dreisekundenintervall](public/app.js#L777). Die [Seitennavigation](public/app.js#L55) zeigt bereits eine gezielte Fokusbehandlung.
 
 **Reproduktion/Beleg:** In der Spieleransicht „Spieler anlegen“ fokussieren. Vor dem Polling ist `document.activeElement` die Schaltfläche; nach einem normalen Pollzyklus ist es `BODY`. Es gab keine andere Fokusaktion dazwischen.
 
@@ -222,7 +246,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Barrierefreiheit · **Status:** Verbesserungsvorschlag; fehlende Benennung im DOM und AX bestätigt · **Priorität:** niedrig; sichtbare Überschrift vorhanden, aber programmatische Zuordnung fehlt.
 
-**Ort:** [Registrydialog](public/app.js#L631).
+**Ort:** [Registrydialog](public/app.js#L647).
 
 **Beleg/Soll-Ist:** „Spieler anlegen“ öffnet einen Dialog mit sichtbarer Überschrift „Spieler verwalten“. Der Dialog besitzt weder `aria-label` noch `aria-labelledby`; im Accessibility Tree erscheint nur der unbenannte Container. Andere statische Dialoge verweisen bereits auf ihre Titel. Ein realer Screenreader wurde nicht eingesetzt; sein konkreter Ansagetext wird daher nicht behauptet.
 
@@ -236,7 +260,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Textqualität · **Status:** bestätigter Textfehler im Browser · **Priorität:** niedrig; Verständlichkeit bleibt gegeben, sprachliche Qualität leidet.
 
-**Ort:** [Partienzähler](public/app.js#L139), [Veranstaltungskarte](public/app.js#L315), [Historie](public/app.js#L498), [Abschlussdialog](public/app.js#L537).
+**Ort:** [Partienzähler](public/app.js#L155), [Veranstaltungskarte](public/app.js#L331), [Historie](public/app.js#L514), [Abschlussdialog](public/app.js#L553).
 
 **Reproduktion/Beleg:** Ein Ergebnis im Archiv zeigt „1 Partien“. Eine kurze Vermietung zeigt in Bestätigung und Historie „1 Minuten“.
 
@@ -248,21 +272,21 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 ### TECH-002 – Clientpagination begrenzt den Pollingumfang nicht
 
-**Kategorie:** Performance/Wartbarkeit · **Status:** Verbesserungsvorschlag auf belegter Implementierung; kein gemessener Leistungsfehler · **Priorität:** niedrig, solange Archivgröße und Nutzerzahl klein bleiben.
+**Kategorie:** Performance/Wartbarkeit · **Status:** Durch freigegebenen AP6-Umbau im Browser behoben; kein nachgewiesener ursprünglicher Produktionsengpass · **Priorität:** niedrig, solange Archivgröße und Nutzerzahl klein bleiben.
 
-**Ort:** [Adminantwort](src/server.js#L193), [Eventzustand](src/server.js#L63), [Stammdatenzustand](src/players.js#L19), [Clientpagination](public/app.js#L28), [Polling](public/app.js#L761).
+**Ort:** [Adminantwort](src/server.js#L193), [Eventzustand](src/server.js#L63), [Stammdatenzustand](src/players.js#L19), [Clientpagination](public/app.js#L44), [Polling](public/app.js#L777).
 
-**Beleg/Soll-Ist und Auswirkung:** Jede Adminaktualisierung lädt den gesamten Partienbestand sowie weitere Stammdaten-/Planungslisten. `eventState()` liest Partien erneut und berechnet Turniertabellen. Die Auswahl „20 Einträge“ begrenzt nur die nachträgliche Browserdarstellung. Bei wachsendem Archiv steigen Antwortmenge und Rechenarbeit auch für einen kleinen sichtbaren Ausschnitt. Es wurde kein belastbarer Lastschwellenwert gemessen und keine aktuelle Verzögerung behauptet.
+**Ursprünglicher Beleg/Soll-Ist und Auswirkung:** Jede Adminaktualisierung lädt den gesamten Partienbestand sowie weitere Stammdaten-/Planungslisten. `eventState()` liest Partien erneut und berechnet Turniertabellen. Die Auswahl „20 Einträge“ begrenzt nur die nachträgliche Browserdarstellung. Die AP6-Messung mit 100/1.000/10.000 archivierten Ligapartien und 1/5/10 Clients belegt konstant 16 SQL-Abfragen und zwei vollständige Partienlesevorgänge pro Antwort. Bei 10.000 Partien sind es rund 6,24 MiB JSON; zehn Clients ergeben rechnerisch etwa 1.247 MiB/Minute. p95 lag im größten Szenario bei rund 962 ms über HTTP-Loopback. Dies ist keine WLAN-/Tablet-/Turnierlastfreigabe und belegt keinen aktuellen Produktionsengpass. Details: [Performance.md](Doku/Performance.md).
 
-**Vorschlag/Nutzen:** Zuerst mit synthetisch repräsentativem Archiv Antwortgröße, Laufzeit und Abfragezahl messen. Danach Livezustand und historische Listen trennen, serverseitig filtern/paginieren und gegebenenfalls revisionierte unveränderte Zustände wiederverwenden. Wiederverwendete Matchdaten vermeiden redundante Reads. Keine pauschale Frameworkmigration nötig.
+**Umsetzung/Nutzen:** Nach ausdrücklicher Freigabe wurden Livezustand und historische Listen getrennt. Serverpagination und vollständige Statistikaggregate begrenzen die angezeigten Archivseiten; ausgewählte Spieltagsdetails und Korrekturzuordnungen werden gezielt geladen. Der alte vollständige Endpunkt verwendet Matchdaten wieder und bleibt für Integrationen kompatibel. Der Browser nutzt ihn nicht mehr. Die neue Liveantwort hält das bestätigte Budget von 256 KiB und 500 ms p95 bei zehn Clients/10.000 Archivpartien im isolierten Test ein. Keine Laufzeitgrenze, kein Cache und keine persistierte Revision wurden eingeführt.
 
 **Aufwand/Abhängigkeiten/Risiko:** 0,5–1 PT Messung, bei belegtem Bedarf weitere 2–4 PT Umsetzung. Größeres Risiko wegen Statistik, Pagination und Aktualisierung; erst nach Korrektur des bestehenden Draft-/Fokusverhaltens priorisieren.
 
-**Akzeptanz:** Messung mit fest dokumentierter Datengröße und Clientzahl liegt vor. Historische API-Seiten übertragen bei einer Umsetzung nur den angeforderten Ausschnitt; Kennzahlen und Navigation bleiben korrekt. Ein gemeinsam festgelegtes Laufzeit-/Antwortgrößenbudget wird reproduzierbar eingehalten.
+**Ursprüngliche Akzeptanz des Messauftrags (durch anschließende Umsetzung ergänzt):** AP6-Messauftrag erfüllt: Datengröße, Clientzahl, Methodik, Rohdaten und Grenzen sind dokumentiert, der Lauf ist reproduzierbar und isoliert. Ein späterer Umbau benötigt eine eigene Entscheidung einschließlich Zielbudget; dann müssen historische Seiten nur den angeforderten Ausschnitt übertragen, Statistiken vollständig und Navigation korrekt bleiben. Der Umbau wurde anschließend ausdrücklich freigegeben und mit den im aktuellen Nachtrag genannten Nachweisen umgesetzt.
 
 ## D. Empfohlene Umsetzung und Freigabeauswahl
 
-Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nach fachlicher Integrität und blockierten Nutzerabläufen. **AP1 bis AP4 sind nach ausdrücklicher Freigabe umgesetzt**, AP5 und AP6 sind offen.
+**AP1 bis AP5 sind nach ausdrücklicher Freigabe umgesetzt; AP6 ist als vereinbarter Messauftrag abgeschlossen.** Ein API-/Pollingumbau bleibt eine separate Entscheidung.
 
 | Paket | Enthaltene IDs | Umfang und Reihenfolge | Vorläufiger Aufwand |
 |---|---|---|---|
@@ -270,9 +294,9 @@ Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nac
 | **AP2 – Fachliche Start-/Korrekturfehler beheben (umgesetzt)** | FUNC-002, FUNC-003 | Gemeinsamer Teilnehmer-Belegungsschutz und dynamische 14/1-Formulargrenzen nach Freigabe behoben | ursprüngliche Schätzung ca. 0,75–2 PT |
 | **AP3 – Backupprüfung vervollständigen (umgesetzt)** | TECH-001 | Gemeinsame Abrechnungs-/Hashvalidierung; atomare Ablehnung und vollständige Wiederherstellung mit getrennten PG-Datenbanken geprüft | ursprüngliche Schätzung 1–1,5 PT |
 | **AP4 – Statistik fachlich berichtigen (umgesetzt)** | FUNC-004 | Disziplinfilter und Rackumrechnung je Partie/Seite (114:69 → 11:6), Originalpunkte und tatsächliche Sieger bleiben erhalten | ursprüngliche Schätzung ca. 0,5 PT |
-| **AP5 – Tastaturbedienung und Texte verbessern** | UX-001, UX-002, UX-003 | Fokus erhalten, Dialogtitel zuordnen, Singularformen korrigieren; Refreshänderungen mit AP1 abstimmen | ca. 0,75–1,5 PT |
-| **AP6 – Archivwachstum messen** | TECH-002 | Zunächst nur Messung, anschließend eigenständige Entscheidung über API-/Pollingumbau | 0,5–1 PT Messung; Umbau separat |
+| **AP5 – Tastaturbedienung und Texte verbessern (umgesetzt)** | UX-001, UX-002, UX-003 | Fokus, Dialognamen und Singularformen korrigiert, echte Tastatur-/Browserprüfung erfolgreich | ursprüngliche Schätzung ca. 0,75–1,5 PT |
+| **AP6 – Archivwachstum messen und Polling umbauen (umgesetzt)** | TECH-002 | Basis-/Nachmessung, getrennte Live-/Archivabfragen und vollständige Statistik; vereinbartes Budget im Test erfüllt | ursprüngliche Schätzung 0,5–1 PT Messung |
 
 Für spätere JS-Änderungen gelten die Checkoutvorgaben: zunächst passende Tests, dann einmal Gesamtsuite; bei Auth-/Backup-/DB-Eingriffen zusätzlich isolierter Dockerintegrationstest. Die gefundenen Formular- und Fokusfehler benötigen echte Browsernachweise. Nach einer freigegebenen Implementierung ist das lokale Deployment gemäß Checkoutregeln erneut zu betrachten; der vorliegende Analyseauftrag autorisiert kein Deployment.
 
-**Verbleibende Auswahl zur Freigabe:** Nach den umgesetzten **AP1 bis AP4** ist **AP5** empfohlen. **AP6 zunächst nur als Messauftrag** freigeben. Die übrigen Pakete werden erst nach ihrer jeweiligen Freigabe umgesetzt.
+**Aktueller Abschluss:** AP1 bis AP6 einschließlich nachträglich freigegebenem API-/Pollingumbau sind umgesetzt. Alle neun Findings sind bearbeitet. Reale Geräte-/WLAN-/Langzeitlast bleibt außerhalb der durchgeführten Messreihe; [Messbericht](Doku/Performance.md).

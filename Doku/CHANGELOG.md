@@ -2,6 +2,17 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit abgeschlossen — 2026-11-01
+
+AP1 bis AP6 sind umgesetzt und geprüft; alle neun Findings sind bearbeitet. Der [Auditbericht](../AUDIT_REPORT.md) enthält den dauerhaften Abschlussstatus und die fortsetzbare Liste abgeschlossener Tests. Letzter Gesamtstand: 116/116 Tests ohne Skips, erfolgreiche Browser-/Docker-/PostgreSQL-/HTTPS-Prüfungen und erfülltes Performancebudget. Lokaler Stack aktiv; FR-008 sowie reale Geräte-/WLAN-/Langzeitlast bleiben außerhalb des Auditumfangs.
+
+## Audit AP6: Livezustand, Archivseiten und vollständige Statistik — 2026-11-01
+
+- TECH-002 im Browser behoben: getrennter Live-Endpunkt; serverseitig paginierte Ergebnis-/Spieltags-/Partien-/Vermietungslisten, historische Gesamtzahlen und vollständige SQL-Statistiken einschließlich Doppelpartnern und 14/1. Details und historische Korrekturzuordnungen werden bei Bedarf geladen. Überholte Antworten und Fehler ersetzen keine neuere Ansicht. Der bisherige vollständige Admin-Endpunkt bleibt für Integrationen kompatibel und liest den Partienbestand nur einmal.
+- Optionaler isolierter PostgreSQL-Benchmark und [Messbericht](Performance.md) einschließlich ursprünglicher und optimierter Rohdaten ergänzt. Bestätigtes Zielbudget erfüllt: bei 10.000 Archivpartien plus acht Livepartien und zehn Clients 4.046 Bytes Liveantwort und p95 6,95 ms (Ziel höchstens 256 KiB / 500 ms); fünf SQL-Abfragen. Container-HTTP-Messung ohne Geräte-/WLAN-/Browserlastfreigabe.
+- Prüfung: 36 gezielte Tests, Gesamtsuite 116/116 ohne Skips; Browserprüfung und isolierter Docker-/PostgreSQL-/HTTPS-Test samt Budgetmessung erfolgreich. Erstläufe dokumentieren Sandbox-Netzwerksperren und anschließend korrigierte asynchrone UI-Testabläufe. Vollständige Logs und Fortsetzungsstand: `data/ap6-implementation-2026-11-01/PROGRESS.md`. Keine neue Datenart oder Schemaänderung; Sicherung/Wiederherstellung weiterhin vollständig. npm-Skripte wegen fehlendem npm direkt mit Node ausgeführt.
+- Deployment: Bestehendes Projekt billardmanager mit beiden Compose-Dateien gebaut und aktiv. App und PostgreSQL gesund, Proxy läuft. HTTPS /health 200 mit vorhandener CA und aktiver Zertifikatsprüfung; ausgeliefertes app.js und die drei geänderten Backendmodule stimmen mit dem geprüften Quellcode überein. Bestehende Secrets und Datenvolumes erhalten.
+
 ## Audit AP5: Tastaturbedienung und Texte — 2026-11-01
 
 - AP5 / UX-001 bis UX-003 behoben: Tastaturfokus bleibt beim automatischen Neuaufbau auf derselben Aktion; bei verschwundener oder deaktivierter Aktion dient die Seitenüberschrift als Ausweichziel. Offene Dialoge erhalten ihre Auslöser im Hintergrund. Dynamische Verwaltungsdialoge sind über ihre Überschrift zugänglich benannt. Mengenangaben verwenden korrekte Singularformen für Partien, Minuten, Ergebnisse, Siege und Niederlagen.

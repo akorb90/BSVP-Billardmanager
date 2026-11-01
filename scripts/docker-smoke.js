@@ -275,6 +275,13 @@ try {
   await ready();
   assert.deepEqual((await request('/api/backups/export')).body.data, persistedData);
   console.log('PASS: database restart preserves all application data and reconnects automatically');
+  if(process.env.ADMIN_BENCHMARK==='1') {
+    const output=await compose(['exec','-T','-e','ADMIN_BENCHMARK_PROJECT='+project,'app','node','--input-type=module','-e',readFileSync(join(root,'scripts/admin-benchmark.js'),'utf8')]);
+    const result=output.split('\n').find(line=>line.startsWith('ADMIN_BENCHMARK_RESULT '));
+    assert.ok(result,'benchmark emits structured measurements');
+    writeFileSync(join(directory,'admin-benchmark.json'),JSON.stringify(JSON.parse(result.slice('ADMIN_BENCHMARK_RESULT '.length)),null,2));
+    console.log('PASS: isolated admin polling benchmark; measurements in admin-benchmark.json');
+  }
   writeFileSync(join(directory, 'result.json'), JSON.stringify({ project, passed: true, testedAt: new Date().toISOString(), image: inspection.Image }, null, 2));
   console.log('All Docker smoke checks passed.');
 } catch (error) {

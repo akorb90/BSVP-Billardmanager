@@ -79,6 +79,8 @@ Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1
 
 ## Lokale Ausgaben
 
+Die optionale AP6-Messung wird mit `ADMIN_BENCHMARK=1` über `node scripts/docker-smoke.js` gestartet. Sie verwendet ausschließlich das zufällige Testprojekt und eine zusätzliche temporäre PostgreSQL-Datenbank. Der normale Testlauf bleibt ohne diese Variable unverändert. Messaufbau, PowerShell-Aufruf, Rohdaten, Grenzen und die Entscheidungsvorlage für einen späteren API-/Pollingumbau stehen in [Performance.md](Performance.md).
+
 `/output/` ist für lokale Screenshots, Rechercheausgaben und Bildvarianten reserviert und wird von Git ignoriert. Bestehende Dateien bleiben erhalten. Für veröffentlichte Dokumentationsbilder einen versionierten Ordner unter `Doku/` verwenden; Anwendungsbilder gehören nach `public/assets/`. Keine globalen Regeln wie `*.png` oder `*.json` hinzufügen. Test- und Buildlogs liegen weiterhin in einem eigenen Laufordner unter dem bereits ignorierten `data/`.
 
 Referenzen: [Docker Desktop unter Windows](https://docs.docker.com/desktop/setup/install/windows-install/), [Compose-Secrets](https://docs.docker.com/compose/how-tos/use-secrets/).
@@ -94,3 +96,7 @@ Remove-Item Env:DOCKER_TEST_IMAGE
 ```
 
 Dabei wird die Entwicklungsdatei nicht eingebunden und kein Image gebaut. Alternativ einen freigegebenen Registry-Tag setzen. Alle Testdaten, Setup-Dateien und Volumes bleiben im zufällig benannten Testprojekt.
+
+### Getrennte Admin-Lesezugriffe (AP6)
+
+Der Browser pollt `/api/admin/live` für laufende Belegung und lädt `/api/admin/view?view=…` für die aktuelle Ansicht. Archivseiten verwenden `<list-key>-page` und `<list-key>-size` (10/20/50/100); `pages` liefert Gesamtzahl, gültige Seite und Einträge. `event` lädt einen konkreten Spieltag, Statistikfilter `kind`, `id`, `from`, `to`, `discipline` erzeugen vollständige Aggregate unabhängig von der angezeigten Partienseite. Alle Endpunkte erfordern dieselbe Admin-Sitzung. Das frühere `/api/admin` bleibt kompatibel, wird vom Browser jedoch nicht genutzt. Keine Änderung an Backupformat oder Persistenz. Methodik, Grenzwerte und Rohdaten: [Performance](Performance.md).
