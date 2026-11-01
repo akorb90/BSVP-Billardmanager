@@ -1,5 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 
+export const isScryptHash = value => typeof value==='string' && /^[a-zA-Z0-9]+:[a-f0-9]{128}$/.test(value);
+
 export function loadConfig(path) {
   try {
     if (!statSync(path).isFile()) throw new Error('keine reguläre Datei');

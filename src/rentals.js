@@ -1,5 +1,19 @@
 import { rentalPrice, hourlyRate } from '../public/rental-pricing.js';
 
+export function validateRentalRecord(rental) {
+  for(const name of ['base_cents','hourly_cents','started_at','version']) {
+    if(!Number.isSafeInteger(rental[name]) || rental[name]<0)throw new Error('Ungültige Buchungsdaten.');
+  }
+  if(rental.base_cents>1000000 || rental.hourly_cents>1000000)throw new Error('Ungültiger Buchungspreis.');
+  if(rental.adjustment_percent!==null && hourlyRate(rental.base_cents,'percent',rental.adjustment_percent)!==rental.hourly_cents)throw new Error('Preis und Anpassung der Buchung passen nicht zusammen.');
+  if(rental.status==='active') {
+    if(['ended_at','duration_ms','billed_minutes','total_cents'].some(name=>rental[name]!==null))throw new Error('Laufende Buchungen dürfen keine Abschlusswerte enthalten.');
+  } else if(rental.status==='finished') {
+    const price=rentalPrice(rental.started_at,rental.ended_at,rental.hourly_cents);
+    if(Object.keys(price).some(name=>rental[name]!==price[name]))throw new Error('Abrechnungswerte der Buchung passen nicht zu Zeit und Preis.');
+  } else throw new Error('Ungültiger Buchungsstatus.');
+}
+
 export function migrateRentals(db) {
   db.exec(`BEGIN IMMEDIATE;
     CREATE TABLE rental_settings(id INTEGER PRIMARY KEY CHECK(id=1), base_cents INTEGER NOT NULL DEFAULT 900, version INTEGER NOT NULL DEFAULT 0);
@@ -49,6 +63,7 @@ export async function rentalService({db, transaction, fail, integer, log, active
           const id=(await db.prepare("UPDATE entity_ids SET value=value+1 WHERE name='rentals' RETURNING value").get()).value;
           await db.prepare('INSERT INTO rentals(id,table_no,started_at,hourly_cents,base_cents,adjustment_percent) VALUES(?,?,?,?,?,?)').run(id,number,Date.now(),rate,base.base_cents,mode==='percent'?value:null);
           const item=await get(id);
+          calculate(()=>validateRentalRecord(item));
           await log('admin','rental:start',null,{after:item});
           return item;
         }
@@ -77,7 +92,7 @@ export async function rentalService({db, transaction, fail, integer, log, active
           const price=calculate(()=>rentalPrice(start,end,rate));
           await db.prepare('UPDATE rentals SET started_at=?,ended_at=?,hourly_cents=?,adjustment_percent=?,duration_ms=?,billed_minutes=?,total_cents=?,version=version+1 WHERE id=?').run(start,end,rate,body.mode==='percent'?body.value:null,price.duration_ms,price.billed_minutes,price.total_cents,id);
         }
-        const after=await get(id); await log('admin','rental:'+action,null,{before,after}); return after;
+        const after=await get(id); calculate(()=>validateRentalRecord(after)); await log('admin','rental:'+action,null,{before,after}); return after;
       });
     }
   };

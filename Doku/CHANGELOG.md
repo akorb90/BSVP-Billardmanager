@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Audit AP3: Semantische Backupprüfung vervollständigen — 2026-11-01
+
+- TECH-001 behoben: Gemeinsamer Buchungsvalidator für laufende Vermietung und Backupimport prüft Status-/Zeitrelationen, Preis-/Prozentgrenzen, vereinbarten Stundenpreis und exakt passende Dauer, aufgerundete Minuten und Gesamtbeträge. Laufende Buchungen dürfen keine Abschlusswerte enthalten. Widersprüche werden abgewiesen, nicht still neu berechnet.
+- Gemeinsame Formatprüfung für Admin- und Partien-PIN-Hashes; gültige Hashes und Legacy-PIN-`null` bleiben importierbar. Schema und vollständiger Sicherungsumfang bleiben unverändert. Umgang mit bereits inkonsistenten Altbackups dokumentiert; separate Betriebssicherung weiterhin erforderlich.
+- Prüfung: 36 gezielte Tests und Gesamtsuite mit 105 erfolgreichen Tests, keine übersprungenen Tests. Jede geprüfte fehlerhafte Vorschau und Wiederherstellung lässt sämtliche Zieldaten unverändert. Gültige Direkt-/Prozentpreise, kostenlose Nullzeitbuchung und Schema-6-Import mit null-PIN geprüft. Erweiterter isolierter Docker-/PostgreSQL-/HTTPS-Test bestätigt Ablehnung und vollständige Wiederherstellung zwischen getrennten Datenbanken einschließlich gültiger/null-PIN-Hashes. npm-Skripte wegen fehlendem npm im PATH direkt mit Node ausgeführt. Logs und Fortsetzungsstand unter `data/ap3-2026-11-01/`.
+- Deployment: Bestehendes lokales Projekt `billardmanager` mit beiden Compose-Dateien gebaut und gestartet. App und PostgreSQL gesund, Proxy aktiv; HTTPS `/health` 200 mit bestehender CA und aktiver Zertifikatsprüfung. Hashvergleich bestätigt den geprüften Quellcode der drei geänderten Backendmodule im Container. Stack bleibt aktiv; vorhandene Secrets und Datenvolumes erhalten.
+
 ## Audit AP2: Spielerbelegung und 14/1-Korrekturen — 2026-11-01
 
 - FUNC-002 behoben: Gemeinsame transaktionale Teilnehmerprüfung für manuelle Starts, Liga-Einzel/-Doppel, Turnierstarts und Änderungen auf beziehungsweise innerhalb von „live“. Auch Doppelpartner werden veranstaltungsübergreifend berücksichtigt. Eigene Partien werden nicht als Konflikt gewertet; Korrekturen abgeschlossener Ergebnisse bleiben möglich.

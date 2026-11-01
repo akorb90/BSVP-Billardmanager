@@ -34,6 +34,8 @@ try {
     UPDATE entity_ids SET value=CASE name WHEN 'events' THEN 7 WHEN 'matches' THEN 9 ELSE 3 END;
     UPDATE rental_settings SET base_cents=1234,version=3;
     INSERT INTO rentals VALUES(3,20,1793000000000,NULL,987,1234,-20,NULL,NULL,NULL,'active',2);
+    INSERT INTO rentals VALUES(4,19,1793000000000,1793000060001,1234,1234,NULL,60001,2,41,'finished',1);
+    UPDATE entity_ids SET value=4 WHERE name='rentals';
     INSERT INTO pin_attempts VALUES(12,4,1793999999999);
     INSERT INTO audit VALUES(45,'2026-10-28 12:34:56','admin','fixture',9,'{"preserved":true}');
     UPDATE branding SET club_name='Migration Verein',primary_color='#147eb7',version=5;`);
@@ -74,11 +76,28 @@ try {
   for (const name of Object.keys(expected.data)) if (name !== 'audit') assert.deepEqual(restored[name], expected.data[name]);
   assert.equal(restored.audit.at(-1).id, 46, 'audit identity advances after restore');
   const before = await targetBackups.export();
-  for (const change of [b => b.data.matches[0].event_id=999, b => b.data.matches[0].table_no=21, b => b.data.admin_credentials=[], b => delete b.data.branding, b => b.data.matches[0].a=9]) {
+  const activeRental=b=>b.data.rentals.find(r=>r.status==='active'),finishedRental=b=>b.data.rentals.find(r=>r.status==='finished');
+  const invalidChanges=[b => b.data.matches[0].event_id=999, b => b.data.matches[0].table_no=21, b => b.data.admin_credentials=[], b => delete b.data.branding, b => b.data.matches[0].a=9,
+    b=>b.data.matches[0].pin_hash='invalid',b=>b.data.matches[0].pin_hash='salt:abcd',
+    b=>finishedRental(b).ended_at=null,
+    ...['duration_ms','billed_minutes','total_cents'].flatMap(key=>[b=>finishedRental(b)[key]=-1,b=>finishedRental(b)[key]++]),
+    ...['ended_at','duration_ms','billed_minutes','total_cents'].map(key=>b=>activeRental(b)[key]=0),
+    b=>activeRental(b).base_cents=1000001,b=>activeRental(b).hourly_cents++,b=>activeRental(b).adjustment_percent=-101];
+  for (const change of invalidChanges) {
     const invalid = structuredClone(expected); change(invalid); invalid.checksum = digest(invalid.data);
     await assert.rejects(targetBackups.preview(invalid, {}), e => e.status === 400);
+    await assert.rejects(targetBackups.restore({backup:invalid,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'}, {}), e => e.status === 400);
     assert.deepEqual((await targetBackups.export()).data, before.data, 'invalid preview leaves all data unchanged');
   }
+  const legacyPin=structuredClone(expected);legacyPin.data.matches[0].pin_hash=null;legacyPin.checksum=digest(legacyPin.data);
+  await targetBackups.preview(legacyPin, session);
+  await targetBackups.restore({backup:legacyPin,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'},session);
+  assert.equal((await targetBackups.export()).data.matches[0].pin_hash,null,'legacy null PIN remains restorable');
+  await targetBackups.preview(expected, session);
+  await targetBackups.restore({backup:expected,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'},session);
+  const reimported=(await targetBackups.export()).data;
+  for(const name of Object.keys(expected.data))if(name!=='audit')assert.deepEqual(reimported[name],expected.data[name]);
+  console.log('PASS: PostgreSQL semantic backup validation, atomic rejection and valid/legacy PIN restore');
   // Future application tables are discovered automatically and cannot be silently omitted.
   await target.exec('CREATE TABLE future_settings(id BIGINT PRIMARY KEY,value TEXT NOT NULL)');
   await target.prepare('INSERT INTO future_settings VALUES(1,?)').run('must survive');

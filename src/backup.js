@@ -2,6 +2,8 @@ import {validateTournamentBackup} from './tournaments.js';
 import { SCHEMA_VERSION, quote } from './database.js';
 import { createHash } from 'node:crypto';
 import { DEFAULT_BRANDING, validateBranding } from './branding.js';
+import { isScryptHash } from './config.js';
+import { validateRentalRecord } from './rentals.js';
 
 export const BACKUP_LIMIT = 50 * 1024 * 1024;
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -80,6 +82,7 @@ export async function backupService({ db, transaction, fail, log }) {
         for(const r of data.event_teams)if(!has('events',r.event_id)||!has('teams',r.team_id))throw new Error('event team');
         for(const r of data.event_players)if(!has('events',r.event_id)||!has('players',r.player_id)||(r.team_id && !data.event_teams.some(t=>t.event_id===r.event_id&&t.team_id===r.team_id)))throw new Error('participant');
         for(const m of data.matches) {
+          if(m.pin_hash!==null && !isScryptHash(m.pin_hash))throw new Error('PIN hash');
           if(m.player_a_id && m.player_a_id===m.player_b_id)throw new Error('self match');
           for(const side of ['a','b']) {
             const p=m['player_'+side+'_id'],t=m['team_'+side+'_id'],n=m['team_'+side+'_name'];
@@ -113,14 +116,15 @@ export async function backupService({ db, transaction, fail, log }) {
         const brand=await check.prepare('SELECT *,primary_color AS "primary" FROM branding').all();
         if(brand.length!==1) throw new Error('branding');
         validateBranding(brand[0]);
-        if (credentials.length !== 1 || !/^[a-zA-Z0-9]+:[a-f0-9]{128}$/.test(credentials[0].password_hash) || (await check.prepare('SELECT * FROM rental_settings').all()).length !== 1) throw new Error('settings');
+        if (credentials.length !== 1 || !isScryptHash(credentials[0].password_hash) || (await check.prepare('SELECT * FROM rental_settings').all()).length !== 1) throw new Error('settings');
         for (const name of ['events', 'matches', 'rentals']) {
           const counter = (await check.prepare('SELECT value FROM entity_ids WHERE name=?').get(name))?.value;
           if (!Number.isSafeInteger(counter) || counter < (await check.prepare(`SELECT COALESCE(MAX(id),0) AS max FROM ${quote(name)}`).get()).max) throw new Error(`counter: ${name}`);
         }
         if (await check.prepare("SELECT 1 FROM matches m JOIN rentals r ON m.table_no=r.table_no WHERE m.status='live' AND r.status='active'").get()) throw new Error('occupied');
         if (await check.prepare("SELECT 1 FROM matches WHERE a<0 OR b<0 OR a>target OR b>target OR (a=target AND b=target) OR version<0 OR auth_version<0 OR elapsed_ms<0 OR (status='live' AND table_no IS NULL) OR (status='finished' AND CASE WHEN a>b THEN a ELSE b END<>target)").get()) throw new Error('score');
-        if ((await check.prepare('SELECT 1 FROM rental_settings WHERE base_cents<0 OR base_cents>1000000 OR version<0').get()) || (await check.prepare('SELECT 1 FROM rentals WHERE hourly_cents<0 OR base_cents<0 OR started_at<0 OR version<0 OR (ended_at IS NOT NULL AND ended_at<started_at)').get())) throw new Error('rental');
+        if (await check.prepare('SELECT 1 FROM rental_settings WHERE base_cents<0 OR base_cents>1000000 OR version<0').get()) throw new Error('rental settings');
+        for(const rental of data.rentals)validateRentalRecord(rental);
         return { created_at: backup.created_at, events: backup.data.events.length, matches: backup.data.matches.length, rentals: backup.data.rentals.length, active: backup.data.matches.filter(m => m.status === 'live').length + backup.data.rentals.filter(r => r.status === 'active').length };
       } catch (error) { console.error('Backup validation failed:', error.code || error.message); throw fail(400, 'Die Sicherung enthält ungültige oder widersprüchliche Daten. Es wurden keine Daten geändert.'); }
       finally { await db.exec('ROLLBACK TO SAVEPOINT validate_backup'); await db.exec('RELEASE SAVEPOINT validate_backup'); }

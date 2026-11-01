@@ -8,6 +8,10 @@ Der Checkout war zu Beginn sauber. Der Auditauftrag wurde ausschließlich analyt
 
 ## A. Gesamteinschätzung
 
+**Nachtrag AP3 vom 01.11.2026:** AP2 ist als `0f6d4fe` auf `main` committed. Das anschließend freigegebene AP3 behebt TECH-001: Backupprüfung und laufende Vermietung verwenden denselben Fachvalidator für Status, Preis-/Prozentgrenzen und exakt passende Abrechnungswerte. Admin- und PIN-Hashes werden mit gemeinsamem Formatvalidator geprüft; Legacy-PIN-`null` bleibt zulässig. Es findet keine stille Reparatur statt. Prüfung: 36 gezielte Tests, Gesamtsuite 105/105 ohne übersprungene Tests sowie erfolgreicher isolierter PostgreSQL-/HTTPS-Test mit getrennten Datenbanken, negativen Importfällen und vollständigen gültigen/Legacy-Restores. Aktueller Prüf-/Bereitstellungsstand: `data/ap3-2026-11-01/PROGRESS.md`. Vier der ursprünglich neun Findings sind behoben; fünf bleiben offen. AP3 ist noch nicht committed.
+
+**AP3-Bereitstellung:** Bestehendes Projekt `billardmanager` erfolgreich mit beiden Compose-Dateien gebaut und gestartet. App und PostgreSQL gesund, Proxy aktiv; HTTPS `/health` 200 mit vorhandener CA und aktiver Zertifikatsprüfung. Die drei geänderten Backendmodule im laufenden Container stimmen per SHA-256 mit dem geprüften Quellcode überein. Keine produktiven Restoretests, keine Änderung der Sicherheitskonfiguration und kein Push; der Stack bleibt aktiv.
+
 **Nachtrag AP2 vom 01.11.2026:** Audit/AP1 sind als `3554534` auf `main` committed. Anschließend wurde AP2 ausdrücklich freigegeben: FUNC-002 ist durch eine gemeinsame transaktionale Teilnehmerprüfung einschließlich Doppelpartnern für Starts, Live-Änderungen und Wiederaufnahme behoben; FUNC-003 durch dynamische Formulargrenzen für 14/1-Ergebniskorrekturen. Prüfung: 48 gezielte Tests, Gesamtsuite 74/74 ohne übersprungene Tests, erfolgreicher isolierter PostgreSQL-/HTTPS-Test mit zusätzlichem Belegungsregressionstest sowie echte Browserkorrektur 125:80 → 125:79 und reine Namensänderung. AP2 ist im bestehenden lokalen Stack bereitgestellt: App und PostgreSQL gesund, Proxy aktiv, HTTPS `/health` 200 mit vorhandener CA und aktiver Zertifikatsprüfung; ausgeliefertes `app.js` stimmt mit dem geprüften Quellcode überein. Vollständiger Prüfstand: `data/ap2-2026-11-01/PROGRESS.md`. Von den ursprünglich neun Findings sind FUNC-001 bis FUNC-003 behoben; sechs Findings bleiben offen. AP2 ist noch nicht committed.
 
 **AP1-Bereitstellung nach Freigabe:** Isolierter Docker-/PostgreSQL-/HTTPS-Test erfolgreich. Bestehender lokaler Stack am 01.11.2026 mit beiden Compose-Dateien neu gebaut und gestartet; App und PostgreSQL gesund, Proxy aktiv. HTTPS `/health` liefert 200 mit vorhandener CA und aktiver Zertifikatsprüfung. Das ausgelieferte `app.js` entspricht dem geprüften Quellcode. Der Stack bleibt aktiv; Commit und Push wurden nicht ausgeführt.
@@ -26,7 +30,7 @@ Weitere relevante Fehler betreffen den uneinheitlichen Schutz vor gleichzeitiger
 | FUNC-002 | Mittel | Durch AP2 behoben; API/PostgreSQL bestätigt | Manuelle Partie startet bereits belegte Spieler |
 | FUNC-003 | Mittel | Durch AP2 behoben; Browser/Tests bestätigt | 14/1-Ergebniskorrektur durch Maximum 99 blockiert |
 | FUNC-004 | Mittel | Bestätigter Fehler, Code; Filter im Browser | Statistik vermischt Punkte und Racks |
-| TECH-001 | Mittel | Bestätigter Fehler, API | Backupimport akzeptiert widersprüchliche Abrechnung und ungültigen PIN-Hash |
+| TECH-001 | Mittel | Durch AP3 behoben; API/PostgreSQL bestätigt | Backupimport akzeptiert widersprüchliche Abrechnung und ungültigen PIN-Hash |
 | UX-001 | Mittel | Bestätigter Fehler, Browser | Polling entfernt Tastaturfokus |
 | UX-002 | Niedrig | Verbesserungsvorschlag, DOM/AX bestätigt | Verwaltungsdialog ohne zugänglichen Namen |
 | UX-003 | Niedrig | Bestätigter Textfehler, Browser | Singularformen bei Partien und Minuten |
@@ -177,7 +181,7 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 **Kategorie:** Datenintegrität/Wiederherstellung · **Status:** bestätigter Fehler, zwei isolierte API-Reproduktionen · **Priorität:** mittel; inkonsistente Abrechnungsdaten können dauerhaft importiert werden. Der PIN-Teilfall allein wäre niedrig.
 
-**Ort:** [Backupvalidierung](src/backup.js#L116), insbesondere [Vermietungsprüfung](src/backup.js#L123); Folgefehler im [Tabletlogin](src/server.js#L212).
+**Ort (nach AP3):** [Hashprüfung](src/backup.js#L85), [Admin-Hashprüfung](src/backup.js#L119), [Vermietungsprüfung im Import](src/backup.js#L127), [gemeinsamer Buchungsvalidator](src/rentals.js#L3), [gemeinsames Hashformat](src/config.js#L3). Die folgende Reproduktion beschreibt den ursprünglichen, inzwischen behobenen Fehler.
 
 **Reproduktion/Beleg:** Einen gültigen Testexport verändern und die Datenprüfsumme korrekt neu berechnen:
 
@@ -254,17 +258,17 @@ Aufwände sind **vorläufige Schätzungen** einschließlich gezielter Absicherun
 
 ## D. Empfohlene Umsetzung und Freigabeauswahl
 
-Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nach fachlicher Integrität und blockierten Nutzerabläufen. **AP1 und AP2 sind nach ausdrücklicher Freigabe umgesetzt**, die übrigen Pakete sind offen.
+Die Reihenfolge richtet sich zuerst nach drohendem Änderungsverlust, danach nach fachlicher Integrität und blockierten Nutzerabläufen. **AP1, AP2 und AP3 sind nach ausdrücklicher Freigabe umgesetzt**, die übrigen Pakete sind offen.
 
 | Paket | Enthaltene IDs | Umfang und Reihenfolge | Vorläufiger Aufwand |
 |---|---|---|---|
 | **AP1 – Parallele Spielleitung absichern (umgesetzt)** | FUNC-001 | Ausgangsversion und bearbeitete Entwürfe erhalten, Konflikte sichtbar machen; nach Freigabe behoben | ursprüngliche Schätzung 0,5–1,5 PT |
 | **AP2 – Fachliche Start-/Korrekturfehler beheben (umgesetzt)** | FUNC-002, FUNC-003 | Gemeinsamer Teilnehmer-Belegungsschutz und dynamische 14/1-Formulargrenzen nach Freigabe behoben | ursprüngliche Schätzung ca. 0,75–2 PT |
-| **AP3 – Backupprüfung vervollständigen** | TECH-001 | Abrechnungsrelationen/Ableitungen und PIN-Hashformat prüfen; Wiederherstellung mit getrennten PG-Testdaten absichern | 1–1,5 PT |
+| **AP3 – Backupprüfung vervollständigen (umgesetzt)** | TECH-001 | Gemeinsame Abrechnungs-/Hashvalidierung; atomare Ablehnung und vollständige Wiederherstellung mit getrennten PG-Datenbanken geprüft | ursprüngliche Schätzung 1–1,5 PT |
 | **AP4 – Statistik fachlich berichtigen** | FUNC-004 | Disziplinfilter ergänzen; 14/1 je Partie und Seite mit je 10 vollen Kugelpunkten pro Rack werten (114:69 → 11:6) | ca. 0,5 PT |
 | **AP5 – Tastaturbedienung und Texte verbessern** | UX-001, UX-002, UX-003 | Fokus erhalten, Dialogtitel zuordnen, Singularformen korrigieren; Refreshänderungen mit AP1 abstimmen | ca. 0,75–1,5 PT |
 | **AP6 – Archivwachstum messen** | TECH-002 | Zunächst nur Messung, anschließend eigenständige Entscheidung über API-/Pollingumbau | 0,5–1 PT Messung; Umbau separat |
 
 Für spätere JS-Änderungen gelten die Checkoutvorgaben: zunächst passende Tests, dann einmal Gesamtsuite; bei Auth-/Backup-/DB-Eingriffen zusätzlich isolierter Dockerintegrationstest. Die gefundenen Formular- und Fokusfehler benötigen echte Browsernachweise. Nach einer freigegebenen Implementierung ist das lokale Deployment gemäß Checkoutregeln erneut zu betrachten; der vorliegende Analyseauftrag autorisiert kein Deployment.
 
-**Verbleibende Auswahl zur Freigabe:** Nach den umgesetzten **AP1 und AP2** ist **AP3**, anschließend **AP4 und AP5** empfohlen. **AP6 zunächst nur als Messauftrag** freigeben. Die übrigen Pakete werden erst nach ihrer jeweiligen Freigabe umgesetzt.
+**Verbleibende Auswahl zur Freigabe:** Nach den umgesetzten **AP1, AP2 und AP3** sind **AP4 und AP5** empfohlen. **AP6 zunächst nur als Messauftrag** freigeben. Die übrigen Pakete werden erst nach ihrer jeweiligen Freigabe umgesetzt.
