@@ -185,6 +185,14 @@ main:has(>.inventory-title){padding-top:24px}
 .inventory-package-form{border-top:1px solid var(--border);padding:16px 0}
 .inventory-package-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .inventory-package-heading h3{margin:0}
+.inventory-bulk-table{min-width:900px}
+.inventory-bulk-table input,.inventory-bulk-table select{min-width:90px;margin:0;padding:9px}
+.inventory-bulk-table th small{display:block;font-weight:400;white-space:normal;color:var(--muted);margin-top:6px}
+.inventory-bulk-table input[type="text"]{min-width:200px}
+.inventory-bulk-table th:first-child{min-width:170px}
+.inventory-bulk .dialog-actions{margin-top:20px}
+#inventory-dialog .inventory-bulk{border:0;padding:0}
+#inventory-dialog .inventory-bulk form{display:block}
 .inventory-packages-table tbody tr[data-inventory-package-open]{cursor:pointer}
 .inventory-packages-table tbody tr[data-inventory-package-open]:hover,.inventory-packages-table tbody tr[data-inventory-package-open]:focus-within{background:var(--tinted)}
 #inventory-dialog [data-inventory-preview]{background:var(--tinted);padding:12px;border-radius:6px;font-weight:600}

@@ -86,7 +86,7 @@ test('FR-014.1: Lager, Parallelzugriff, Historie, Rechte und vollständiger Rest
 test('FR-014.1: Schema-13-Upgrade erhält Vereinsdaten und startet mit leerem Lager',async()=>{
   const key='inventory-migration',config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex')};
   let db=await openDatabase({dbKey:key,config});
-  await db.exec("UPDATE branding SET club_name='Bestandsverein';DROP TABLE inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=13;");
+  await db.exec("UPDATE branding SET club_name='Bestandsverein';DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=13;");
   await db.close();db=await openDatabase({dbKey:key,config});
-  try {assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,14);assert.equal((await db.prepare('SELECT club_name FROM branding').get()).club_name,'Bestandsverein');assert.deepEqual(await db.prepare('SELECT * FROM inventory_drinks').all(),[]);}finally{await db.close();}
+  try {assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,15);assert.equal((await db.prepare('SELECT club_name FROM branding').get()).club_name,'Bestandsverein');assert.deepEqual(await db.prepare('SELECT * FROM inventory_drinks').all(),[]);}finally{await db.close();}
 });

@@ -48,7 +48,7 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     const tablet=await call('/api/tables/19/login',{pin:'123456'},{Cookie:''});assert.equal(tablet.status,200);
     assert.equal((await call('/api/tables/19',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).body.match.table_no,19);
     const backup=(await call('/api/backups/export')).body;
-    assert.equal(backup.schema,14);assert.equal(backup.data.table_settings[0].table_count,20);
+    assert.equal(backup.schema,15);assert.equal(backup.data.table_settings[0].table_count,20);
     assert.equal(backup.data.audit.at(-1).action,'start');assert.ok(backup.data.audit.some(a=>a.action==='settings:tables'));
     await stop();await start('target');await login();
     for(const change of [b=>b.data.table_settings=[],b=>b.data.table_settings[0].table_count=21,b=>b.data.table_settings[0].table_count=1,b=>delete b.data.table_settings]) {

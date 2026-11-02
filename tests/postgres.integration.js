@@ -107,17 +107,17 @@ try {
     SET CONSTRAINTS ALL IMMEDIATE;
     DROP TABLE event_match_slots;DROP TABLE event_planning;DROP TABLE nuliga_schedule_sync;DROP TABLE nuliga_entities;DROP TABLE nuliga_sync;DROP TABLE players,teams,team_players,event_players,event_teams;
     ALTER TABLE matches DROP COLUMN player_a_id,DROP COLUMN player_b_id,DROP COLUMN team_a_id,DROP COLUMN team_b_id,DROP COLUMN team_a_name,DROP COLUMN team_b_name;
-    DROP TABLE inventory_movements,inventory_packages,inventory_operations,inventory_drinks;
+    DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;
     UPDATE _schema SET version=8;`);
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a,'Alt A');
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,14);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,15);
   assert.deepEqual(await upgrade.prepare('SELECT * FROM players').all(),[]);
-  await upgrade.exec("INSERT INTO players(id,first_name,last_name) VALUES('existing','Alt','Spieler');ALTER TABLE players DROP COLUMN event_id;DROP TABLE inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=12;");
+  await upgrade.exec("INSERT INTO players(id,first_name,last_name) VALUES('existing','Alt','Spieler');ALTER TABLE players DROP COLUMN event_id;DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=12;");
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare("SELECT * FROM players WHERE id='existing'").get()).event_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,14);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,15);
   await close(upgrade);
   // Unknown tables must prevent initialization without leaving a partial schema.
   const invalidUrl = new URL(url(names[2])); invalidUrl.password = password;

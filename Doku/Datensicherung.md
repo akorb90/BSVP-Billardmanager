@@ -72,3 +72,8 @@ Alle zehn Partienplätze, gespeicherte Einzel- und Doppelaufstellungen, Tischwü
 ### Lagerdaten ab Schema 14
 
 Die Anwendungssicherung enthält sämtliche Getränke einschließlich archivierter Artikel, Gebinde, Lagerbewegungen mit historischen Namen, Größen, VK/EK (einschließlich unbekanntem EK), Begründungen und Gegenbezügen sowie die Vorgangskennungen zur Verhinderung von Doppelbuchungen. Änderungen der Stammdaten werden zusätzlich im enthaltenen Änderungsprotokoll dokumentiert. Der Import rekonstruiert Bestände und weist widersprüchliche Mengen, Bezüge oder negative Zwischenbestände ohne Datenänderung ab. Sicherungen aus Schema 6–13 starten nach Migration mit leerem Lager. Die separate Betriebssicherung von Installation, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt erforderlich.
+
+
+### Vorlagen und Sammelbuchungen ab Schema 15
+
+Benannte Wareneingangsvorlagen sowie bestätigte Sammelwareneingänge und Inventuren werden automatisch vollständig gesichert. Enthalten sind Mengen, bekannte oder unbekannte EK, historische Gebindegrößen, Soll-/Iststände, Differenzgründe, Artikelversionen, Bewegungsbezüge und Vorgangskennungen. Importprüfung und Wiederherstellung sind atomar; widersprüchliche Bezüge oder Summen werden vollständig abgewiesen. Schema-14-Backups behalten ihre Lagerdaten und erhalten leere Vorlagen-/Sammeltabellen. Die separate Betriebssicherung von Installation, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt erforderlich. Unbestätigte Eingaben/Vorschauen sind temporär und müssen nach einem App-Neustart erneut geprüft werden.

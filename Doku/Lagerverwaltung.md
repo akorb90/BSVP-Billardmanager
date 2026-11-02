@@ -1,6 +1,6 @@
 # Lagerverwaltung und Getränketracking
 
-Stand: 2026-11-02, FR-014. FR-014.1 (Getränke, Gebinde und einzelne Lagerbewegungen) ist implementiert; die folgenden Etappen bleiben geplant. Verbindliche Umsetzungsetappen und Abnahmekriterien stehen in [FEATURE_REQUESTS.md](FEATURE_REQUESTS.md#fr-014-lagerverwaltung-und-getränketracking).
+Stand: 2026-11-02, FR-014. FR-014.1 (Getränke, Gebinde und einzelne Lagerbewegungen) und FR-014.2 (Schnellerfassung, Vorlagen und Inventur) sind implementiert; die folgenden Etappen bleiben geplant. Verbindliche Umsetzungsetappen und Abnahmekriterien stehen in [FEATURE_REQUESTS.md](FEATURE_REQUESTS.md#fr-014-lagerverwaltung-und-getränketracking).
 
 ## Bestandsanalyse und Einbindung
 
@@ -67,3 +67,12 @@ Jede Etappe erweitert bei Bedarf Export, Importprüfung und Migration. Sicherung
 Die Untertasks und ihre Reihenfolge stehen in FR-014. Zuerst Datenmodell und fachliche Regeln einschließlich Migration/Backup absichern, dann die jeweiligen Verwaltungsansichten anbinden. Das Pflichtkommentarfeld kann unabhängig vorgezogen werden; dabei Altbestand und sichere Textausgabe berücksichtigen.
 
 Pro JavaScript-Änderung betroffene Tests und anschließend einmal die Gesamtsuite ausführen. Bei PostgreSQL-, Schema-, Backup- oder Authänderungen zusätzlich den isolierten Docker-/PostgreSQL-/HTTPS-Test verwenden. Parallelzugriffe, doppelte Übermittlung, veraltete Abschlussvorschauen, Preisänderung, Storno mit/ohne Rückgabe, Monatsgrenzen, Altvermietungen und vollständige Wiederherstellung sind die zentralen Prüffälle. UI zusätzlich für schnelle Tastaturbedienung und Tabletbreite prüfen. Testdaten bleiben in getrennten Datenbanken/Compose-Projekten. Nach erfolgreicher Etappe lokalen Stack bauen, HTTPS und Containerzustand kontrollieren und den Stack aktiv lassen.
+
+
+## Umgesetzte Schnellerfassung und Inventur (FR-014.2)
+
+Wareneingang und Inventur besitzen tabellarische Eingabelisten sowie eine serverseitig signierte Vorschau. Eine Sammelbuchung umfasst bis zu 100 unterschiedliche Getränke. Jede Version, Gebindeumrechnung, Menge und EK-Angabe wird bei der Bestätigung erneut geprüft; ein Konflikt verwirft die gesamte Transaktion. Eindeutige, dauerhaft gespeicherte Vorgänge verhindern Doppelbuchungen, auch nach einer Wiederherstellung. Ein App-Neustart entwertet noch unbestätigte Vorschauen.
+
+Vorlagen speichern Artikel-/Gebindebezüge, Mengen, historische Gebindegröße und EK unabhängig vom Bestand. Übernahme und Bearbeitung verwenden aktuelle Artikelversionen. Archivierte Artikel erfordern Entfernung oder Reaktivierung; geänderte Gebindegrößen werden zur erneuten Mengenprüfung gekennzeichnet. Die letzten 20 Wareneingänge bleiben als neue, editierbare Eingabe auswählbar, unabhängig von zwischenzeitlichen Inventuren.
+
+Inventurpositionen mit leerem Ist-Feld bleiben unberücksichtigt. Null ist ein bewusst gezählter Nullbestand. Von null verschiedene Differenzen erzeugen begründete Gegen-/Zugangsmengen als Inventurdifferenz. Eine bestätigte Übereinstimmung bleibt als gezählte Position im Sammelnachweis erhalten und erzeugt keine künstliche Nullbewegung. Nachbestellliste und alle Stammdaten bleiben serverseitig berechnet; sämtliche Vorlagen und Sammelnachweise sind im Schema-15-Backup enthalten.

@@ -42,7 +42,11 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
       if (path === '/api/branding') { body={club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}; }
-      else if (path === '/api/inventory') {status=admin?200:401;body=admin?inventory:{error:'Bitte anmelden.'};}
+      else if(path==='/api/inventory/preview'){
+        const request=JSON.parse(options.body);body={kind:request.kind,token:'ui-preview-token',lines:request.lines.map(line=>{const d=inventory.drinks.find(d=>d.id===line.drink_id),p=inventory.packages.find(p=>p.id===line.package_id),quantity=request.kind==='inventory'?line.counted-d.stock:line.packages*(p?.bottles||1)+line.singles;return {...line,name:d.name,stock:d.stock,quantity,after:d.stock+quantity};})};
+      }
+      else if (path === '/api/inventory') {status=admin?200:401;body=admin?inventory:{error:'Bitte anmelden.'};if(options?.body){const request=JSON.parse(options.body);if(request.action==='template')body={id:request.id||'new-template',name:request.name,version:0,lines:JSON.stringify(request.lines)};}}
+
       else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
@@ -873,4 +877,58 @@ test('Gebinde: Namens- und Größenfilter kombinieren, zurücksetzen und bei Bea
   assert.match(app.element('#inventory-package-rows').innerHTML,/24er-Kasten/);assert.doesNotMatch(app.element('#inventory-package-rows').innerHTML,/20er-Kasten/);
   await inventoryClick(app,{dataset:{inventoryPackageReset:'true'}},true);rows=app.element('#inventory-package-rows').innerHTML;
   assert.match(rows,/20er-Kasten/);assert.match(rows,/24er-Kasten/);assert.equal(app.element('#inventory-package-count').textContent,'2 von 2 Gebinden');
+});
+
+async function inventoryBulkSet(app,mode,index,key,value,dialog=false){
+ await app.element(dialog?'#inventory-dialog':'#app').dispatch('input',{target:{dataset:{inventoryBulkMode:mode,inventoryBulkIndex:String(index),inventoryBulkKey:key},value,closest:()=>null}});
+}
+async function inventoryBulkSubmit(app,mode,value='preview',dialog=false){
+ const form={getAttribute:()=> 'inventory-bulk-'+mode};
+ await app.element(dialog?'#inventory-dialog':'#app').dispatch('submit',{preventDefault(){},target:form,submitter:{value}});await app.refresh(true);
+}
+test('FR-014.2 UI: Wareneingang benötigt Vorschau und explizite Sammelbestätigung',async()=>{
+ const app=await frontend('/#lager',{inventory:inventoryFixtures()});await inventoryClick(app,{dataset:{inventorySection:'receipt'}});
+ assert.match(app.element('#app').innerHTML,/Wareneingang erfassen/);assert.match(app.element('#app').innerHTML,/Sammelbuchung prüfen/);
+ await inventoryBulkSet(app,'receipt',0,'packages','2');await inventoryBulkSet(app,'receipt',0,'singles','3');await inventoryBulkSet(app,'receipt',0,'purchase_euros','0.60');
+ await inventoryBulkSubmit(app,'receipt');
+ const preview=app.posts.find(p=>p.path==='/api/inventory/preview');assert.equal(preview.data.lines.length,1);assert.equal(preview.data.lines[0].singles,3);assert.equal(preview.data.lines[0].purchase_cents,60);
+ assert.equal(app.element('#inventory-dialog').open,true);assert.match(app.element('#inventory-dialog-content').innerHTML,/\+43/);
+ assert.equal(app.posts.filter(p=>p.path==='/api/inventory').length,0);
+ await inventoryBulkSubmit(app,'confirm','',true);const booked=app.posts.find(p=>p.path==='/api/inventory');assert.equal(booked.data.action,'batch');assert.equal(booked.data.preview,'ui-preview-token');assert.ok(booked.data.operation_id);assert.equal(app.element('#inventory-dialog').open,false);
+});
+test('FR-014.2 UI: Inventur lässt leere Ist-Felder aus und übermittelt Nullbestand bewusst',async()=>{
+ const app=await frontend('/#lager',{inventory:inventoryFixtures()});await inventoryClick(app,{dataset:{inventorySection:'inventory'}});
+ assert.match(app.element('#app').innerHTML,/Leere Ist-Felder bleiben unberücksichtigt/);
+ await inventoryBulkSet(app,'inventory',0,'counted','0');await inventoryBulkSet(app,'inventory',0,'reason','Alles ausgegeben');await inventoryBulkSet(app,'inventory',1,'counted','6');
+ await inventoryBulkSubmit(app,'inventory');const preview=app.posts.find(p=>p.path==='/api/inventory/preview');
+ assert.equal(preview.data.kind,'inventory');assert.equal(preview.data.lines.length,2);assert.equal(preview.data.lines[0].counted,0);assert.equal(preview.data.lines[0].reason,'Alles ausgegeben');assert.equal(preview.data.lines[1].reason,'');
+ assert.equal(app.posts.filter(p=>p.path==='/api/inventory').length,0);
+});
+test('FR-014.2 UI: benannte Vorlage im Overlay bearbeiten, archivierte Position entfernen und ohne Bestandsbuchung speichern',async()=>{
+ const inventory=inventoryFixtures();inventory.templates=[{id:'tpl',name:'Lieferung',version:4,lines:JSON.stringify([{drink_id:'water',package_id:'case',package_bottles:20,packages:2,singles:3,purchase_cents:60},{drink_id:'old',package_id:null,package_bottles:1,packages:0,singles:1,purchase_cents:null}])}];
+ const app=await frontend('/#lager',{inventory});await inventoryClick(app,{dataset:{inventorySection:'templates'}});assert.match(app.element('#app').innerHTML,/Korrektur nötig/);
+ await inventoryClick(app,{dataset:{inventoryTemplateOpen:'tpl'}});assert.equal(app.element('#inventory-dialog').open,true);assert.match(app.element('#inventory-dialog-content').innerHTML,/Archiviert: vor Buchung entfernen/);
+ await inventoryClick(app,{dataset:{inventoryBulkRemove:'1',inventoryBulkMode:'template'}},true);
+ await app.element('#inventory-dialog').dispatch('input',{target:{dataset:{inventoryBulkName:'template'},value:'Neue Lieferung'}});
+ await inventoryBulkSubmit(app,'template','template',true);
+ const saved=app.posts.find(p=>p.path==='/api/inventory');assert.equal(saved.data.action,'template');assert.equal(saved.data.id,'tpl');assert.equal(saved.data.version,4);assert.equal(saved.data.name,'Neue Lieferung');assert.equal(saved.data.lines.length,1);
+ assert.equal(app.posts.some(p=>p.path==='/api/inventory/preview'),false);assert.equal(app.element('#inventory-dialog').open,false);
+});
+test('FR-014.2 UI: letzte Lieferung wird editierbar mit aktuellen Versionen übernommen; Nachbestellliste bleibt filterbare Tabelle',async()=>{
+ const inventory=inventoryFixtures();inventory.drinks[0].minimum=20;inventory.batches=[{id:'delivery',kind:'receipt',created_at:'2026-11-02T12:00:00Z',lines:JSON.stringify([{drink_id:'water',version:99,package_id:'case',package_bottles:24,packages:2,singles:3,purchase_cents:null}])}];
+ const app=await frontend('/#lager',{inventory});await inventoryClick(app,{dataset:{inventorySection:'receipt'}});
+ await app.element('#app').dispatch('change',{target:{dataset:{inventoryBulkAdopt:'receipt'},value:'delivery'}});
+ assert.match(app.element('#app').innerHTML,/Gebindegröße geändert/);await inventoryBulkSet(app,'receipt',0,'singles','4');await inventoryBulkSubmit(app,'receipt');
+ const preview=app.posts.find(p=>p.path==='/api/inventory/preview');assert.equal(preview.data.lines[0].version,3);assert.equal(preview.data.lines[0].singles,4);assert.equal(preview.data.lines[0].purchase_cents,null);
+ await inventoryClick(app,{id:'inventory-dialog-close',dataset:{}},true);await inventoryClick(app,{dataset:{inventorySection:'restock'}});
+ const markup=app.element('#app').innerHTML;assert.match(markup,/Nachbestellliste<\/h2>/);assert.match(markup,/data-inventory-open="cola"/);assert.match(markup,/data-inventory-open="juice"/);assert.doesNotMatch(markup,/data-inventory-open="water"/);assert.equal([...markup.matchAll(/data-inventory-filter=/g)].length,8);
+});
+
+test('FR-014.2 UI: bestehende Vorlage um ein weiteres Getränk ergänzen',async()=>{
+ const inventory=inventoryFixtures();inventory.templates=[{id:'tpl',name:'Lieferung',version:2,lines:JSON.stringify([{drink_id:'water',package_id:'case',package_bottles:20,packages:1,singles:0,purchase_cents:60}])}];
+ const app=await frontend('/#lager',{inventory});await inventoryClick(app,{dataset:{inventorySection:'templates'}});await inventoryClick(app,{dataset:{inventoryTemplateOpen:'tpl'}});
+ assert.match(app.element('#inventory-dialog-content').innerHTML,/Der Bestand bleibt unverändert/);assert.match(app.element('#inventory-dialog-content').innerHTML,/Flaschen in Vorlage/);
+ await app.element('#inventory-dialog').dispatch('change',{target:{dataset:{inventoryBulkAdd:'template'},value:'cola'}});
+ await inventoryBulkSet(app,'template',1,'singles','5',true);await inventoryBulkSubmit(app,'template','template',true);
+ const saved=app.posts.find(p=>p.path==='/api/inventory');assert.equal(saved.data.lines.length,2);assert.equal(saved.data.lines[1].drink_id,'cola');assert.equal(saved.data.lines[1].singles,5);assert.equal(saved.data.version,2);
 });

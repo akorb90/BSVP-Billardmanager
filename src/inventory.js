@@ -1,6 +1,8 @@
+import {inventoryBatchService} from './inventory-batches.js';
 import { randomUUID, createHash } from 'node:crypto';
 
 const LIMIT = 1000000000;
+const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value;
 export function validateInventoryBackup(data) {
   const balances=new Map(), reversed=new Set();
   for(const operation of data.inventory_operations) {
@@ -33,17 +35,20 @@ export function inventoryService({db,transaction,fail,log}) {
   const number=(v,min=0,max=LIMIT)=>{if(!Number.isSafeInteger(v)||v<min||v>max)throw fail(400,'Ungültige ganzzahlige Menge oder Preisangabe.');return v;};
   const text=(v,max=100)=>{if(typeof v!=='string'||!v.trim()||v.trim().length>max)throw fail(400,'Bitte eine gültige Bezeichnung oder Begründung eingeben.');return v.trim();};
   const balance=async id=>(await db.prepare('SELECT COALESCE(SUM(quantity),0)::bigint AS stock FROM inventory_movements WHERE drink_id=?').get(id)).stock;
-  const state=async()=>({drinks:await db.prepare('SELECT d.*,COALESCE((SELECT SUM(quantity) FROM inventory_movements m WHERE m.drink_id=d.id),0)::bigint AS stock FROM inventory_drinks d ORDER BY name,id').all(),packages:await db.prepare('SELECT * FROM inventory_packages ORDER BY name,id').all(),movements:await db.prepare('SELECT * FROM inventory_movements ORDER BY id DESC LIMIT 200').all()});
+  const state=async()=>({drinks:await db.prepare('SELECT d.*,COALESCE((SELECT SUM(quantity) FROM inventory_movements m WHERE m.drink_id=d.id),0)::bigint AS stock FROM inventory_drinks d ORDER BY name,id').all(),packages:await db.prepare('SELECT * FROM inventory_packages ORDER BY name,id').all(),movements:await db.prepare('SELECT * FROM inventory_movements ORDER BY id DESC LIMIT 200').all(),...await batches.state()});
   const get=async id=>{const d=await db.prepare('SELECT * FROM inventory_drinks WHERE id=?').get(id);if(!d)throw fail(404,'Getränk nicht gefunden.');return d;};
   const check=(body,d)=>{if(body.version!==d.version)throw fail(409,'Das Getränk oder sein Bestand wurde geändert. Bitte neu laden und erneut prüfen.');};
-  return {state:()=>transaction(state),handle:body=>transaction(async()=>{
+  let batches;
+  const handle=async body=>{
     const operation=text(body.operation_id,80);
     if(!/^[\w-]{16,80}$/.test(operation))throw fail(400,'Ungültiger Vorgangsbezug.');
-    const request=createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    const request=createHash('sha256').update(JSON.stringify(canonical(body))).digest('hex');
     const previous=await db.prepare('SELECT * FROM inventory_operations WHERE id=?').get(operation);
-    if(previous){if(previous.request!==request)throw fail(409,'Vorgangsbezug wurde bereits mit anderen Eingaben verwendet.');return JSON.parse(previous.result);}
+    if(previous){if(previous.request!==request&&previous.request!==createHash('sha256').update(JSON.stringify(body)).digest('hex'))throw fail(409,'Vorgangsbezug wurde bereits mit anderen Eingaben verwendet.');return JSON.parse(previous.result);}
     let result;
-    if(body.action==='drink') {
+    if(body.action==='batch')result=await batches.confirm(body,operation);
+    else if(body.action==='template')result=await batches.template(body);
+    else if(body.action==='drink') {
       const before=body.id?await get(body.id):null;
       if(before)check(body,before);
       const d={id:before?.id||randomUUID(),name:text(body.name),size_ml:number(body.size_ml,1,100000),sale_cents:number(body.sale_cents,0,1000000),purchase_cents:body.purchase_cents===null?null:number(body.purchase_cents,0,1000000),minimum:number(body.minimum),active:number(body.active,0,1),version:before?before.version+1:0};
@@ -92,5 +97,7 @@ export function inventoryService({db,transaction,fail,log}) {
     }
     await db.prepare('INSERT INTO inventory_operations VALUES(?,?,?)').run(operation,request,JSON.stringify(result));
     return result;
-  })};
+  };
+  batches=inventoryBatchService({db,fail,log,number,text,get,check,balance,apply:handle});
+  return {state:()=>transaction(state),handle:body=>transaction(()=>handle(body)),preview:body=>transaction(()=>batches.preview(body))};
 }

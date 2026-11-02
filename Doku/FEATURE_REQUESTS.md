@@ -18,15 +18,9 @@ Anforderungen und Abnahmekriterien:
 
 ## FR-014: Lagerverwaltung und Getränketracking
 
-**Status 2026-11-02:** FR-014.1 ist umgesetzt, geprüft und lokal bereitgestellt, siehe [Release Notes](CHANGELOG.md). Fachkonzept und Bedienhinweise stehen in [Lagerverwaltung und Getränketracking](Lagerverwaltung.md). Die verbleibenden Untertasks werden einzeln umgesetzt und abgenommen. FR-014 bleibt bis zur Umsetzung des Pflichtumfangs offen.
+**Status 2026-11-02:** FR-014.1 und FR-014.2 sind umgesetzt, geprüft und lokal bereitgestellt, siehe [Release Notes](CHANGELOG.md). Fachkonzept und Bedienhinweise stehen in [Lagerverwaltung und Getränketracking](Lagerverwaltung.md). Die verbleibenden Untertasks werden einzeln umgesetzt und abgenommen. FR-014 bleibt bis zur Umsetzung des Pflichtumfangs offen.
 
 Ziel: Getränke in Einzelflaschen und unterschiedlichen Gebinden verwalten, Verbrauch einer laufenden Tischvermietung zuordnen und Tischmiete sowie Getränkekosten nachvollziehbar abschließen. Keine Zahlungsabwicklung, Kassenführung oder steuerlichen Belege vorsehen; aus dieser Funktionsabgrenzung folgt keine Aussage über rechtliche Pflichten im Vereinsbetrieb.
-
-### FR-014.2: Schnellerfassung und Inventur
-
-- Mehrere Getränke mit Kästen und Einzelflaschen in einer Vorschau erfassen und gemeinsam bestätigen. Letzte Wareneingänge als neue Eingabe übernehmen oder dauerhaft gespeicherte, benannte Vorlagen nutzen. Vorlagen verändern keinen Bestand; übernommene Mengen und EK bleiben vor der Buchung editierbar.
-- Inventur mit Soll-/Istbestand, Differenz und Begründung anbieten; Mindestbestände mit einer einfachen Nachbestellliste anzeigen.
-- Abnahme: Ungültige Position oder zwischenzeitlich veränderter Bestand verhindert die gesamte Sammelbuchung. Wiederholtes Absenden derselben Buchung legt keine zweite Bewegung an. Veraltete Vorlagen mit archivierten Artikeln verlangen eine Korrektur.
 
 ### FR-014.3: Mietkommentar und Getränkebuchungen
 
@@ -48,4 +42,4 @@ Ziel: Getränke in Einzelflaschen und unterschiedlichen Gebinden verwalten, Verb
 - Sämtliche Artikel, Gebinde, Preisstände, Bewegungen, Mietkommentare, Getränkepositionen, Abschlussbestätigungen, Vorlagen und Einstellungen in Anwendungsbackup und Wiederherstellung aufnehmen. Dies ist ab dem jeweiligen Untertask verpflichtend, nicht erst im letzten Umsetzungsschritt. Neue Tabellen automatisch einschließen und fachliche Importprüfung sowie Altbackup-Migration ergänzen; separate Betriebssicherung bleibt erforderlich.
 - Abnahme: Getrennte Testdaten vollständig exportieren und wiederherstellen, fachlich ungültige Sicherungen ohne Datenänderung ablehnen, Altbackups auf leere Getränkebestände migrieren. Monatsgrenzen, Stornos und fehlende EK gezielt testen.
 
-Weitere Reihenfolge: FR-014.2 → FR-014.3 → FR-014.4 → FR-014.5; Kommentar aus FR-014.3 kann vorgezogen werden. Barcode- und Produktdatenbankanbindung sind optionale spätere Ausbaustufen nach einer Machbarkeitsprüfung, siehe Fachkonzept. Pro Untertask betroffene Tests, einmal Gesamtsuite und bei Datenbank-/Backupänderungen zusätzlich isolierte PostgreSQL-/HTTPS-/Docker-Prüfung ausführen; anschließend lokal bereitstellen. Keine Testdaten in den laufenden Vereinsbestand übernehmen.
+Weitere Reihenfolge: FR-014.3 → FR-014.4 → FR-014.5; Kommentar aus FR-014.3 kann vorgezogen werden. Barcode- und Produktdatenbankanbindung sind optionale spätere Ausbaustufen nach einer Machbarkeitsprüfung, siehe Fachkonzept. Pro Untertask betroffene Tests, einmal Gesamtsuite und bei Datenbank-/Backupänderungen zusätzlich isolierte PostgreSQL-/HTTPS-/Docker-Prüfung ausführen; anschließend lokal bereitstellen. Keine Testdaten in den laufenden Vereinsbestand übernehmen.

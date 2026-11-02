@@ -25,6 +25,8 @@ const inventoryKinds={initial:'Anfangsbestand',receipt:'Wareneingang',consumptio
 const drafts = new Map();
 const inventoryDialog=document.querySelector('#inventory-dialog');
 let inventorySection='stock',inventoryFilters={},inventoryEditId=null,inventoryPackageContext=null;
+const inventoryBulkDrafts=new Map();
+let inventoryBulkPreview=null,inventoryTemplateFilters={name:'',status:'',count:''};
 const leagueDraftVersions = new Map();
 const tournamentPanels = new Map(), tournamentSections = new Map();
 let eventStatus='active',eventCreationOpen=false;
@@ -245,7 +247,7 @@ async function mutate(fn) {
   finally { busy = false; await refresh(true); }
 }
 root.addEventListener('submit', e => {
-  e.preventDefault(); if(handleInventorySubmit(e.target))return; const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
+  e.preventDefault(); if(handleInventoryBulkSubmit(e.target,e.submitter))return; if(handleInventorySubmit(e.target))return; const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   return mutate(async () => {
     if(form.id.startsWith('tournament-player-')) {
       const result=await api('/api/players',data);
@@ -925,21 +927,24 @@ function inventoryStockRows(drinks) {
   return drinks.length?drinks.map(d=>'<tr data-inventory-open="'+esc(d.id)+'"><th scope="row"><button type="button" class="inventory-drink-link" data-inventory-open="'+esc(d.id)+'" aria-label="'+esc(d.name)+' bearbeiten">'+esc(d.name)+'</button></th><td>'+d.size_ml+' ml</td><td>'+euro(d.sale_cents)+'</td><td>'+(d.purchase_cents===null?'Unbekannt':euro(d.purchase_cents))+'</td><td><strong>'+d.stock+' Flaschen</strong></td><td>'+d.minimum+' Flaschen</td><td>'+(d.active?Math.max(0,d.minimum-d.stock)+' Flaschen':'–')+'</td><td><span class="pill inventory-status-'+inventoryStatus(d)+'">'+({empty:'Leer',low:'Nachbestellen',sufficient:'Ausreichend',archived:'Archiviert'}[inventoryStatus(d)])+'</span></td></tr>').join(''):'<tr><td colspan="8">Keine Getränke für diese Filter gefunden.</td></tr>';
 }
 function updateInventoryStockRows() {
-  const drinks=state.inventory?.drinks||[],filtered=drinks.filter(d=>inventoryMatches(d));
+  const drinks=(state.inventory?.drinks||[]).filter(d=>inventorySection!=='restock'||d.active&&d.stock<d.minimum),filtered=drinks.filter(d=>inventoryMatches(d));
   document.querySelector('#inventory-stock-rows').innerHTML=inventoryStockRows(filtered);
   document.querySelector('#inventory-filter-count').textContent=filtered.length+' von '+drinks.length+' Getränken';
 }
 function inventoryDashboard() {
   const inv=state.inventory||{drinks:[],packages:[],movements:[]};
   let html='<div class="page-title inventory-title"><div><h1>Lagerverwaltung</h1><p>Getränk in der Bestandstabelle anklicken, um Bestand, Stammdaten oder Gebinde zu bearbeiten.</p></div><button type="button" class="primary" id="inventory-new-button">Getränk anlegen</button></div><nav class="inventory-menu" aria-label="Lagerverwaltung"><button type="button" data-inventory-section="stock" '+(inventorySection==='stock'?'aria-current="page"':'')+'>Lagerbestand</button><button type="button" data-inventory-section="movements" '+(inventorySection==='movements'?'aria-current="page"':'')+'>Lagerbewegungen</button></nav>';
-  if(inventorySection==='movements')html+=inventoryMovementHistory(inv);
+  html+='<nav class="inventory-menu" aria-label="Lageraktionen">'+[['receipt','Wareneingang'],['inventory','Inventur'],['templates','Vorlagen'],['restock','Nachbestellliste']].map(([key,label])=>'<button type="button" data-inventory-section="'+key+'" '+(inventorySection===key?'aria-current="page"':'')+'>'+label+'</button>').join('')+'</nav>';
+  if(['receipt','inventory'].includes(inventorySection))html+=inventoryBulkForm(inventorySection);
+  else if(inventorySection==='templates')html+=inventoryTemplatesView(inv);
+  else if(inventorySection==='movements')html+=inventoryMovementHistory(inv);
   else {
-    const active=inv.drinks.filter(d=>d.active),filtered=inv.drinks.filter(d=>inventoryMatches(d));
+    const active=inv.drinks.filter(d=>d.active),available=inv.drinks.filter(d=>inventorySection!=='restock'||d.active&&d.stock<d.minimum),filtered=available.filter(d=>inventoryMatches(d));
     const select=(key,label,options)=>'<label><span class="sr-only">'+label+' filtern</span><select data-inventory-filter="'+key+'" aria-label="'+label+' filtern">'+[['','Alle'],...options].map(([value,text])=>'<option value="'+esc(value)+'" '+(String(inventoryFilters[key]||'')===String(value)?'selected':'')+'>'+esc(text)+'</option>').join('')+'</select></label>';
     const bands=[['zero','0 Flaschen'],['positive','Mehr als 0'],['1-12','1–12 Flaschen'],['13-24','13–24 Flaschen'],['25+','Ab 25 Flaschen']];
     const sizes=[...new Set(inv.drinks.map(d=>d.size_ml))].sort((a,b)=>a-b).map(size=>[size,size+' ml']);
-    html+='<section class="panel inventory-stock" aria-labelledby="inventory-stock-title"><div class="section-title"><div><h2 id="inventory-stock-title">Lagerbestand</h2><p>'+quantity(active.length,'aktives Getränk','aktive Getränke')+' · <strong>'+active.reduce((sum,d)=>sum+d.stock,0)+' Flaschen insgesamt</strong> · '+active.filter(d=>d.stock<d.minimum).length+' unter Mindestbestand</p></div><button type="button" id="inventory-filter-reset">Filter zurücksetzen</button></div>';
-    html+='<p id="inventory-filter-count" role="status">'+filtered.length+' von '+inv.drinks.length+' Getränken</p><div class="rental-history"><table class="inventory-table"><thead><tr>'+['Getränk','Flaschengröße','VK / Flasche','EK / Flasche','Aktueller Bestand','Mindestbestand','Fehlmenge','Status'].map(title=>'<th scope="col">'+title+'</th>').join('')+'</tr><tr class="inventory-filter-row"><th><label><span class="sr-only">Getränk filtern</span><input type="search" data-inventory-filter="name" aria-label="Getränk filtern" placeholder="Name suchen …" list="inventory-name-presets" value="'+esc(inventoryFilters.name||'')+'"></label><datalist id="inventory-name-presets">'+inv.drinks.map(d=>'<option value="'+esc(d.name)+'">').join('')+'</datalist></th><th>'+select('size','Flaschengröße',sizes)+'</th><th>'+select('sale','VK',[['free','0,00 €'],['paid','Kostenpflichtig'],['up-to-250','Bis 2,50 €'],['over-250','Über 2,50 €']])+'</th><th>'+select('purchase','EK',[['unknown','Unbekannt'],['known','Bekannt'],['free','0,00 €'],['paid','Über 0,00 €']])+'</th><th>'+select('stock','Bestand',[['low','Unter Mindestbestand'],...bands])+'</th><th>'+select('minimum','Mindestbestand',bands)+'</th><th>'+select('missing','Fehlmenge',[['none','Keine'],['any','Nachbestellen'],['1-6','1–6 Flaschen'],['7+','Ab 7 Flaschen']])+'</th><th>'+select('status','Status',[['active','Aktiv'],['archived','Archiviert'],['empty-low','Leer + Nachbestellen'],['empty','Leer'],['low','Nachbestellen'],['sufficient','Ausreichend']])+'</th></tr></thead><tbody id="inventory-stock-rows">'+inventoryStockRows(filtered)+'</tbody></table></div>';
+    html+='<section class="panel inventory-stock" aria-labelledby="inventory-stock-title"><div class="section-title"><div><h2 id="inventory-stock-title">'+(inventorySection==='restock'?'Nachbestellliste':'Lagerbestand')+'</h2><p>'+quantity(active.length,'aktives Getränk','aktive Getränke')+' · <strong>'+active.reduce((sum,d)=>sum+d.stock,0)+' Flaschen insgesamt</strong> · '+active.filter(d=>d.stock<d.minimum).length+' unter Mindestbestand</p></div><button type="button" id="inventory-filter-reset">Filter zurücksetzen</button></div>';
+    html+='<p id="inventory-filter-count" role="status">'+filtered.length+' von '+available.length+' Getränken</p><div class="rental-history"><table class="inventory-table"><thead><tr>'+['Getränk','Flaschengröße','VK / Flasche','EK / Flasche','Aktueller Bestand','Mindestbestand','Fehlmenge','Status'].map(title=>'<th scope="col">'+title+'</th>').join('')+'</tr><tr class="inventory-filter-row"><th><label><span class="sr-only">Getränk filtern</span><input type="search" data-inventory-filter="name" aria-label="Getränk filtern" placeholder="Name suchen …" list="inventory-name-presets" value="'+esc(inventoryFilters.name||'')+'"></label><datalist id="inventory-name-presets">'+inv.drinks.map(d=>'<option value="'+esc(d.name)+'">').join('')+'</datalist></th><th>'+select('size','Flaschengröße',sizes)+'</th><th>'+select('sale','VK',[['free','0,00 €'],['paid','Kostenpflichtig'],['up-to-250','Bis 2,50 €'],['over-250','Über 2,50 €']])+'</th><th>'+select('purchase','EK',[['unknown','Unbekannt'],['known','Bekannt'],['free','0,00 €'],['paid','Über 0,00 €']])+'</th><th>'+select('stock','Bestand',[['low','Unter Mindestbestand'],...bands])+'</th><th>'+select('minimum','Mindestbestand',bands)+'</th><th>'+select('missing','Fehlmenge',[['none','Keine'],['any','Nachbestellen'],['1-6','1–6 Flaschen'],['7+','Ab 7 Flaschen']])+'</th><th>'+select('status','Status',[['active','Aktiv'],['archived','Archiviert'],['empty-low','Leer + Nachbestellen'],['empty','Leer'],['low','Nachbestellen'],['sufficient','Ausreichend']])+'</th></tr></thead><tbody id="inventory-stock-rows">'+inventoryStockRows(filtered)+'</tbody></table></div>';
     if(!inv.drinks.length)html+='<p>Noch keine Getränke angelegt. Über „Getränk anlegen“ beginnen und anschließend im Overlay den Anfangsbestand erfassen. Jedes neue Getränk startet mit 0 Flaschen.</p>';
     html+='</section>';
   }
@@ -952,7 +957,7 @@ function openInventoryDrink(id) {
   if(busy)return;
   const d=(state.inventory?.drinks||[]).find(d=>d.id===id);
   if(id!=='new'&&!d)return;
-  inventoryEditId=id;
+  inventoryEditId=id;document.querySelector('#inventory-dialog-reload').hidden=false;
   document.querySelector('#inventory-dialog-title').textContent=d?d.name+' · '+d.size_ml+' ml':'Getränk anlegen';
   document.querySelector('#inventory-dialog-error').textContent='';
   const packs=(state.inventory?.packages||[]).filter(p=>p.drink_id===id);
@@ -1027,7 +1032,7 @@ root.addEventListener('click',event=>{
 inventoryDialog.addEventListener('input',updateInventoryMovementPreview);
 inventoryDialog.addEventListener('input',filterInventoryPackages);
 inventoryDialog.addEventListener('change',filterInventoryPackages);
-inventoryDialog.addEventListener('submit',event=>{event.preventDefault();handleInventorySubmit(event.target);});
+inventoryDialog.addEventListener('submit',event=>{event.preventDefault();if(!handleInventoryBulkSubmit(event.target,event.submitter))handleInventorySubmit(event.target);});
 inventoryDialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
 inventoryDialog.addEventListener('click',async event=>{
   if(busy)return;
@@ -1045,6 +1050,7 @@ inventoryDialog.addEventListener('click',async event=>{
   if(button.id==='inventory-dialog-reload'){await refresh(true);openInventoryDrink(inventoryEditId);}
 });
 inventoryDialog.addEventListener('close',()=>{
+  inventoryBulkPreview=null;document.querySelector('#inventory-dialog-reload').hidden=false;
   const target=[...root.querySelectorAll('button[data-inventory-open]')].find(button=>button.dataset.inventoryOpen===inventoryEditId)||root.querySelector('#inventory-new-button');
   target?.focus();
 });
@@ -1071,3 +1077,119 @@ function handleInventorySubmit(form) {
   };
   save();return true;
 }
+
+function inventoryNewBulkDraft(mode,source=null) {
+  const kind=mode==='inventory'?'inventory':'receipt',inv=state.inventory;
+  const lines=(source?JSON.parse(source.lines):inv.drinks.filter(d=>d.active)).map(value=>{
+    const d=source?inv.drinks.find(d=>d.id===value.drink_id):value;if(!d)return null;
+    const p=source?inv.packages.find(p=>p.id===value.package_id):inv.packages.find(p=>p.drink_id===d.id);
+    return {drink_id:d.id,version:d.version,name:d.name,size_ml:d.size_ml,stock:d.stock,active:d.active,package_id:p?.id||'',packages:source?String(value.packages):'0',singles:source?String(value.singles):'0',counted:'',reason:'',purchase_euros:(source?value.purchase_cents:d.purchase_cents)===null?'':((source?value.purchase_cents:d.purchase_cents)/100).toFixed(2),warning:source&&value.package_bottles&&p&&value.package_bottles!==p.bottles?'Gebindegröße geändert: Mengen prüfen.':''};
+  }).filter(Boolean);
+  return {kind,lines,name:source?.name||'',id:mode==='template'?source?.id:null,version:mode==='template'?source?.version:null,filter:''};
+}
+function inventoryBulkDraft(mode) {
+  if(!inventoryBulkDrafts.has(mode))inventoryBulkDrafts.set(mode,inventoryNewBulkDraft(mode));return inventoryBulkDrafts.get(mode);
+}
+function inventoryBulkForm(mode) {
+  const draft=inventoryBulkDraft(mode),counting=draft.kind==='inventory';
+  const input=(line,index,key,label,type='number',extra='')=>'<input aria-label="'+esc(label+' '+line.name)+'" name="'+key+'-'+index+'" type="'+type+'" value="'+esc(line[key])+'" data-inventory-bulk-mode="'+mode+'" data-inventory-bulk-index="'+index+'" data-inventory-bulk-key="'+key+'" '+extra+'>';
+  let html='<section class="panel inventory-bulk"><div class="inventory-package-heading"><h2>'+ (mode==='template'?'Vorlage bearbeiten':counting?'Inventur':'Wareneingang erfassen')+'</h2><button type="button" data-inventory-bulk-reset="'+mode+'">Eingaben verwerfen / Neu laden</button></div><p>'+(mode==='template'?'Vorlagen speichern ausschließlich Mengen und EK. Der Bestand bleibt unverändert.':counting?'Gezählte Flaschen eingeben. Leere Ist-Felder bleiben unberücksichtigt; jede Abweichung benötigt einen Grund.':'Gebinde und zusätzliche Einzelflaschen erfassen. Positionen ohne Menge bleiben unberücksichtigt. Leerer EK bedeutet unbekannt.')+'</p>';
+  if(mode==='receipt')html+='<label>Letzten Wareneingang übernehmen<select data-inventory-bulk-adopt="receipt"><option value="">Lieferung auswählen …</option>'+(state.inventory.batches||[]).filter(b=>b.kind==='receipt').map(b=>'<option value="'+esc(b.id)+'">'+esc(new Date(b.created_at).toLocaleString('de-DE'))+' · '+JSON.parse(b.lines).length+' Getränke</option>').join('')+'</select></label>';
+  html+='<label>Getränk ergänzen<select aria-label="Getränk ergänzen" data-inventory-bulk-add="'+mode+'"><option value="">Getränk auswählen …</option>'+state.inventory.drinks.filter(d=>d.active&&!draft.lines.some(line=>line.drink_id===d.id)).map(d=>'<option value="'+esc(d.id)+'">'+esc(d.name)+'</option>').join('')+'</select></label>';
+  html+='<label>Getränke in der Eingabe filtern<input type="search" aria-label="Getränke in der Eingabe filtern" data-inventory-bulk-search="'+mode+'" value="'+esc(draft.filter)+'" placeholder="Name suchen …"></label><p>Der Filter blendet Zeilen aus; alle erfassten Mengen werden gemeinsam geprüft.</p><form id="inventory-bulk-'+mode+'" data-inventory-bulk-mode="'+mode+'">';
+  if(mode==='template'||mode==='receipt')html+='<label>Vorlagenname'+(mode==='receipt'?' (zum Speichern als neue Vorlage)':'')+'<input name="template_name" aria-label="Vorlagenname" type="text" maxlength="100" '+(mode==='template'?'required':'')+' value="'+esc(draft.name)+'" data-inventory-bulk-name="'+mode+'"></label>';
+  html+='<div class="rental-history"><table class="inventory-bulk-table"><thead><tr><th>Getränk</th><th>Sollbestand</th>'+(counting?'<th>Istbestand</th><th>Differenz</th><th>Begründung</th>':'<th>Gebinde</th><th>Anzahl Gebinde</th><th>Einzelflaschen</th><th>EK / Flasche (€)</th><th>'+(mode==='template'?'Flaschen in Vorlage':'Zugang / neuer Bestand')+'</th>')+'<th></th></tr></thead><tbody>'+draft.lines.map((line,index)=>{
+    const packs=state.inventory.packages.filter(p=>p.drink_id===line.drink_id),p=packs.find(p=>p.id===line.package_id);
+    const quantity=counting?(line.counted===''?null:Number(line.counted)-line.stock):Number(line.packages)*(p?.bottles||1)+Number(line.singles);
+    return '<tr data-inventory-bulk-row="'+index+'" data-inventory-bulk-row-mode="'+mode+'" '+(!line.name.toLocaleLowerCase('de-DE').includes(draft.filter.toLocaleLowerCase('de-DE'))?'hidden':'')+'><th scope="row"><button type="button" class="inventory-drink-link" data-inventory-open="'+esc(line.drink_id)+'">'+esc(line.name)+'</button><small>'+line.size_ml+' ml'+(!line.active?' · Archiviert: vor Buchung entfernen oder reaktivieren':'')+(line.warning?' · '+esc(line.warning):'')+'</small></th><td>'+line.stock+' Flaschen</td>'+(counting?'<td>'+input(line,index,'counted','Istbestand','number','min="0" max="1000000000" step="1"')+'</td><td><span data-inventory-bulk-result>'+(quantity===null?'Nicht gezählt':quantity+' Flaschen')+'</span></td><td>'+input(line,index,'reason','Begründung','text','maxlength="500" '+(quantity?'required':''))+'</td>':'<td><select aria-label="Gebinde '+esc(line.name)+'" name="package-'+index+'" data-inventory-bulk-mode="'+mode+'" data-inventory-bulk-index="'+index+'" data-inventory-bulk-key="package_id"><option value="">Nur Einzelflaschen</option>'+packs.map(p=>'<option value="'+esc(p.id)+'" '+(line.package_id===p.id?'selected':'')+'>'+esc(p.name)+' ('+p.bottles+')</option>').join('')+'</select></td><td>'+input(line,index,'packages','Anzahl Gebinde','number','min="0" max="1000000000" step="1" required')+'</td><td>'+input(line,index,'singles','Einzelflaschen','number','min="0" max="1000000000" step="1" required')+'</td><td>'+input(line,index,'purchase_euros','EK pro Flasche','number','min="0" max="10000" step="0.01"')+'</td><td><span data-inventory-bulk-result>'+(mode==='template'?quantity+' Flaschen':'+'+quantity+' → '+(line.stock+quantity))+'</span></td>')+'<td><button type="button" data-inventory-bulk-remove="'+index+'" data-inventory-bulk-mode="'+mode+'" aria-label="'+esc(line.name)+' aus Eingabe entfernen">Entfernen</button></td></tr>';
+  }).join('')+'</tbody></table></div><div class="dialog-actions">'+(mode!=='inventory'?'<button type="submit" value="template">'+(mode==='template'?'Vorlage speichern':'Als neue Vorlage speichern')+'</button>':'')+(mode==='template'?'':'<button type="submit" class="primary" value="preview">Sammelbuchung prüfen</button>')+'</div></form></section>';
+  return html;
+}
+function inventoryBulkLines(draft) {
+  const cents=value=>{if(value==='')return null;if(!/^\d+(?:\.\d{1,2})?$/.test(value))throw Error('Bitte EK mit höchstens zwei Nachkommastellen eingeben.');return Math.round(Number(value)*100);};
+  const lines=draft.lines.filter(line=>draft.kind==='inventory'?line.counted!=='':Number(line.packages)!==0||Number(line.singles)!==0).map(line=>draft.kind==='inventory'?{drink_id:line.drink_id,version:line.version,counted:Number(line.counted),reason:line.reason}:{drink_id:line.drink_id,version:line.version,package_id:line.package_id||null,packages:Number(line.packages),singles:Number(line.singles),purchase_cents:cents(line.purchase_euros)});
+  if(!lines.length)throw Error('Bitte mindestens eine Menge oder einen Istbestand erfassen.');return lines;
+}
+function inventoryShowBulkPreview(preview,request) {
+  inventoryBulkPreview={...request,action:'batch',operation_id:crypto.randomUUID(),preview:preview.token};inventoryEditId=null;
+  document.querySelector('#inventory-dialog-title').textContent=preview.kind==='receipt'?'Wareneingang prüfen':'Inventur prüfen';
+  document.querySelector('#inventory-dialog-error').textContent='';document.querySelector('#inventory-dialog-reload').hidden=true;
+  document.querySelector('#inventory-dialog-content').innerHTML='<p>Alle Positionen werden gemeinsam gebucht. Zwischenzeitliche Änderungen erfordern eine neue Vorschau.</p><div class="rental-history"><table><thead><tr><th>Getränk</th><th>Soll</th><th>Änderung</th><th>Neuer Bestand</th><th>EK / Grund</th></tr></thead><tbody>'+preview.lines.map(line=>'<tr><th scope="row">'+esc(line.name)+'</th><td>'+line.stock+'</td><td>'+(line.quantity>0?'+':'')+line.quantity+'</td><td>'+line.after+'</td><td>'+(preview.kind==='receipt'?(line.purchase_cents===null?'EK unbekannt':euro(line.purchase_cents)):esc(line.reason||'Keine Abweichung'))+'</td></tr>').join('')+'</tbody></table></div><form id="inventory-bulk-confirm"><button type="submit" class="primary">Alle Positionen gemeinsam buchen</button></form>';
+  if(!inventoryDialog.open)inventoryDialog.showModal();
+}
+function inventoryTemplateState(template) {
+  const lines=JSON.parse(template.lines);return lines.some(line=>!state.inventory.drinks.some(d=>d.id===line.drink_id&&d.active)||line.package_id&&!state.inventory.packages.some(p=>p.id===line.package_id&&p.drink_id===line.drink_id))?'stale':'ready';
+}
+function inventoryTemplateRows() {
+  const templates=(state.inventory.templates||[]).filter(t=>(!inventoryTemplateFilters.name||t.name.toLocaleLowerCase('de-DE').includes(inventoryTemplateFilters.name.toLocaleLowerCase('de-DE')))&&(!inventoryTemplateFilters.status||inventoryTemplateFilters.status===inventoryTemplateState(t))&&(!inventoryTemplateFilters.count||inventoryTemplateFilters.count==='single'&&JSON.parse(t.lines).length===1||inventoryTemplateFilters.count==='multi'&&JSON.parse(t.lines).length>1));
+  return templates.length?templates.map(t=>'<tr><th scope="row"><button type="button" class="inventory-drink-link" data-inventory-template-open="'+esc(t.id)+'">'+esc(t.name)+'</button></th><td>'+JSON.parse(t.lines).length+'</td><td>'+(inventoryTemplateState(t)==='ready'?'Verwendbar':'Korrektur nötig')+'</td><td><button type="button" data-inventory-template-adopt="'+esc(t.id)+'">Als Wareneingang übernehmen</button></td></tr>').join(''):'<tr><td colspan="4">Keine passenden Vorlagen vorhanden.</td></tr>';
+}
+function inventoryTemplatesView() {
+  return '<section class="panel"><div class="inventory-package-heading"><h2>Wareneingangsvorlagen</h2><button type="button" data-inventory-template-open="new">Vorlage anlegen</button></div><p>Vorlagen speichern Mengen und EK und verändern keinen Bestand. Namen anklicken, um eine Vorlage im Overlay zu bearbeiten.</p><div class="rental-history"><table><thead><tr><th>Name</th><th>Positionen</th><th>Status</th><th>Aktion</th></tr><tr class="inventory-filter-row"><th><input aria-label="Vorlagenname filtern" data-inventory-template-filter="name" value="'+esc(inventoryTemplateFilters.name)+'"></th><th><select aria-label="Vorlagenpositionen filtern" data-inventory-template-filter="count"><option value="">Alle</option><option value="single" '+(inventoryTemplateFilters.count==='single'?'selected':'')+'>Ein Getränk</option><option value="multi" '+(inventoryTemplateFilters.count==='multi'?'selected':'')+'>Mehrere Getränke</option></select></th><th><select aria-label="Vorlagenstatus filtern" data-inventory-template-filter="status"><option value="">Alle</option><option value="ready" '+(inventoryTemplateFilters.status==='ready'?'selected':'')+'>Verwendbar</option><option value="stale" '+(inventoryTemplateFilters.status==='stale'?'selected':'')+'>Korrektur nötig</option></select></th><th><button type="button" data-inventory-template-reset="true">Filter zurücksetzen</button></th></tr></thead><tbody id="inventory-template-rows">'+inventoryTemplateRows()+'</tbody></table></div></section>';
+}
+function inventoryOpenTemplate(id) {
+  const template=(state.inventory.templates||[]).find(t=>t.id===id);if(id!=='new'&&!template)return;
+  inventoryBulkDrafts.set('template',inventoryNewBulkDraft('template',template));inventoryEditId=null;
+  document.querySelector('#inventory-dialog-title').textContent=template?template.name:'Vorlage anlegen';
+  document.querySelector('#inventory-dialog-error').textContent='';document.querySelector('#inventory-dialog-reload').hidden=true;
+  document.querySelector('#inventory-dialog-content').innerHTML=inventoryBulkForm('template');if(!inventoryDialog.open)inventoryDialog.showModal();
+}
+async function inventoryRunBulk(action) {
+  if(busy)return;busy=true;message('');document.querySelector('#inventory-dialog-error').textContent='';
+  const controls=[...root.querySelectorAll('button'),...inventoryDialog.querySelectorAll('button')].map(button=>[button,button.disabled]);for(const [button] of controls)button.disabled=true;
+  try{await action();}catch(error){message(error.message);document.querySelector('#inventory-dialog-error').textContent=error.message;}
+  finally{busy=false;for(const [button,disabled] of controls)button.disabled=disabled;await refresh(true);}
+}
+function handleInventoryBulkSubmit(form,submitter) {
+  const id=form.getAttribute?.('id')??form.id;if(typeof id!=='string'||!id.startsWith('inventory-bulk-'))return false;
+  if(id==='inventory-bulk-confirm'){
+    const pending=inventoryBulkPreview;if(!pending)return true;
+    inventoryRunBulk(async()=>{await api('/api/inventory',pending);inventoryBulkDrafts.delete(pending.kind);inventoryDialog.close();message('Sammelbuchung vollständig gespeichert.');});return true;
+  }
+  const mode=id.slice('inventory-bulk-'.length),draft=inventoryBulkDraft(mode);
+  inventoryRunBulk(async()=>{
+    const lines=inventoryBulkLines(draft);
+    if(mode==='template'||submitter?.value==='template'){
+      const request={action:'template',operation_id:crypto.randomUUID(),name:draft.name,lines,...(mode==='template'&&draft.id?{id:draft.id,version:draft.version}:{})};
+      const fingerprint=JSON.stringify({...request,operation_id:undefined});
+      if(draft.saveRequest?.fingerprint!==fingerprint)draft.saveRequest={fingerprint,body:request};
+      const saved=await api('/api/inventory',draft.saveRequest.body);draft.saveRequest=null;
+      if(mode==='template'){inventoryDialog.close();inventoryBulkDrafts.delete('template');}message('Vorlage „'+saved.name+'“ gespeichert. Bestand unverändert.');
+    }else{
+      const request={kind:draft.kind,lines};const preview=await api('/api/inventory/preview',request);inventoryShowBulkPreview(preview,request);
+    }
+  });return true;
+}
+function inventoryBulkInput(event) {
+  const target=event.target,mode=target.dataset?.inventoryBulkMode;
+  if(target.dataset?.inventoryTemplateFilter){inventoryTemplateFilters[target.dataset.inventoryTemplateFilter]=target.value;document.querySelector('#inventory-template-rows').innerHTML=inventoryTemplateRows();return;}
+  if(target.dataset?.inventoryBulkName){inventoryBulkDraft(target.dataset.inventoryBulkName).name=target.value;return;}
+  if(target.dataset?.inventoryBulkSearch){const key=target.dataset.inventoryBulkSearch,draft=inventoryBulkDraft(key);draft.filter=target.value;for(const row of document.querySelectorAll('[data-inventory-bulk-row-mode="'+key+'"]'))row.hidden=!draft.lines[Number(row.dataset.inventoryBulkRow)].name.toLocaleLowerCase('de-DE').includes(target.value.toLocaleLowerCase('de-DE'));return;}
+  if(!mode||!target.dataset.inventoryBulkKey)return;
+  const draft=inventoryBulkDraft(mode),line=draft.lines[Number(target.dataset.inventoryBulkIndex)];if(!line)return;
+  line[target.dataset.inventoryBulkKey]=target.value;inventoryBulkPreview=null;
+  const row=target.closest?.('[data-inventory-bulk-row]');if(!row)return;
+  const p=state.inventory.packages.find(p=>p.id===line.package_id),quantity=draft.kind==='inventory'?(line.counted===''?null:Number(line.counted)-line.stock):Number(line.packages)*(p?.bottles||1)+Number(line.singles);
+  const result=row.querySelector('[data-inventory-bulk-result]');if(result)result.textContent=draft.kind==='inventory'?(quantity===null?'Nicht gezählt':quantity+' Flaschen'):mode==='template'?quantity+' Flaschen':'+'+quantity+' → '+(line.stock+quantity);
+  const reason=row.querySelector('input[name^="reason-"]');if(reason)reason.required=quantity!==null&&quantity!==0;
+}
+async function inventoryBulkClick(event) {
+  if(view!=='lager'||busy)return;
+  const button=event.target.closest?.('button');if(!button)return;
+  if(button.dataset.inventoryTemplateOpen){inventoryOpenTemplate(button.dataset.inventoryTemplateOpen);return;}
+  if(button.dataset.inventoryTemplateAdopt){const template=(state.inventory.templates||[]).find(t=>t.id===button.dataset.inventoryTemplateAdopt);if(template){inventoryBulkDrafts.set('receipt',inventoryNewBulkDraft('receipt',template));inventorySection='receipt';inventoryDashboard();message('Vorlage übernommen. Mengen, Gebinde und EK vor der Buchung prüfen.');}return;}
+  if(button.dataset.inventoryTemplateReset){inventoryTemplateFilters={name:'',status:'',count:''};inventoryDashboard();return;}
+  if(button.dataset.inventoryBulkReset){const mode=button.dataset.inventoryBulkReset;if(mode==='template')inventoryOpenTemplate(inventoryBulkDraft(mode).id||'new');else{inventoryBulkDrafts.delete(mode);inventoryDashboard();}return;}
+  if(button.dataset.inventoryBulkRemove!==undefined){const mode=button.dataset.inventoryBulkMode,draft=inventoryBulkDraft(mode);draft.lines.splice(Number(button.dataset.inventoryBulkRemove),1);if(mode==='template')document.querySelector('#inventory-dialog-content').innerHTML=inventoryBulkForm(mode);else inventoryDashboard();}
+}
+root.addEventListener('input',inventoryBulkInput);root.addEventListener('change',inventoryBulkInput);inventoryDialog.addEventListener('input',inventoryBulkInput);inventoryDialog.addEventListener('change',inventoryBulkInput);
+root.addEventListener('click',inventoryBulkClick);inventoryDialog.addEventListener('click',inventoryBulkClick);
+root.addEventListener('change',event=>{if(event.target.dataset?.inventoryBulkAdopt){const batch=(state.inventory.batches||[]).find(b=>b.id===event.target.value);if(batch){inventoryBulkDrafts.set('receipt',inventoryNewBulkDraft('receipt',batch));inventoryDashboard();message('Wareneingang als neue Eingabe übernommen. Mengen und EK prüfen.');}}});
+
+function inventoryBulkAddLine(event) {
+ const mode=event.target.dataset?.inventoryBulkAdd;if(!mode||!event.target.value)return;
+ const draft=inventoryBulkDraft(mode),line=inventoryNewBulkDraft(mode).lines.find(line=>line.drink_id===event.target.value);
+ if(!line||draft.lines.some(value=>value.drink_id===line.drink_id))return;draft.lines.push(line);
+ if(mode==='template')document.querySelector('#inventory-dialog-content').innerHTML=inventoryBulkForm(mode);else inventoryDashboard();
+}
+root.addEventListener('change',inventoryBulkAddLine);inventoryDialog.addEventListener('change',inventoryBulkAddLine);

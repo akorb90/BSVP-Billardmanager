@@ -133,6 +133,21 @@ try {
   assert.equal((await request('/api/inventory',undefined,{admin:false})).status,401);
   console.log('PASS: inventory over HTTPS, 43 to 41 bottles, idempotency and access');
 
+  const secondDrink=await lager({action:'drink',name:'Docker Cola',size_ml:330,sale_cents:300,purchase_cents:80,minimum:5,active:1});
+  assert.equal(secondDrink.status,200);
+  const deliveryLines=[{drink_id:drink.body.id,version:3,package_id:pack.body.id,packages:1,singles:0,purchase_cents:null},{drink_id:secondDrink.body.id,version:0,package_id:null,packages:0,singles:2,purchase_cents:80}];
+  const deliveryPreview=await request('/api/inventory/preview',{kind:'receipt',lines:deliveryLines});assert.equal(deliveryPreview.status,200);
+  assert.equal((await lager({action:'template',name:'Smoke Lieferung',lines:deliveryLines})).status,200);
+  const delivery={action:'batch',operation_id:randomUUID(),kind:'receipt',lines:deliveryLines,preview:deliveryPreview.body.token};
+  assert.equal((await lager(delivery)).status,200);assert.equal((await lager(delivery)).status,200);
+  const stock=(await request('/api/inventory')).body;
+  assert.equal(stock.drinks.find(d=>d.id===drink.body.id).stock,61);assert.equal(stock.templates.length,1);
+  const countLines=stock.drinks.map(d=>({drink_id:d.id,version:d.version,counted:d.stock-(d.id===drink.body.id?1:0),reason:d.id===drink.body.id?'Inventurdifferenz':''}));
+  const countPreview=await request('/api/inventory/preview',{kind:'inventory',lines:countLines});assert.equal(countPreview.status,200);
+  assert.equal((await lager({action:'batch',kind:'inventory',lines:countLines,preview:countPreview.body.token})).status,200);
+  assert.equal((await request('/api/inventory')).body.drinks.find(d=>d.id===drink.body.id).stock,60);
+  console.log('PASS: batch receipt, saved template, idempotency and counted inventory over HTTPS');
+
   const brand=(await request('/api/branding',undefined,{admin:false})).body;
   const logo='data:image/png;base64,'+readFileSync(join(root,'public','assets','bsv-logo.png')).toString('base64');
   assert.equal((await request('/api/settings/branding',{...brand,club_name:'Docker Testverein',primary:'#8b3624',logo},{admin:false})).status,401);

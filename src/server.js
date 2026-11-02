@@ -118,15 +118,17 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
         if (!req.headers['content-type']?.startsWith('application/json')) throw fail(415, 'JSON erforderlich.');
         const backupUpload = ['/api/backups/preview', '/api/backups/restore'].includes(url.pathname);
         const participantUpload=/^\/api\/events\/\d+\/participants$/.test(url.pathname);
+        const inventoryUpload=['/api/inventory','/api/inventory/preview'].includes(url.pathname);
         const brandingUpload = url.pathname === '/api/settings/branding';
-        if (backupUpload || brandingUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
+        if (backupUpload || brandingUpload || inventoryUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : participantUpload ? 128*1024 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : participantUpload || inventoryUpload ? 128*1024 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
         const raw = Buffer.concat(chunks).toString('utf8');
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
+      if(req.method==='POST'&&url.pathname==='/api/inventory/preview'){admin();return json(res,200,await inventory.preview(body));}
       if (url.pathname === '/api/inventory') {admin();if(req.method==='GET')return json(res,200,await inventory.state());if(req.method==='POST')return json(res,200,await inventory.handle(body));}
       if (req.method === 'GET' && url.pathname === '/health') { await db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
       if (req.method === 'POST' && url.pathname === '/api/settings/nuliga-schedule') {admin();return json(res,200,await schedule.sync());}
