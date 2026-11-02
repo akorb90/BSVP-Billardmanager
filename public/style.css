@@ -183,6 +183,10 @@ main:has(>.inventory-title){padding-top:24px}
 #inventory-dialog form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:18px}
 #inventory-dialog form>button,#inventory-dialog form>p,#inventory-dialog form>h4{grid-column:1/-1}
 .inventory-package-form{border-top:1px solid var(--border);padding:16px 0}
+.inventory-package-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.inventory-package-heading h3{margin:0}
+.inventory-packages-table tbody tr[data-inventory-package-open]{cursor:pointer}
+.inventory-packages-table tbody tr[data-inventory-package-open]:hover,.inventory-packages-table tbody tr[data-inventory-package-open]:focus-within{background:var(--tinted)}
 #inventory-dialog [data-inventory-preview]{background:var(--tinted);padding:12px;border-radius:6px;font-weight:600}
 @media(max-width:650px){#inventory-dialog{padding:18px}#inventory-dialog form{grid-template-columns:1fr}.inventory-stock{padding:16px}.inventory-menu button{flex:1}}
 #finish-summary { color:var(--text); font-size:23px; font-weight:700; }

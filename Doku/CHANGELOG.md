@@ -2,6 +2,13 @@
 
 Diese Historie dokumentiert umgesetzte Features und Änderungen. Noch offene Anforderungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
+## Gebinde als Tabelle und verbindlicher Oberflächenstandard — 2026-11-02
+
+- Im Getränke-Overlay zeigt der Bereich Gebinde eine zentrale Tabelle mit Namen und Flaschenanzahl. Namens- und Größenfilter sind kombinierbar und gemeinsam zurücksetzbar. Klick auf Namen oder Zeile öffnet die Bearbeitung des gewählten Gebindes; „Zur Gebindeübersicht“ kehrt ohne Speichern zur Tabelle zurück. Neue Gebinde werden über einen eigenen Button angelegt. Die ursprünglich angezeigten Daten und deren Version bleiben beim Öffnen der Bearbeitung erhalten, damit zwischenzeitliche Änderungen nicht unbemerkt überschrieben werden.
+- Der Tabellenstandard für künftige Verwaltungsansichten ist auf Benutzerwunsch in `AGENTS.md` festgehalten: zentrale Tabellen, Namensklick zur Overlay-Bearbeitung, eigene Neuanlage, passende Spaltenfilter und Untermenüs für umfangreiche Nebenansichten.
+- Prüfstand: 48 betroffene Navigationstests und Gesamtsuite **138/138** erfolgreich, ohne Skips; Syntaxprüfung und git diff --check erfolgreich. Mehrere Gebinde, sichere Namensausgabe, gezielte Bearbeitung, Neuanlage, Filterkombination, Rückkehr sowie ursprüngliche Versionsbindung gezielt geprüft. npm fehlt; identische Skripte direkt mit Node ausgeführt. Keine Server-, Datenbank- oder Backupänderung. Logs: `data/fr014-packages-table-2026-11-02/`.
+- Lokal im bestehenden Compose-Projekt gebaut und bereitgestellt. App/PostgreSQL gesund, Proxy aktiv; HTTPS mit CA-/Hostnamenprüfung und neue Frontend-Auslieferung geprüft. Stack bleibt aktiv; kein Commit oder Push.
+
 ## Kombinierter Lagerstatusfilter — 2026-11-02
 
 - Der Statusfilter bietet zusätzlich **Leer + Nachbestellen** und zeigt beide Gruppen gemeinsam. Auch leere aktive Getränke mit Mindestbestand null werden erfasst; ausreichende und archivierte Artikel bleiben ausgeschlossen.

@@ -767,7 +767,7 @@ test('Lager: Zeilen öffnen Bestands-, Stammdaten- und Gebindebearbeitung im Ove
   assert.equal(app.element('#inventory-dialog').open,true);
   assert.equal(app.element('#inventory-dialog-title').textContent,'Wasser <b> · 500 ml');
   const content=app.element('#inventory-dialog-content').innerHTML;
-  assert.match(content,/inventory-drink-water/);assert.match(content,/inventory-move-water/);assert.match(content,/inventory-pack-case/);
+  assert.match(content,/inventory-drink-water/);assert.match(content,/inventory-move-water/);assert.match(content,/data-inventory-package-open="case"/);
   assert.match(content,/20er-Kasten \(20 Flaschen\)/);assert.match(content,/4 Flaschen fehlen/);
   assert.match(content,/name="version" value="3"/);assert.match(content,/name="operation_id"/);
   for(const input of content.match(/<input[^>]*name="purchase_euros"[^>]*>/g))assert.doesNotMatch(input,/\brequired\b/);
@@ -839,4 +839,38 @@ test('Lager: Leer hat Vorrang vor Mindestbestand; Statusfilter entsprechen den f
   rows=await inventoryFilter(app,'status','empty-low');assert.match(rows,/Saft/);assert.match(rows,/TEST Cola/);assert.doesNotMatch(rows,/Wasser|>Alt</);
   await app.refresh(true);assert.match(app.element('#app').innerHTML,/<option value="empty-low" selected>Leer \+ Nachbestellen/);
   rows=await inventoryFilter(app,'status','archived');assert.match(rows,/>Alt</);assert.doesNotMatch(rows,/inventory-status-empty/);
+});
+
+test('Gebinde: zentrale Tabelle, gezielte Bearbeitung per Namensklick und separate Neuanlage',async()=>{
+  const inventory=inventoryFixtures();inventory.packages.push({id:'case24',drink_id:'water',name:'24er <Kasten>',bottles:24,version:0});
+  const app=await frontend('/#lager',{inventory});await inventoryClick(app,{dataset:{inventoryOpen:'water'}});
+  const content=app.element('#inventory-dialog-content').innerHTML;
+  assert.match(content,/class="inventory-packages-table"/);assert.match(content,/Gebindeübersicht<\/caption>/);
+  assert.match(content,/data-inventory-package-open="case"/);assert.match(content,/data-inventory-package-open="case24"/);
+  assert.match(content,/24er &lt;Kasten&gt;/);assert.doesNotMatch(content,/<Kasten>/);
+  assert.match(content,/20 Flaschen<\/td>/);assert.match(content,/24 Flaschen<\/td>/);
+  assert.doesNotMatch(content,/id="inventory-pack-case"/);
+  // Polling may update state, but editing must still use the version and values shown in this open overlay.
+  inventory.drinks.find(d=>d.id==='water').version=99;inventory.packages[0].bottles=18;await app.refresh(true);
+  await inventoryClick(app,{dataset:{inventoryPackageOpen:'case'}},true);
+  const editor=app.element('#inventory-package-editor');assert.equal(editor.hidden,false);assert.equal(app.element('#inventory-package-list').hidden,true);
+  assert.match(editor.innerHTML,/id="inventory-pack-case"/);assert.match(editor.innerHTML,/name="version" value="3"/);
+  assert.match(editor.innerHTML,/name="bottles"[^>]*value="20"/);assert.doesNotMatch(editor.innerHTML,/value="99"/);
+  await inventoryClick(app,{dataset:{inventoryPackageBack:'case'}},true);assert.equal(editor.hidden,true);assert.equal(app.element('#inventory-package-list').hidden,false);
+  await inventoryClick(app,{dataset:{inventoryPackageOpen:'new'}},true);assert.match(editor.innerHTML,/Gebinde anlegen/);
+  assert.match(editor.innerHTML,/name="id" value=""/);assert.match(editor.innerHTML,/name="name"[^>]*value=""/);
+  assert.equal(app.posts.length,0);
+});
+
+test('Gebinde: Namens- und Größenfilter kombinieren, zurücksetzen und bei Bearbeitungsrückkehr erhalten',async()=>{
+  const inventory=inventoryFixtures();inventory.packages.push({id:'case24',drink_id:'water',name:'24er-Kasten',bottles:24,version:0});
+  const app=await frontend('/#lager',{inventory});await inventoryClick(app,{dataset:{inventoryOpen:'water'}});
+  const filter=async(key,value)=>app.element('#inventory-dialog').dispatch('input',{target:{dataset:{inventoryPackageFilter:key},value}});
+  await filter('name','24er');let rows=app.element('#inventory-package-rows').innerHTML;assert.match(rows,/24er-Kasten/);assert.doesNotMatch(rows,/20er-Kasten/);
+  await filter('bottles','20');assert.match(app.element('#inventory-package-rows').innerHTML,/Keine Gebinde/);
+  await filter('bottles','24');assert.equal(app.element('#inventory-package-count').textContent,'1 von 2 Gebinden');
+  await inventoryClick(app,{dataset:{inventoryPackageOpen:'case24'}},true);await inventoryClick(app,{dataset:{inventoryPackageBack:'case24'}},true);
+  assert.match(app.element('#inventory-package-rows').innerHTML,/24er-Kasten/);assert.doesNotMatch(app.element('#inventory-package-rows').innerHTML,/20er-Kasten/);
+  await inventoryClick(app,{dataset:{inventoryPackageReset:'true'}},true);rows=app.element('#inventory-package-rows').innerHTML;
+  assert.match(rows,/20er-Kasten/);assert.match(rows,/24er-Kasten/);assert.equal(app.element('#inventory-package-count').textContent,'2 von 2 Gebinden');
 });

@@ -24,7 +24,7 @@ let selectedEventId=Number(location.hash.split('/')[1])||null;
 const inventoryKinds={initial:'Anfangsbestand',receipt:'Wareneingang',consumption:'Verbrauch',breakage:'Bruch',own_use:'Eigenverbrauch',adjustment:'Inventurdifferenz',reversal:'Gegenbuchung'};
 const drafts = new Map();
 const inventoryDialog=document.querySelector('#inventory-dialog');
-let inventorySection='stock',inventoryFilters={},inventoryEditId=null;
+let inventorySection='stock',inventoryFilters={},inventoryEditId=null,inventoryPackageContext=null;
 const leagueDraftVersions = new Map();
 const tournamentPanels = new Map(), tournamentSections = new Map();
 let eventStatus='active',eventCreationOpen=false;
@@ -956,13 +956,14 @@ function openInventoryDrink(id) {
   document.querySelector('#inventory-dialog-title').textContent=d?d.name+' · '+d.size_ml+' ml':'Getränk anlegen';
   document.querySelector('#inventory-dialog-error').textContent='';
   const packs=(state.inventory?.packages||[]).filter(p=>p.drink_id===id);
+  inventoryPackageContext=d?{drink:{...d},packages:packs.map(p=>({...p})),filters:{}}:null;
   let html=d?'<p><strong>'+d.stock+' Flaschen</strong> · Mindestbestand '+d.minimum+' · VK '+euro(d.sale_cents)+' · EK '+(d.purchase_cents===null?'unbekannt':euro(d.purchase_cents))+' · '+(d.active?'Aktiv':'Archiviert')+'</p>':'';
   if(d?.active&&d.stock<d.minimum)html+='<p role="status">Mindestbestand unterschritten: '+(d.minimum-d.stock)+' Flaschen fehlen.</p>';
   if(d)html+='<nav class="inventory-menu" aria-label="Getränk bearbeiten"><button type="button" data-inventory-editor="stock" '+(!d.active?'disabled':'')+'>Bestand buchen</button><button type="button" data-inventory-editor="drink">Stammdaten</button><button type="button" data-inventory-editor="packages" '+(!d.active?'disabled':'')+'>Gebinde ('+packs.length+')</button></nav>';
   html+='<section data-inventory-editor-panel="drink"><h3>Stammdaten</h3><form id="inventory-'+(d?'drink-'+d.id:'new')+'">'+(d?inventoryMetadata(d,'drink')+inventoryHidden('id',d.id):inventoryHidden('action','drink')+inventoryHidden('operation_id',crypto.randomUUID()))+inventoryDrinkFields(d||{})+'<button class="primary">'+(d?'Stammdaten speichern':'Getränk anlegen')+'</button></form></section>';
   if(d?.active){
     html+='<section data-inventory-editor-panel="stock"><h3>Bestand buchen</h3><p>Bestandsänderungen werden als nachvollziehbare Lagerbewegung gespeichert.</p><form id="inventory-move-'+d.id+'" data-stock="'+d.stock+'">'+inventoryMetadata(d,'movement')+inventorySelectField('Bewegungsart','kind','receipt',Object.entries(inventoryKinds).filter(([k])=>k!=='reversal'))+inventorySelectField('Gebinde','package_id','',[['','Nur Einzelflaschen'],...packs.map(p=>[p.id,p.name+' ('+p.bottles+' Flaschen)'])])+inventoryField('Anzahl Gebinde','packages',0,'number','min="0" max="1000000000" step="1" required')+inventoryField('Einzelflaschen zusätzlich','singles',0,'number','min="0" max="1000000000" step="1" required')+inventorySelectField('Richtung bei Inventurdifferenz','direction',1,[[1,'Zugang'],[-1,'Abgang']])+inventoryOptionalField('Tatsächlicher EK pro Flasche (€), optional','purchase_euros',d.purchase_cents===null?'':(d.purchase_cents/100).toFixed(2),'number','min="0" max="10000" step="0.01"')+inventoryOptionalField('Begründung (Pflicht bei Bruch, Eigenverbrauch, Inventurdifferenz)','reason','','text','maxlength="500"')+'<p data-inventory-preview aria-live="polite">Menge zur Vorschau eingeben.</p><button class="primary">Lagerbewegung verbindlich buchen</button></form></section>';
-    html+='<section data-inventory-editor-panel="packages"><h3>Gebinde verwalten</h3>'+[...packs,{id:'',name:'',bottles:20}].map(p=>'<form class="inventory-package-form" id="inventory-pack-'+(p.id||d.id)+'"><h4>'+(p.id?esc(p.name):'Neues Gebinde')+'</h4>'+inventoryMetadata(d,'package')+inventoryHidden('id',p.id)+inventoryField('Gebindename','name',p.name,'text','required maxlength="100"')+inventoryField('Flaschen pro Gebinde','bottles',p.bottles,'number','min="1" max="1000000" step="1" required')+'<button>'+(p.id?'Gebinde ändern':'Gebinde anlegen')+'</button></form>').join('')+'</section>';
+    html+='<section data-inventory-editor-panel="packages"><div id="inventory-package-list"><div class="inventory-package-heading"><h3>Gebinde verwalten</h3><div class="dialog-actions"><button type="button" data-inventory-package-reset="true">Filter zurücksetzen</button><button type="button" class="primary" data-inventory-package-open="new">Gebinde anlegen</button></div></div><p>Gebindenamen anklicken, um Bezeichnung und Flaschenanzahl zu bearbeiten.</p><p id="inventory-package-count" role="status">'+packs.length+' von '+packs.length+' Gebinden</p><div class="rental-history"><table class="inventory-packages-table"><caption class="sr-only">Gebindeübersicht</caption><thead><tr><th scope="col">Gebinde</th><th scope="col">Flaschen pro Gebinde</th></tr><tr class="inventory-filter-row"><th><label><span class="sr-only">Gebindename filtern</span><input type="search" data-inventory-package-filter="name" aria-label="Gebindename filtern" placeholder="Name suchen …"></label></th><th><label><span class="sr-only">Gebindegröße filtern</span><select data-inventory-package-filter="bottles" aria-label="Gebindegröße filtern"><option value="">Alle</option>'+[...new Set(packs.map(p=>p.bottles))].sort((a,b)=>a-b).map(bottles=>'<option value="'+bottles+'">'+bottles+' Flaschen</option>').join('')+'</select></label></th></tr></thead><tbody id="inventory-package-rows">'+inventoryPackageRows(packs)+'</tbody></table></div></div><div id="inventory-package-editor" hidden></div></section>';
   }
   document.querySelector('#inventory-dialog-content').innerHTML=html;
   selectInventoryEditor(d?.active?'stock':'drink');
@@ -971,6 +972,28 @@ function openInventoryDrink(id) {
 function selectInventoryEditor(name) {
   for(const panel of inventoryDialog.querySelectorAll('[data-inventory-editor-panel]'))panel.hidden=panel.dataset.inventoryEditorPanel!==name;
   for(const button of inventoryDialog.querySelectorAll('[data-inventory-editor]')){if(button.dataset.inventoryEditor===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
+}
+function inventoryPackageRows(packages) {
+  return packages.length?packages.map(p=>'<tr data-inventory-package-open="'+esc(p.id)+'"><th scope="row"><button type="button" class="inventory-drink-link" data-inventory-package-open="'+esc(p.id)+'" aria-label="'+esc(p.name)+' bearbeiten">'+esc(p.name)+'</button></th><td>'+p.bottles+' Flaschen</td></tr>').join(''):'<tr><td colspan="2">Keine Gebinde vorhanden oder für diese Filter gefunden.</td></tr>';
+}
+function updateInventoryPackageRows() {
+  const {packages,filters}=inventoryPackageContext;
+  const filtered=packages.filter(p=>(!filters.name||p.name.toLocaleLowerCase('de-DE').includes(filters.name.trim().toLocaleLowerCase('de-DE')))&&(!filters.bottles||p.bottles===Number(filters.bottles)));
+  document.querySelector('#inventory-package-rows').innerHTML=inventoryPackageRows(filtered);
+  document.querySelector('#inventory-package-count').textContent=filtered.length+' von '+packages.length+' Gebinden';
+}
+function filterInventoryPackages(event) {
+  const key=event.target.dataset?.inventoryPackageFilter;if(!key||!inventoryPackageContext)return;
+  inventoryPackageContext.filters[key]=event.target.value;updateInventoryPackageRows();
+}
+function openInventoryPackage(id) {
+  if(busy||!inventoryPackageContext?.drink.active)return;
+  const d=inventoryPackageContext.drink,p=id==='new'?{id:'',name:'',bottles:20}:inventoryPackageContext.packages.find(p=>p.id===id);
+  if(!p)return;
+  const editor=document.querySelector('#inventory-package-editor');
+  editor.innerHTML='<button type="button" data-inventory-package-back="'+esc(id)+'">← Zur Gebindeübersicht</button><h3>'+(p.id?'Gebinde bearbeiten':'Gebinde anlegen')+'</h3><form class="inventory-package-form" id="inventory-pack-'+esc(p.id||d.id)+'">'+inventoryMetadata(d,'package')+inventoryHidden('id',p.id)+inventoryField('Gebindename','name',p.name,'text','required maxlength="100"')+inventoryField('Flaschen pro Gebinde','bottles',p.bottles,'number','min="1" max="1000000" step="1" required')+'<button class="primary">'+(p.id?'Gebinde speichern':'Gebinde anlegen')+'</button></form>';
+  document.querySelector('#inventory-package-list').hidden=true;editor.hidden=false;
+  editor.querySelector('input[name="name"]')?.focus();
 }
 function updateInventoryMovementPreview(event) {
   if(view!=='lager')return;
@@ -1002,10 +1025,21 @@ root.addEventListener('click',event=>{
   if(button.dataset.inventorySection){saveDrafts();inventorySection=button.dataset.inventorySection;inventoryDashboard();restoreDrafts();}
 });
 inventoryDialog.addEventListener('input',updateInventoryMovementPreview);
+inventoryDialog.addEventListener('input',filterInventoryPackages);
+inventoryDialog.addEventListener('change',filterInventoryPackages);
 inventoryDialog.addEventListener('submit',event=>{event.preventDefault();handleInventorySubmit(event.target);});
 inventoryDialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
 inventoryDialog.addEventListener('click',async event=>{
+  if(busy)return;
+  const packageTarget=event.target.closest?.('[data-inventory-package-open]');
+  if(packageTarget?.dataset.inventoryPackageOpen){openInventoryPackage(packageTarget.dataset.inventoryPackageOpen);return;}
   const button=event.target.closest?.('button');if(!button||busy)return;
+  if(button.dataset.inventoryPackageReset){inventoryPackageContext.filters={};for(const control of inventoryDialog.querySelectorAll('[data-inventory-package-filter]'))control.value='';updateInventoryPackageRows();return;}
+  if(button.dataset.inventoryPackageBack){
+    const editor=document.querySelector('#inventory-package-editor');editor.hidden=true;editor.innerHTML='';
+    const list=document.querySelector('#inventory-package-list');list.hidden=false;
+    [...list.querySelectorAll('button[data-inventory-package-open]')].find(target=>target.dataset.inventoryPackageOpen===button.dataset.inventoryPackageBack)?.focus();return;
+  }
   if(button.id==='inventory-dialog-close')inventoryDialog.close();
   if(button.dataset.inventoryEditor)selectInventoryEditor(button.dataset.inventoryEditor);
   if(button.id==='inventory-dialog-reload'){await refresh(true);openInventoryDrink(inventoryEditId);}

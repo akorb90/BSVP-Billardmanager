@@ -11,6 +11,13 @@
 - Kurze Fortschrittsmeldungen mit neuen Erkenntnissen; Abschluss mit Änderung, Prüfstand, Deploymentzustand und verbleibenden Einschränkungen. Keine vollständigen Logs oder wiederholten Pläne in die Antwort übernehmen.
 - Erledigte FR mit Datum und tatsächlichem Prüfstand nach `Doku/CHANGELOG.md` übertragen und aus der offenen Liste entfernen. Weiterführende Optionen gehören in die Fachdokumentation, nicht dauerhaft in diese Datei.
 
+## Oberflächenstandard für künftige Anforderungen
+
+- Verwaltungsübersichten und Listen grundsätzlich als zentrale Tabellen gestalten, entsprechend der Lagerbestands- und Gebindeübersicht.
+- Datensätze über einen klickbaren Namen zur Bearbeitung öffnen; dafür ein Overlay mit klar getrennten Bearbeitungsbereichen verwenden. Neue Datensätze über einen eigenen, eindeutig beschrifteten Button anlegen.
+- Für filterbare Tabellenspalten passende Filter mit fachlich sinnvollen Vorgaben anbieten. Zusammengehörige Filter kombinierbar halten und ein gemeinsames Zurücksetzen ermöglichen.
+- Umfangreiche Nebenansichten wie Bewegungshistorien in eigene Untermenüs auslagern. Tabellen auch auf schmalen Bildschirmen bedienbar halten und die Namensaktionen per Tastatur zugänglich machen.
+
 ## Änderungen und Bereitstellung
 
 - Commit und Push bleiben standardmäßig beim Entwickler; nur auf ausdrücklichen Auftrag ausführen. Das lokale Deployment bleibt Aufgabe des Agenten gemäß den folgenden Regeln.
