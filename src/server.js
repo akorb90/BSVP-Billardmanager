@@ -1,3 +1,4 @@
+import { inventoryService } from './inventory.js';
 import {tournamentService,standings,swissStandings} from './tournaments.js';
 import {leagueService} from './league.js';
 import {participantOccupancy} from './participant-occupancy.js';
@@ -39,6 +40,7 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
   const tables = tableService({db, transaction, fail, integer, log});
   const rentals = await rentalService({db, transaction, fail, integer, log, activeTable:tables.activeNumber});
   const branding = brandingService({db, transaction, fail, log});
+  const inventory=inventoryService({db,transaction,fail,log});
   const backups = await backupService({db, transaction, fail, log});
   const nextId = async name => (await db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name)).value;
   const getEvent = async id => {
@@ -125,6 +127,7 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
+      if (url.pathname === '/api/inventory') {admin();if(req.method==='GET')return json(res,200,await inventory.state());if(req.method==='POST')return json(res,200,await inventory.handle(body));}
       if (req.method === 'GET' && url.pathname === '/health') { await db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
       if (req.method === 'POST' && url.pathname === '/api/settings/nuliga-schedule') {admin();return json(res,200,await schedule.sync());}
       if (req.method === 'POST' && url.pathname === '/api/settings/nuliga') { admin(); return json(res,200,await nuliga.sync(body)); }

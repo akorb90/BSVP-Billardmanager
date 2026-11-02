@@ -55,7 +55,7 @@ Der vollständige Docker-Test prüft auch Backup-Export/Import sowie die direkte
 Tablets / Adminbrowser ── HTTPS :443 ── Caddy ── App :3000 ── PostgreSQL :5432 ── postgres_data
 ```
 
-Stand: 2026-10-29, logisches Datenschema **13** (`SCHEMA_VERSION` in `src/database.js`). PostgreSQL speichert den installierten Stand in `_schema`. Der Compose-Stack betreibt einen Node.js-24-App-Prozess und PostgreSQL 17; App und Datenbank haben keine öffentlich veröffentlichten Ports. Caddy stellt HTTPS bereit. Admin- und Tablet-Sitzungen liegen im App-Prozess und gehen bei einem Neustart verloren.
+Stand: 2026-11-02, logisches Datenschema **14** (`SCHEMA_VERSION` in `src/database.js`). PostgreSQL speichert den installierten Stand in `_schema`. Der Compose-Stack betreibt einen Node.js-24-App-Prozess und PostgreSQL 17; App und Datenbank haben keine öffentlich veröffentlichten Ports. Caddy stellt HTTPS bereit. Admin- und Tablet-Sitzungen liegen im App-Prozess und gehen bei einem Neustart verloren.
 
 | Bereich | Einstiegspunkte und Verantwortung |
 | --- | --- |
@@ -64,7 +64,7 @@ Stand: 2026-10-29, logisches Datenschema **13** (`SCHEMA_VERSION` in `src/databa
 | Spielbetrieb | `src/domain.js`, `src/tables.js`, `src/participant-occupancy.js`, `src/rentals.js`: Regeln, Tisch- und Spielerbelegung sowie Vermietung |
 | Veranstaltungen und Stammdaten | `src/players.js`, `src/schedule.js`, `src/league.js`, `src/tournaments.js`: Spieler/Mannschaften, Planung, Liga-Aufstellungen, Gruppen und KO |
 | nuLiga | `src/nuliga.js` und `scripts/nuliga-sync.js`: externe Vereinsdaten und Synchronisierung |
-| Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/schema.sql`: vollständiges PostgreSQL-Ausgangsschema |
+| Persistenz | `src/database.js`: asynchroner PostgreSQL-Adapter, Initialisierung und Upgrades; `src/schema.sql` und `src/inventory-schema.js`: PostgreSQL-Ausgangsschema |
 | Einstellungen und Sicherung | `src/branding.js`, `src/backup.js`: Vereinsgestaltung, vollständiger Export, Prüfung und Wiederherstellung |
 
 SQL-Werte werden parametrisiert übergeben. Transaktionen nutzen eine feste Pool-Verbindung und eine gemeinsame transaktionale Advisory-Sperre für atomare Prüfungen und Änderungen, insbesondere bei Versionen und Tischbelegung. Der Server und die Datenbanktests benötigen PostgreSQL.
@@ -75,7 +75,7 @@ Exporte ermitteln alle Anwendungstabellen und Spalten aus dem installierten Sche
 
 Die Tischanzahl ist zwischen 1 und 20 einstellbar. Neue Belegungen müssen innerhalb dieser Grenze liegen; historische Tischzuordnungen bleiben bei einer Verringerung erhalten. Vermietungen verwenden den gespeicherten Grundpreis und einen Rabatt von 0 bis 100 Prozent.
 
-Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1–13, PostgreSQL-Upgrades und ältere JSON-Sicherungen. Geplante Erweiterungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
+Die [Migrationshistorie und Kompatibilität](Migrationen.md) beschreibt Schema 1–14, PostgreSQL-Upgrades und ältere JSON-Sicherungen. Geplante Erweiterungen stehen in den [Feature Requests](FEATURE_REQUESTS.md).
 
 ## Lokale Ausgaben
 

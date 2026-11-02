@@ -48,7 +48,7 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     const tablet=await call('/api/tables/19/login',{pin:'123456'},{Cookie:''});assert.equal(tablet.status,200);
     assert.equal((await call('/api/tables/19',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).body.match.table_no,19);
     const backup=(await call('/api/backups/export')).body;
-    assert.equal(backup.schema,13);assert.equal(backup.data.table_settings[0].table_count,20);
+    assert.equal(backup.schema,14);assert.equal(backup.data.table_settings[0].table_count,20);
     assert.equal(backup.data.audit.at(-1).action,'start');assert.ok(backup.data.audit.some(a=>a.action==='settings:tables'));
     await stop();await start('target');await login();
     for(const change of [b=>b.data.table_settings=[],b=>b.data.table_settings[0].table_count=21,b=>b.data.table_settings[0].table_count=1,b=>delete b.data.table_settings]) {
@@ -74,7 +74,7 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     assert.equal((await call('/api/rentals',{table_no:2,settings_version:0})).status,400);
     assert.equal((await call('/api/tables/2')).status,400);assert.equal((await call('/tisch/2')).status,400);
     assert.equal((await call('/api/tables/2/login',{pin:'123456'})).status,400);
-    const legacy=structuredClone(original);delete legacy.data.event_match_slots;delete legacy.data.event_planning;delete legacy.data.nuliga_schedule_sync;delete legacy.data.nuliga_entities;delete legacy.data.nuliga_sync;legacy.schema=7;for(const t of ['players','teams','team_players','event_players','event_teams'])delete legacy.data[t];for(const m of legacy.data.matches)for(const k of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[k];delete legacy.data.table_settings;resign(legacy);
+    const legacy=structuredClone(original);delete legacy.data.event_match_slots;delete legacy.data.event_planning;delete legacy.data.nuliga_schedule_sync;delete legacy.data.nuliga_entities;delete legacy.data.nuliga_sync;legacy.schema=7;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];for(const t of ['players','teams','team_players','event_players','event_teams'])delete legacy.data[t];for(const m of legacy.data.matches)for(const k of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[k];delete legacy.data.table_settings;resign(legacy);
     assert.equal((await call('/api/backups/preview',{backup:legacy})).status,200);assert.equal((await restore(legacy)).status,200);await login();
     assert.equal((await call('/api/admin')).body.table_settings.table_count,8);
   } finally {if(server?.listening)await stop();rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

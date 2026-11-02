@@ -1,3 +1,4 @@
+import { validateInventoryBackup } from './inventory.js';
 import {validateTournamentBackup} from './tournaments.js';
 import { SCHEMA_VERSION, quote } from './database.js';
 import { createHash } from 'node:crypto';
@@ -29,7 +30,7 @@ export async function backupService({ db, transaction, fail, log }) {
     }
   };
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11,12].includes(backup.schema) || version!==13 || backup.checksum!==digest(backup.data)) return backup;
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11,12,13].includes(backup.schema) || version!==14 || backup.checksum!==digest(backup.data)) return backup;
     let data={...backup.data};
     if (backup.schema===6) {
       if (Object.hasOwn(data,'branding')) return backup;
@@ -53,7 +54,8 @@ export async function backupService({ db, transaction, fail, log }) {
     if(backup.schema<12){if(Object.hasOwn(data,'event_match_slots')||!Array.isArray(data.events))return backup;data.event_match_slots=data.events.flatMap(e=>Array.from({length:10},(_,i)=>({event_id:e.id,slot:i+1,match_id:null,player_a_id:null,player_a2_id:null,player_b_id:null,player_b2_id:null,table_no:null,target:null,version:0})));}
     if(!Array.isArray(data.players))return backup;
     data.players=data.players.map(p=>({...p,event_id:p.event_id??null}));
-    return {...backup,schema:13,data,checksum:digest(data)};
+    for(const name of ['inventory_drinks','inventory_packages','inventory_movements','inventory_operations']) {if(Object.hasOwn(data,name))return backup;data[name]=[];}
+    return {...backup,schema:14,data,checksum:digest(data)};
   };
   const validate = async backup => {
     backup=upgrade(backup);
@@ -105,6 +107,7 @@ export async function backupService({ db, transaction, fail, log }) {
         for(const p of data.event_planning){if(!has('events',p.event_id))throw Error('planned event');const meta=JSON.parse(p.metadata);if(!meta||typeof meta!=='object'||Array.isArray(meta))throw Error('planning metadata');if(!p.started&&(data.matches.some(m=>m.event_id===p.event_id)||data.events.some(e=>e.id===p.event_id&&e.status==='closed')))throw Error('unstarted matches');}
         for(const r of data.nuliga_schedule_sync){const summary=JSON.parse(r.summary);if(!Number.isFinite(Date.parse(r.synced_at))||!summary||!Number.isSafeInteger(summary.found))throw Error('schedule sync');}
         validateTournamentBackup(data);
+        validateInventoryBackup(data);
         await replace(backup.data);
         await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         const tableSettings=await check.prepare('SELECT * FROM table_settings').all();

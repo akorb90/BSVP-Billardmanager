@@ -18,10 +18,13 @@ function applyBranding() {
 }
 const navigation = document.querySelector('#admin-nav');
 
-const views = { planung:['Veranstaltungsübersicht','Veranstaltungen planen und verwalten'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Veranstaltungsübersicht', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
+const views = { lager:['Lagerverwaltung','Getränke, Gebinde und Lagerbewegungen verwalten.'], planung:['Veranstaltungsübersicht','Veranstaltungen planen und verwalten'], spieler: ['Spieler', 'Spieler pflegen und nuLiga-Profile öffnen'], mannschaften: ['Mannschaften', 'Mannschaften und Kader pflegen'], einstellungen: ['Einstellungen', 'Tischanzahl, Vereinsgestaltung, Grundpreis und Admin-Passwort verwalten.'], vermietung: ['Tischvermietung', 'Tische vermieten, minutengenau abrechnen und Buchungen prüfen.'], uebersicht: ['Tischübersicht', 'Alle Tische und laufenden Partien im Blick.'], spieltage: ['Veranstaltungsübersicht', 'Veranstaltungen anlegen, Begegnungen planen und Tische zuweisen.'], ergebnisse: ['Ergebnisse', 'Abgeschlossene Partien und ihre gespeicherten Endstände.'] };
 let view = Object.hasOwn(views, location.hash.slice(1).split('/')[0]) ? location.hash.slice(1).split('/')[0] : 'uebersicht';
 let selectedEventId=Number(location.hash.split('/')[1])||null;
+const inventoryKinds={initial:'Anfangsbestand',receipt:'Wareneingang',consumption:'Verbrauch',breakage:'Bruch',own_use:'Eigenverbrauch',adjustment:'Inventurdifferenz',reversal:'Gegenbuchung'};
 const drafts = new Map();
+const inventoryDialog=document.querySelector('#inventory-dialog');
+let inventorySection='stock',inventoryFilters={},inventoryEditId=null;
 const leagueDraftVersions = new Map();
 const tournamentPanels = new Map(), tournamentSections = new Map();
 let eventStatus='active',eventCreationOpen=false;
@@ -147,6 +150,7 @@ function dashboard() {
   if(view==='spieltage'){adminNavigation(true);matchdayDashboard();return;}
   if(['spieler','mannschaften'].includes(view)) {adminNavigation(true);playersDashboard();return;}
   if(view==='einstellungen') { adminNavigation(true); settingsDashboard(); return; }
+  if(view==='lager') { adminNavigation(true); inventoryDashboard(); return; }
   if(view==='vermietung') { adminNavigation(true); rentalDashboard(); return; }
   const live = state.matches.filter(m => m.status === 'live');
   adminNavigation(true);
@@ -216,7 +220,7 @@ async function refresh(initial = false) {
       for(const [key,paging] of listPages){params.set(key+'-page',paging.page);params.set(key+'-size',paging.size);}
       for(const [key,value] of Object.entries(statsFilter))if(value)params.set(key,value);
       const live=await api('/api/admin/live');
-      const scoped=view==='uebersicht'?{matches:[],events:[],pages:{}}:await api('/api/admin/view?'+params);
+      const scoped=view==='lager'?{inventory:await api('/api/inventory'),matches:[],events:[],pages:{}}:view==='uebersicht'?{matches:[],events:[],pages:{}}:await api('/api/admin/view?'+params);
       if(generation!==refreshGeneration||requestedView!==view||requestedEvent!==selectedEventId)return;
       const merge=(left=[],right=[])=>[...new Map([...left,...right].map(row=>[row.id,row])).values()];
       state={...scoped,...live,matches:merge(scoped.matches,live.matches),rentals:merge(scoped.rentals,live.rentals),events:merge(live.events,scoped.events)};csrf=live.csrf;
@@ -241,7 +245,7 @@ async function mutate(fn) {
   finally { busy = false; await refresh(true); }
 }
 root.addEventListener('submit', e => {
-  e.preventDefault(); const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
+  e.preventDefault(); if(handleInventorySubmit(e.target))return; const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   return mutate(async () => {
     if(form.id.startsWith('tournament-player-')) {
       const result=await api('/api/players',data);
@@ -897,4 +901,139 @@ function tournamentBoard(event) {
   const sections={matches:'<h3>Partien & Tische</h3>'+(t?matchRows(ms.sort((a,b)=>a.id-b.id)):'<p>Zuerst die Auslosung unter „Teilnehmer & Regeln“ erstellen und verbindlich übernehmen. Danach hier die Partien Tischen zuweisen.</p>'),ranking:t?drawView(t):'<p>Die Rangliste erscheint nach Übernahme der Auslosung.</p>',settings:html||'<p>Teilnehmer und Regeln sind nach Turnierbeginn festgelegt.</p>'};
   return '<section class="tournament"><h2>Turnierverwaltung</h2><nav class="event-sections" aria-label="Turnierbereiche">'+tabs.map(([key,label])=>'<button type="button" data-tournament-section="'+key+'" aria-pressed="'+(active===key)+'">'+label+'</button>').join('')+'</nav>'+tabs.map(([key,label])=>'<section data-event-section="'+key+'" aria-label="'+label+'" '+(active===key?'':'hidden')+'>'+sections[key]+'</section>').join('')+'</section>';
 
+}
+
+function inventoryHidden(name,value) { return '<input type="hidden" name="'+name+'" value="'+esc(value)+'">'; }
+function inventoryMetadata(d,action) { return inventoryHidden('action',action)+inventoryHidden('version',d.version)+inventoryHidden('drink_id',d.id)+inventoryHidden('operation_id',crypto.randomUUID()); }
+function inventoryField(label,name,value,type="text",extra="") { return field(label,name,value,type,extra).replace("<input ",'<input aria-label="'+esc(label)+'" '); }
+function inventoryOptionalField(...args) { return inventoryField(...args).replace(/ required>/,"> "); }
+function inventorySelectField(label,name,value,options) { return selectField(label,name,value,options).replace("<select ",'<select aria-label="'+esc(label)+'" '); }
+function inventoryDrinkFields(d) {
+  return inventoryField('Bezeichnung','name',d.name||'','text','required maxlength="100"')+inventoryField('Flaschengröße (ml)','size_ml',d.size_ml??500,'number','min="1" max="100000" step="1" required')+inventoryField('VK pro Flasche (€)','sale_euros',d.sale_cents===undefined?'':(d.sale_cents/100).toFixed(2),'number','min="0" max="10000" step="0.01" required')+inventoryOptionalField('EK pro Flasche (€), optional','purchase_euros',d.purchase_cents==null?'':(d.purchase_cents/100).toFixed(2),'number','min="0" max="10000" step="0.01"')+inventoryField('Mindestbestand (Flaschen)','minimum',d.minimum??0,'number','min="0" max="1000000000" step="1" required')+inventorySelectField('Zustand','active',d.active??1,[[1,'Aktiv'],[0,'Archiviert']]);
+}
+function inventoryStatus(d) { return !d.active?'archived':d.stock===0?'empty':d.stock<d.minimum?'low':'sufficient'; }
+function inventoryMatches(d,filters=inventoryFilters) {
+  const missing=Math.max(0,d.minimum-d.stock),low=Boolean(d.active&&missing);
+  const band=(value,preset)=>!preset||preset==='zero'&&value===0||preset==='positive'&&value>0||preset==='1-12'&&value>=1&&value<=12||preset==='13-24'&&value>=13&&value<=24||preset==='25+'&&value>=25;
+  const sale=!filters.sale||filters.sale==='free'&&d.sale_cents===0||filters.sale==='paid'&&d.sale_cents>0||filters.sale==='up-to-250'&&d.sale_cents<=250||filters.sale==='over-250'&&d.sale_cents>250;
+  const purchase=!filters.purchase||filters.purchase==='unknown'&&d.purchase_cents===null||filters.purchase==='known'&&d.purchase_cents!==null||filters.purchase==='free'&&d.purchase_cents===0||filters.purchase==='paid'&&d.purchase_cents>0;
+  const status=!filters.status||filters.status==='active'&&d.active||filters.status==='empty-low'&&['empty','low'].includes(inventoryStatus(d))||filters.status===inventoryStatus(d);
+  const shortfall=!filters.missing||filters.missing==='none'&&d.active&&missing===0||filters.missing==='any'&&low||filters.missing==='1-6'&&d.active&&missing>=1&&missing<=6||filters.missing==='7+'&&d.active&&missing>=7;
+  return (!filters.name||d.name.toLocaleLowerCase('de-DE').includes(filters.name.trim().toLocaleLowerCase('de-DE')))&&(!filters.size||d.size_ml===Number(filters.size))&&sale&&purchase&&status&&shortfall&&(filters.stock==='low'?low:band(d.stock,filters.stock))&&band(d.minimum,filters.minimum);
+}
+function inventoryStockRows(drinks) {
+  return drinks.length?drinks.map(d=>'<tr data-inventory-open="'+esc(d.id)+'"><th scope="row"><button type="button" class="inventory-drink-link" data-inventory-open="'+esc(d.id)+'" aria-label="'+esc(d.name)+' bearbeiten">'+esc(d.name)+'</button></th><td>'+d.size_ml+' ml</td><td>'+euro(d.sale_cents)+'</td><td>'+(d.purchase_cents===null?'Unbekannt':euro(d.purchase_cents))+'</td><td><strong>'+d.stock+' Flaschen</strong></td><td>'+d.minimum+' Flaschen</td><td>'+(d.active?Math.max(0,d.minimum-d.stock)+' Flaschen':'–')+'</td><td><span class="pill inventory-status-'+inventoryStatus(d)+'">'+({empty:'Leer',low:'Nachbestellen',sufficient:'Ausreichend',archived:'Archiviert'}[inventoryStatus(d)])+'</span></td></tr>').join(''):'<tr><td colspan="8">Keine Getränke für diese Filter gefunden.</td></tr>';
+}
+function updateInventoryStockRows() {
+  const drinks=state.inventory?.drinks||[],filtered=drinks.filter(d=>inventoryMatches(d));
+  document.querySelector('#inventory-stock-rows').innerHTML=inventoryStockRows(filtered);
+  document.querySelector('#inventory-filter-count').textContent=filtered.length+' von '+drinks.length+' Getränken';
+}
+function inventoryDashboard() {
+  const inv=state.inventory||{drinks:[],packages:[],movements:[]};
+  let html='<div class="page-title inventory-title"><div><h1>Lagerverwaltung</h1><p>Getränk in der Bestandstabelle anklicken, um Bestand, Stammdaten oder Gebinde zu bearbeiten.</p></div><button type="button" class="primary" id="inventory-new-button">Getränk anlegen</button></div><nav class="inventory-menu" aria-label="Lagerverwaltung"><button type="button" data-inventory-section="stock" '+(inventorySection==='stock'?'aria-current="page"':'')+'>Lagerbestand</button><button type="button" data-inventory-section="movements" '+(inventorySection==='movements'?'aria-current="page"':'')+'>Lagerbewegungen</button></nav>';
+  if(inventorySection==='movements')html+=inventoryMovementHistory(inv);
+  else {
+    const active=inv.drinks.filter(d=>d.active),filtered=inv.drinks.filter(d=>inventoryMatches(d));
+    const select=(key,label,options)=>'<label><span class="sr-only">'+label+' filtern</span><select data-inventory-filter="'+key+'" aria-label="'+label+' filtern">'+[['','Alle'],...options].map(([value,text])=>'<option value="'+esc(value)+'" '+(String(inventoryFilters[key]||'')===String(value)?'selected':'')+'>'+esc(text)+'</option>').join('')+'</select></label>';
+    const bands=[['zero','0 Flaschen'],['positive','Mehr als 0'],['1-12','1–12 Flaschen'],['13-24','13–24 Flaschen'],['25+','Ab 25 Flaschen']];
+    const sizes=[...new Set(inv.drinks.map(d=>d.size_ml))].sort((a,b)=>a-b).map(size=>[size,size+' ml']);
+    html+='<section class="panel inventory-stock" aria-labelledby="inventory-stock-title"><div class="section-title"><div><h2 id="inventory-stock-title">Lagerbestand</h2><p>'+quantity(active.length,'aktives Getränk','aktive Getränke')+' · <strong>'+active.reduce((sum,d)=>sum+d.stock,0)+' Flaschen insgesamt</strong> · '+active.filter(d=>d.stock<d.minimum).length+' unter Mindestbestand</p></div><button type="button" id="inventory-filter-reset">Filter zurücksetzen</button></div>';
+    html+='<p id="inventory-filter-count" role="status">'+filtered.length+' von '+inv.drinks.length+' Getränken</p><div class="rental-history"><table class="inventory-table"><thead><tr>'+['Getränk','Flaschengröße','VK / Flasche','EK / Flasche','Aktueller Bestand','Mindestbestand','Fehlmenge','Status'].map(title=>'<th scope="col">'+title+'</th>').join('')+'</tr><tr class="inventory-filter-row"><th><label><span class="sr-only">Getränk filtern</span><input type="search" data-inventory-filter="name" aria-label="Getränk filtern" placeholder="Name suchen …" list="inventory-name-presets" value="'+esc(inventoryFilters.name||'')+'"></label><datalist id="inventory-name-presets">'+inv.drinks.map(d=>'<option value="'+esc(d.name)+'">').join('')+'</datalist></th><th>'+select('size','Flaschengröße',sizes)+'</th><th>'+select('sale','VK',[['free','0,00 €'],['paid','Kostenpflichtig'],['up-to-250','Bis 2,50 €'],['over-250','Über 2,50 €']])+'</th><th>'+select('purchase','EK',[['unknown','Unbekannt'],['known','Bekannt'],['free','0,00 €'],['paid','Über 0,00 €']])+'</th><th>'+select('stock','Bestand',[['low','Unter Mindestbestand'],...bands])+'</th><th>'+select('minimum','Mindestbestand',bands)+'</th><th>'+select('missing','Fehlmenge',[['none','Keine'],['any','Nachbestellen'],['1-6','1–6 Flaschen'],['7+','Ab 7 Flaschen']])+'</th><th>'+select('status','Status',[['active','Aktiv'],['archived','Archiviert'],['empty-low','Leer + Nachbestellen'],['empty','Leer'],['low','Nachbestellen'],['sufficient','Ausreichend']])+'</th></tr></thead><tbody id="inventory-stock-rows">'+inventoryStockRows(filtered)+'</tbody></table></div>';
+    if(!inv.drinks.length)html+='<p>Noch keine Getränke angelegt. Über „Getränk anlegen“ beginnen und anschließend im Overlay den Anfangsbestand erfassen. Jedes neue Getränk startet mit 0 Flaschen.</p>';
+    html+='</section>';
+  }
+  root.innerHTML=html;
+}
+function inventoryMovementHistory(inv) {
+  return '<section class="panel"><h2>Lagerbewegungen</h2><p>Letzte 200 Bewegungen. Die vollständige Historie bleibt in Datenbank und Sicherung erhalten. Gegenbuchungen sind auch für ältere Bewegungsnummern möglich.</p><div class="rental-history"><table><thead><tr><th>Nr. / Zeitpunkt</th><th>Getränk / Gebinde bei Buchung</th><th>Art / Flaschen</th><th>VK / EK pro Flasche</th><th>Grund / Bezug</th></tr></thead><tbody>'+inv.movements.map(m=>{const s=JSON.parse(m.snapshot);return '<tr><td>#'+m.id+'<br>'+esc(new Date(m.created_at).toLocaleString('de-DE'))+'</td><td>'+esc(s.name)+' · '+s.size_ml+' ml<br>'+esc(s.package_name||'Einzelflaschen')+' · '+s.bottles+' Flaschen/Gebinde</td><td>'+esc(inventoryKinds[m.kind])+'<br>'+(m.quantity>0?'+':'')+m.quantity+'</td><td>'+euro(s.sale_cents)+' / '+(s.purchase_cents===null?'unbekannt':euro(s.purchase_cents))+'</td><td>'+esc(m.reason)+(m.reverses?'<br>Gegenbuchung zu #'+m.reverses:'')+'</td></tr>';}).join('')+'</tbody></table></div><h3>Bewegung gegenbuchen</h3><form id="inventory-reverse">'+inventoryHidden('action','movement')+inventoryHidden('version',inv.drinks[0]?.version??0)+inventoryHidden('operation_id',crypto.randomUUID())+inventoryHidden('kind','reversal')+inventorySelectField('Getränk','drink_id',inv.drinks[0]?.id||'',inv.drinks.map(d=>[d.id,d.name]))+inventoryField('Bewegungsnummer','reverses','','number','min="1" step="1" required')+inventoryField('Pflichtbegründung','reason','','text','required maxlength="500"')+'<button '+(inv.drinks.length?'':'disabled')+'>Gegenbuchung verbindlich buchen</button></form></section>';
+}
+function openInventoryDrink(id) {
+  if(busy)return;
+  const d=(state.inventory?.drinks||[]).find(d=>d.id===id);
+  if(id!=='new'&&!d)return;
+  inventoryEditId=id;
+  document.querySelector('#inventory-dialog-title').textContent=d?d.name+' · '+d.size_ml+' ml':'Getränk anlegen';
+  document.querySelector('#inventory-dialog-error').textContent='';
+  const packs=(state.inventory?.packages||[]).filter(p=>p.drink_id===id);
+  let html=d?'<p><strong>'+d.stock+' Flaschen</strong> · Mindestbestand '+d.minimum+' · VK '+euro(d.sale_cents)+' · EK '+(d.purchase_cents===null?'unbekannt':euro(d.purchase_cents))+' · '+(d.active?'Aktiv':'Archiviert')+'</p>':'';
+  if(d?.active&&d.stock<d.minimum)html+='<p role="status">Mindestbestand unterschritten: '+(d.minimum-d.stock)+' Flaschen fehlen.</p>';
+  if(d)html+='<nav class="inventory-menu" aria-label="Getränk bearbeiten"><button type="button" data-inventory-editor="stock" '+(!d.active?'disabled':'')+'>Bestand buchen</button><button type="button" data-inventory-editor="drink">Stammdaten</button><button type="button" data-inventory-editor="packages" '+(!d.active?'disabled':'')+'>Gebinde ('+packs.length+')</button></nav>';
+  html+='<section data-inventory-editor-panel="drink"><h3>Stammdaten</h3><form id="inventory-'+(d?'drink-'+d.id:'new')+'">'+(d?inventoryMetadata(d,'drink')+inventoryHidden('id',d.id):inventoryHidden('action','drink')+inventoryHidden('operation_id',crypto.randomUUID()))+inventoryDrinkFields(d||{})+'<button class="primary">'+(d?'Stammdaten speichern':'Getränk anlegen')+'</button></form></section>';
+  if(d?.active){
+    html+='<section data-inventory-editor-panel="stock"><h3>Bestand buchen</h3><p>Bestandsänderungen werden als nachvollziehbare Lagerbewegung gespeichert.</p><form id="inventory-move-'+d.id+'" data-stock="'+d.stock+'">'+inventoryMetadata(d,'movement')+inventorySelectField('Bewegungsart','kind','receipt',Object.entries(inventoryKinds).filter(([k])=>k!=='reversal'))+inventorySelectField('Gebinde','package_id','',[['','Nur Einzelflaschen'],...packs.map(p=>[p.id,p.name+' ('+p.bottles+' Flaschen)'])])+inventoryField('Anzahl Gebinde','packages',0,'number','min="0" max="1000000000" step="1" required')+inventoryField('Einzelflaschen zusätzlich','singles',0,'number','min="0" max="1000000000" step="1" required')+inventorySelectField('Richtung bei Inventurdifferenz','direction',1,[[1,'Zugang'],[-1,'Abgang']])+inventoryOptionalField('Tatsächlicher EK pro Flasche (€), optional','purchase_euros',d.purchase_cents===null?'':(d.purchase_cents/100).toFixed(2),'number','min="0" max="10000" step="0.01"')+inventoryOptionalField('Begründung (Pflicht bei Bruch, Eigenverbrauch, Inventurdifferenz)','reason','','text','maxlength="500"')+'<p data-inventory-preview aria-live="polite">Menge zur Vorschau eingeben.</p><button class="primary">Lagerbewegung verbindlich buchen</button></form></section>';
+    html+='<section data-inventory-editor-panel="packages"><h3>Gebinde verwalten</h3>'+[...packs,{id:'',name:'',bottles:20}].map(p=>'<form class="inventory-package-form" id="inventory-pack-'+(p.id||d.id)+'"><h4>'+(p.id?esc(p.name):'Neues Gebinde')+'</h4>'+inventoryMetadata(d,'package')+inventoryHidden('id',p.id)+inventoryField('Gebindename','name',p.name,'text','required maxlength="100"')+inventoryField('Flaschen pro Gebinde','bottles',p.bottles,'number','min="1" max="1000000" step="1" required')+'<button>'+(p.id?'Gebinde ändern':'Gebinde anlegen')+'</button></form>').join('')+'</section>';
+  }
+  document.querySelector('#inventory-dialog-content').innerHTML=html;
+  selectInventoryEditor(d?.active?'stock':'drink');
+  if(!inventoryDialog.open)inventoryDialog.showModal();
+}
+function selectInventoryEditor(name) {
+  for(const panel of inventoryDialog.querySelectorAll('[data-inventory-editor-panel]'))panel.hidden=panel.dataset.inventoryEditorPanel!==name;
+  for(const button of inventoryDialog.querySelectorAll('[data-inventory-editor]')){if(button.dataset.inventoryEditor===name)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
+}
+function updateInventoryMovementPreview(event) {
+  if(view!=='lager')return;
+  const form=event.target.closest?.('form[id^="inventory-move-"]');if(!form)return;
+  const data=Object.fromEntries(new FormData(form)),p=state.inventory.packages.find(p=>p.id===data.package_id);
+  const reason=form.elements?.namedItem?.('reason');if(reason)reason.required=['breakage','own_use','adjustment'].includes(data.kind);
+  let amount=Number(data.packages)*(p?.bottles||1)+Number(data.singles);
+  if(['consumption','breakage','own_use'].includes(data.kind)||data.kind==='adjustment'&&data.direction==='-1')amount=-amount;
+  form.querySelector('[data-inventory-preview]').textContent=(amount>0?'+':'')+amount+' Flaschen → '+(Number(form.dataset.stock)+amount)+' Flaschen Bestand';
+}
+root.addEventListener('input',event=>{
+  if(view!=='lager')return;
+  const key=event.target.dataset?.inventoryFilter;
+  if(key==='name'){inventoryFilters[key]=event.target.value;updateInventoryStockRows();}
+});
+root.addEventListener('change',event=>{
+  if(view!=='lager')return;
+  const key=event.target.dataset?.inventoryFilter;
+  if(key){inventoryFilters[key]=event.target.value;updateInventoryStockRows();}
+  if(event.target.name==='drink_id'&&(event.target.form?.getAttribute?.('id')??event.target.form?.id)==='inventory-reverse')event.target.form.elements.version.value=state.inventory.drinks.find(d=>d.id===event.target.value)?.version??0;
+});
+root.addEventListener('click',event=>{
+  if(view!=='lager'||busy)return;
+  const target=event.target.closest?.('[data-inventory-open]');
+  if(target?.dataset.inventoryOpen){openInventoryDrink(target.dataset.inventoryOpen);return;}
+  const button=event.target.closest?.('button');if(!button)return;
+  if(button.id==='inventory-new-button')openInventoryDrink('new');
+  if(button.id==='inventory-filter-reset'){inventoryFilters={};inventoryDashboard();}
+  if(button.dataset.inventorySection){saveDrafts();inventorySection=button.dataset.inventorySection;inventoryDashboard();restoreDrafts();}
+});
+inventoryDialog.addEventListener('input',updateInventoryMovementPreview);
+inventoryDialog.addEventListener('submit',event=>{event.preventDefault();handleInventorySubmit(event.target);});
+inventoryDialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
+inventoryDialog.addEventListener('click',async event=>{
+  const button=event.target.closest?.('button');if(!button||busy)return;
+  if(button.id==='inventory-dialog-close')inventoryDialog.close();
+  if(button.dataset.inventoryEditor)selectInventoryEditor(button.dataset.inventoryEditor);
+  if(button.id==='inventory-dialog-reload'){await refresh(true);openInventoryDrink(inventoryEditId);}
+});
+inventoryDialog.addEventListener('close',()=>{
+  const target=[...root.querySelectorAll('button[data-inventory-open]')].find(button=>button.dataset.inventoryOpen===inventoryEditId)||root.querySelector('#inventory-new-button');
+  target?.focus();
+});
+function handleInventorySubmit(form) {
+  if(view!=='lager')return false;
+  const formId=form.getAttribute?.('id')??form.id;
+  if(typeof formId!=='string'||!formId.startsWith('inventory-'))return false;
+  if(busy)return true;
+  const data=Object.fromEntries(new FormData(form));
+  const cents=value=>{if(value==='')return null;if(!/^\d+(?:\.\d{1,2})?$/.test(value))throw Error('Bitte einen Preis mit höchstens zwei Nachkommastellen eingeben.');return Math.round(Number(value)*100);};
+  const save=async()=>{
+    busy=true;document.querySelector('#inventory-dialog-error').textContent='';
+    const controls=[...inventoryDialog.querySelectorAll('button')].map(button=>[button,button.disabled]);
+    for(const [button] of controls)button.disabled=true;
+    try{
+      const payload={...data};
+      for(const name of ['version','size_ml','minimum','active','bottles','packages','singles','direction','reverses'])if(name in payload)payload[name]=Number(payload[name]);
+      if('sale_euros' in payload){payload.sale_cents=cents(payload.sale_euros);delete payload.sale_euros;}
+      if('purchase_euros' in payload){payload.purchase_cents=cents(payload.purchase_euros);delete payload.purchase_euros;}
+      await api('/api/inventory',payload);drafts.delete(formId);form.remove();
+      if(inventoryDialog.open)inventoryDialog.close();message('Lageränderung gespeichert.');
+    }catch(error){document.querySelector('#inventory-dialog-error').textContent=error.message;message(error.message);}
+    finally{busy=false;for(const [button,disabled] of controls)button.disabled=disabled;await refresh(true);}
+  };
+  save();return true;
 }

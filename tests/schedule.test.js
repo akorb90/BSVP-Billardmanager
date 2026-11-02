@@ -59,6 +59,6 @@ test('Scheduled events require explicit start; sync deduplicates and preserves a
     const restored=await ok('/api/backups/export');for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(restored.data[table],backup.data[table]);
     assert.equal((await state()).events.filter(e=>e.phase==='planned').length,2);
     assert.equal((await ok('/api/settings/nuliga-schedule',{})).created,0);
-    const old=structuredClone(backup);delete old.data.event_match_slots;old.schema=10;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
+    const old=structuredClone(backup);delete old.data.event_match_slots;old.schema=10;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];delete old.data.event_planning;delete old.data.nuliga_schedule_sync;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
   } finally {if(server?.listening)await new Promise(r=>server.close(r));rmSync(directory,{recursive:true,force:true});}
 });

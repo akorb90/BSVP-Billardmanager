@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import https from 'node:https';
 import { resolve, join } from 'node:path';
@@ -119,6 +119,19 @@ try {
   for (const asset of ['/app.js', '/rental-pricing.js', '/style.css']) assert.equal((await request(asset)).status, 200);
   assert.equal((await request('/api/admin')).status, 401);
   await login();
+
+  const lager=body=>request('/api/inventory',{operation_id:randomUUID(),...body});
+  const drink=await lager({action:'drink',name:'Docker Wasser',size_ml:500,sale_cents:250,purchase_cents:null,minimum:5,active:1});
+  assert.equal(drink.status,200);
+  const pack=await lager({action:'package',drink_id:drink.body.id,version:0,name:'20er-Kasten',bottles:20});
+  assert.equal(pack.status,200);
+  const entry={operation_id:randomUUID(),action:'movement',drink_id:drink.body.id,version:1,kind:'initial',package_id:pack.body.id,packages:2,singles:3};
+  assert.equal((await lager(entry)).status,200);
+  assert.equal((await lager(entry)).status,200);
+  assert.equal((await lager({action:'movement',drink_id:drink.body.id,version:2,kind:'consumption',packages:0,singles:2})).status,200);
+  assert.equal((await request('/api/inventory')).body.drinks[0].stock,41);
+  assert.equal((await request('/api/inventory',undefined,{admin:false})).status,401);
+  console.log('PASS: inventory over HTTPS, 43 to 41 bottles, idempotency and access');
 
   const brand=(await request('/api/branding',undefined,{admin:false})).body;
   const logo='data:image/png;base64,'+readFileSync(join(root,'public','assets','bsv-logo.png')).toString('base64');

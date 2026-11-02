@@ -18,16 +18,9 @@ Anforderungen und Abnahmekriterien:
 
 ## FR-014: Lagerverwaltung und Getränketracking
 
-**Status 2026-11-01:** Initialanalyse und Ausarbeitung abgeschlossen; die Anwendung ist noch nicht erweitert. Fachkonzept, Bestandsanalyse, Rechenbeispiele, Umsetzungshinweise und spätere Optionen stehen in [Lagerverwaltung und Getränketracking](Lagerverwaltung.md). Die folgenden Untertasks werden einzeln umgesetzt und abgenommen. FR-014 bleibt bis zur Umsetzung des Pflichtumfangs offen.
+**Status 2026-11-02:** FR-014.1 ist umgesetzt, geprüft und lokal bereitgestellt, siehe [Release Notes](CHANGELOG.md). Fachkonzept und Bedienhinweise stehen in [Lagerverwaltung und Getränketracking](Lagerverwaltung.md). Die verbleibenden Untertasks werden einzeln umgesetzt und abgenommen. FR-014 bleibt bis zur Umsetzung des Pflichtumfangs offen.
 
 Ziel: Getränke in Einzelflaschen und unterschiedlichen Gebinden verwalten, Verbrauch einer laufenden Tischvermietung zuordnen und Tischmiete sowie Getränkekosten nachvollziehbar abschließen. Keine Zahlungsabwicklung, Kassenführung oder steuerlichen Belege vorsehen; aus dieser Funktionsabgrenzung folgt keine Aussage über rechtliche Pflichten im Vereinsbetrieb.
-
-### FR-014.1: Getränke und Lagerbewegungen
-
-- Getränk mit Name, Flaschengröße, verpflichtendem Verkaufspreis (VK), optionalem Einkaufspreis (EK), Mindestbestand und aktivem/archiviertem Zustand verwalten. Geldbeträge in ganzen Cent; fehlender EK ist kein Nullpreis.
-- Pro Getränk mehrere benannte Gebinde mit positiver ganzzahliger Flaschenanzahl anlegen, etwa 20er- und 24er-Kasten. Bestand in einzelnen Flaschen führen. Gebindeänderungen dürfen alte Buchungen nicht verändern.
-- Anfangsbestand, Wareneingang, Verbrauch, Bruch/Eigenverbrauch und Inventurdifferenz als nachvollziehbare Bewegungen mit Zeitpunkt und gegebenenfalls Pflichtbegründung buchen. Korrekturen erfolgen durch Gegenbuchungen. Unzulässige Mengen und negative Bestände serverseitig abweisen.
-- Abnahme: Zwei 20er-Kästen und drei Einzelflaschen ergeben 43 Flaschen; Ausgabe von zwei Flaschen ergibt 41. Parallelbuchungen dürfen weder Bestand unterschreiten noch Bewegungen verdoppeln. Archivieren erhält alle historischen Bezüge.
 
 ### FR-014.2: Schnellerfassung und Inventur
 
@@ -55,4 +48,4 @@ Ziel: Getränke in Einzelflaschen und unterschiedlichen Gebinden verwalten, Verb
 - Sämtliche Artikel, Gebinde, Preisstände, Bewegungen, Mietkommentare, Getränkepositionen, Abschlussbestätigungen, Vorlagen und Einstellungen in Anwendungsbackup und Wiederherstellung aufnehmen. Dies ist ab dem jeweiligen Untertask verpflichtend, nicht erst im letzten Umsetzungsschritt. Neue Tabellen automatisch einschließen und fachliche Importprüfung sowie Altbackup-Migration ergänzen; separate Betriebssicherung bleibt erforderlich.
 - Abnahme: Getrennte Testdaten vollständig exportieren und wiederherstellen, fachlich ungültige Sicherungen ohne Datenänderung ablehnen, Altbackups auf leere Getränkebestände migrieren. Monatsgrenzen, Stornos und fehlende EK gezielt testen.
 
-Reihenfolge: FR-014.1 → FR-014.2 → FR-014.3 → FR-014.4 → FR-014.5; Kommentar aus FR-014.3 kann vorgezogen werden. Barcode- und Produktdatenbankanbindung sind optionale spätere Ausbaustufen nach einer Machbarkeitsprüfung, siehe Fachkonzept. Pro Untertask betroffene Tests, einmal Gesamtsuite und bei Datenbank-/Backupänderungen zusätzlich isolierte PostgreSQL-/HTTPS-/Docker-Prüfung ausführen; anschließend lokal bereitstellen. Keine Testdaten in den laufenden Vereinsbestand übernehmen.
+Weitere Reihenfolge: FR-014.2 → FR-014.3 → FR-014.4 → FR-014.5; Kommentar aus FR-014.3 kann vorgezogen werden. Barcode- und Produktdatenbankanbindung sind optionale spätere Ausbaustufen nach einer Machbarkeitsprüfung, siehe Fachkonzept. Pro Untertask betroffene Tests, einmal Gesamtsuite und bei Datenbank-/Backupänderungen zusätzlich isolierte PostgreSQL-/HTTPS-/Docker-Prüfung ausführen; anschließend lokal bereitstellen. Keine Testdaten in den laufenden Vereinsbestand übernehmen.

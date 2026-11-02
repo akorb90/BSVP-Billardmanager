@@ -1,6 +1,6 @@
 # Datenmigrationen und Kompatibilität
 
-Stand: 2026-10-29. Aktuelles logisches Schema: **13**. Quellen sind `src/database.js`, `src/legacy-db.js`, die dort eingebundenen Fachmodule und `src/backup.js`. Die [Architekturübersicht](Entwicklung.md#aktuelle-architektur) beschreibt den heutigen Betrieb; diese Seite dokumentiert die Entwicklung des Datenmodells. Betriebsbefehle und Rückkehrverfahren stehen unter [Datensicherung](Datensicherung.md).
+Stand: 2026-11-02. Aktuelles logisches Schema: **14**. Quellen sind `src/database.js`, `src/legacy-db.js`, die dort eingebundenen Fachmodule und `src/backup.js`. Die [Architekturübersicht](Entwicklung.md#aktuelle-architektur) beschreibt den heutigen Betrieb; diese Seite dokumentiert die Entwicklung des Datenmodells. Betriebsbefehle und Rückkehrverfahren stehen unter [Datensicherung](Datensicherung.md).
 
 ## Historische Schemastände
 
@@ -20,14 +20,15 @@ Die Nummer bezeichnet jeweils den Zielstand der Änderung. SQLite speichert ihn 
 | 10 | nuLiga-Quellzuordnungen und Importzustand in `nuliga_entities` und `nuliga_sync` |
 | 11 | Spieltagsplanung und Termin-Sync in `event_planning` und `nuliga_schedule_sync`. Bestehende Veranstaltungen werden als begonnen mit leeren Metadaten übernommen. |
 | 12 | Zehn Liga-Aufstellungsplätze je Veranstaltung in `event_match_slots`, einschließlich Doppelbesetzung; Spielzielgrenze auf 999 erweitert |
+| 14 | Getränkestammdaten, Gebinde, historische Lagerbewegungen und eindeutige Vorgänge. Bestehende Vereinsdaten bleiben erhalten; das Lager startet leer. |
 | 13 | Optionale Spieltagsbindung von Gästen in `players.event_id`; bestehende Spieler bleiben ohne Bindung allgemeine Stammdaten. |
 
-FR-006 ergänzt Turnierformat 1 innerhalb vorhandener Veranstaltungsmetadaten und regulärer Partien. Der Datenbankstand bleibt 13. Schemaversion und fachliche Formatversion sind deshalb getrennt zu betrachten: Eine ältere App mit Schema 13 muss nicht bereits Turnierdaten verstehen.
+FR-006 ergänzt Turnierformat 1 innerhalb vorhandener Veranstaltungsmetadaten und regulärer Partien. Diese Änderung benötigte selbst keine neue Schemaversion. Schemaversion und fachliche Formatversion sind deshalb getrennt zu betrachten: Eine ältere App mit Schema 13 muss nicht bereits Turnierdaten verstehen.
 
 ## Tatsächliche Upgradewege
 
-- **Bestehendes PostgreSQL:** `openDatabase` aktualisiert die installierten Stände 8–12 in einer Transaktion auf 13. Je nach Ausgangsstand werden die fehlenden Fachschemas ergänzt; Stand 13 wird direkt geöffnet. Andere installierte Versionen werden abgewiesen. SQLite-Schritte 1–7 sind keine direkt unterstützten PostgreSQL-Upgrades.
-- **Neuinstallation:** Das vollständige PostgreSQL-Schema aus `src/schema.sql` und die Standardwerte werden in einer Transaktion angelegt. Unbekannte vorhandene Tabellen verhindern die Initialisierung; bei Fehlern bleibt kein halbfertiges Schema zurück.
+- **Bestehendes PostgreSQL:** `openDatabase` aktualisiert die installierten Stände 8–13 in einer Transaktion auf 14. Je nach Ausgangsstand werden die fehlenden Fachschemas ergänzt; Stand 14 wird direkt geöffnet. Andere installierte Versionen werden abgewiesen. SQLite-Schritte 1–7 sind keine direkt unterstützten PostgreSQL-Upgrades.
+- **Neuinstallation:** Das PostgreSQL-Schema aus `src/schema.sql`, `src/inventory-schema.js` und die Standardwerte werden in einer Transaktion angelegt. Unbekannte vorhandene Tabellen verhindern die Initialisierung; bei Fehlern bleibt kein halbfertiges Schema zurück.
 - **Frühere SQLite-Installationen:** Die automatische Dateiübernahme und die SQLite-Laufzeit sind seit 2026-11-01 entfernt. Vor einem Update eine kompatible Zwischenversion für die Überführung nach PostgreSQL verwenden oder eine unterstützte JSON-Sicherung exportieren und in der aktuellen Installation wiederherstellen. Alte Datenbankdateien werden nicht mehr geöffnet.
 
 ## Sicherungsimport
@@ -39,3 +40,6 @@ Vor jedem produktiven Upgrade eine konsistente Anwendungssicherung und die zusä
 ## Prüfungen bei künftigen Änderungen
 
 Versionsänderungen müssen PostgreSQL-Initialisierung, PostgreSQL-Upgrade sowie Export, Prüfung und Wiederherstellung berücksichtigen. `tests/backup.test.js` und `tests/postgres.integration.js` sowie der isolierte Docker-Test (`npm run test:docker`) prüfen diese Wege mit getrennten Daten. Neue Tabellen müssen automatisch exportiert und vollständig wiederhergestellt werden; neue Einstellungen dürfen nicht ausschließlich lokal liegen. Nach Schemaänderungen diese Historie und den aktuellen Stand in der Architekturübersicht gemeinsam aktualisieren.
+
+
+Schema-6–13-JSON-Sicherungen werden um leere Lagertabellen erweitert, ohne fiktive Bestände oder Bewegungen zu erzeugen. Schema 14 sichert alle Lagertabellen automatisch einschließlich archivierter Artikel, historischer Gebinde-/Preiswerte und Vorgangskennungen. Die Importprüfung rekonstruiert Bestände in Bewegungsreihenfolge und prüft Mengen, Richtungen, Gegenbezüge sowie historische Werte; widersprüchliche Sicherungen werden atomar abgewiesen.

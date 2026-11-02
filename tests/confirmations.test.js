@@ -75,7 +75,7 @@ test('FR-002: exact confirmations, parent conflicts, closed corrections, deletio
 
 test('FR-002 warning UI: exact input, paste/drop protection, click, cancellation and stale data',async()=>{
   const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-  const block=source.slice(source.indexOf('// One immutable action snapshot'),source.lastIndexOf('await refresh(true);'));
+  const block=source.slice(source.indexOf('// One immutable action snapshot'),source.indexOf('\nawait refresh(true);\nsetInterval',source.indexOf('// One immutable action snapshot')));
   const elements=new Map();
   const element=id=>{
     if(!elements.has(id))elements.set(id,{value:'',disabled:false,listeners:{},addEventListener(type,fn){this.listeners[type]=fn;},showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();},focus(){}});

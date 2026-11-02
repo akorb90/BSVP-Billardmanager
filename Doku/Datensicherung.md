@@ -67,3 +67,8 @@ Die Sicherung enthält zusätzlich den Planungs-/Startzustand jedes Spieltags, d
 ### Feste Spieltagspartien und Doppel (Schema 12)
 
 Alle zehn Partienplätze, gespeicherte Einzel- und Doppelaufstellungen, Tischwünsche, Spielziele, Versionsstände und Verknüpfungen zu gestarteten Partien gehören zur vollständigen Anwendungssicherung. Bei der Prüfung werden Spieler, Spieltage und Partieverknüpfungen auf Konsistenz kontrolliert. Schemata 6–11 erhalten leere Partienplätze, ohne bestehende Partien oder Ergebnisse umzuschreiben. Die separate Betriebssicherung bleibt erforderlich.
+
+
+### Lagerdaten ab Schema 14
+
+Die Anwendungssicherung enthält sämtliche Getränke einschließlich archivierter Artikel, Gebinde, Lagerbewegungen mit historischen Namen, Größen, VK/EK (einschließlich unbekanntem EK), Begründungen und Gegenbezügen sowie die Vorgangskennungen zur Verhinderung von Doppelbuchungen. Änderungen der Stammdaten werden zusätzlich im enthaltenen Änderungsprotokoll dokumentiert. Der Import rekonstruiert Bestände und weist widersprüchliche Mengen, Bezüge oder negative Zwischenbestände ohne Datenänderung ab. Sicherungen aus Schema 6–13 starten nach Migration mit leerem Lager. Die separate Betriebssicherung von Installation, externer Sicherheitskonfiguration und HTTPS-Schlüsseln bleibt erforderlich.

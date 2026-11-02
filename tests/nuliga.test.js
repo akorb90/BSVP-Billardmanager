@@ -55,6 +55,6 @@ test('nuLiga sync is authenticated, repeatable, preserves edits and history, ove
     const restoredState=await ok('/api/admin');assert.equal(restoredState.players.find(p=>p.id===a.id).nuliga_profile,a.nuliga_profile);assert.equal(restoredState.players.find(p=>p.id===a.id).is_bsv,true);
     const restored=await ok('/api/backups/export');for(const t of Object.keys(backup.data))if(t!=='audit')assert.deepEqual(restored.data[t],backup.data[t]);
     assert.equal((await ok('/api/settings/nuliga',{})).created,0);
-    const old=structuredClone(backup);delete old.data.event_match_slots;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;old.schema=9;delete old.data.nuliga_entities;delete old.data.nuliga_sync;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
+    const old=structuredClone(backup);delete old.data.event_match_slots;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;old.schema=9;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];delete old.data.nuliga_entities;delete old.data.nuliga_sync;old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
   } finally {if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
 });

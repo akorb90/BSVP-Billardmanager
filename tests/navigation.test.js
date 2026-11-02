@@ -3,12 +3,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import {randomUUID} from 'node:crypto';
 
 const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/, '');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
-async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], serverPages=false, responseHook, table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
+async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], serverPages=false, responseHook, inventory={drinks:[],packages:[],movements:[]}, table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
   const posts=[],gets=[];
   const elements = new Map();
   const element = id => {
@@ -23,14 +24,14 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
     });
     return elements.get(id);
   };
-  const links = [...html.matchAll(/href="(\/#(?:uebersicht|spieltage|ergebnisse|vermietung|einstellungen))"/g)].map(([_, href]) => {
+  const links = [...html.matchAll(/href="(\/#(?:uebersicht|spieltage|ergebnisse|vermietung|lager|einstellungen))"/g)].map(([_, href]) => {
     const link = element(href); link.href = href; link.hash = new URL(href, 'https://localhost').hash; return link;
   });
   element('#admin-nav').querySelectorAll = () => links;
   const location = new URL(path, 'https://localhost');
   const window = element('window');
   const context = vm.createContext({
-    rentalPrice, hourlyRate,
+    rentalPrice, hourlyRate, crypto:{randomUUID},
     document: { querySelector:selector=>selector==='dialog[open]'?[...elements.values()].find(e=>e.open)||null:element(selector), getElementById:id=>elements.get('#'+id), querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
@@ -41,6 +42,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
       if (path === '/api/branding') { body={club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}; }
+      else if (path === '/api/inventory') {status=admin?200:401;body=admin?inventory:{error:'Bitte anmelden.'};}
       else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
       else if (path === '/api/backups/preview') { body = {created_at:'2026-10-28T12:00:00Z',events:2,matches:3,rentals:4,active:1}; }
       else if (path === '/api/backups/restore') { admin=false; body={ok:true}; }
@@ -185,7 +187,7 @@ test('Admin-Formulare zeigen Änderungen und binden Warnungen an die konkrete Ak
 function navigation(app, active = 'uebersicht') {
   assert.equal(app.element('#admin-nav').hidden, false);
   assert.equal(app.element('#logout').hidden, false);
-  assert.equal(app.links.length, 5);
+  assert.equal(app.links.length, 6);
   assert.deepEqual(app.links.filter(link => link.attributes['aria-current'] === 'page').map(link => link.hash), ['#' + active]);
 }
 
@@ -717,4 +719,124 @@ test('AP6: explicit statistics selection cannot be overwritten by the previous f
   await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?button:null}});
   assert.equal(app.drafts.has('stats-filter'),false);
   assert.match(app.element('#app').innerHTML,/<option value="p" selected>/);
+});
+
+function inventoryFixtures() {
+  return {drinks:[{id:'water',name:'Wasser <b>',size_ml:500,sale_cents:250,purchase_cents:null,minimum:45,active:1,stock:41,version:3},{id:'cola',name:'TEST Cola',size_ml:330,sale_cents:300,purchase_cents:80,minimum:12,active:1,stock:6,version:2},{id:'juice',name:'Saft',size_ml:500,sale_cents:0,purchase_cents:0,minimum:6,active:1,stock:0,version:1},{id:'old',name:'Alt',size_ml:330,sale_cents:0,purchase_cents:0,minimum:0,active:0,stock:0,version:1}],packages:[{id:'case',drink_id:'water',name:'20er-Kasten',bottles:20,version:0}],movements:[{id:1,drink_id:'water',kind:'initial',quantity:43,created_at:'2026-11-02T10:00:00Z',reason:'<script>test</script>',reverses:null,snapshot:JSON.stringify({name:'Historisches Wasser',size_ml:500,sale_cents:250,purchase_cents:null,bottles:20,package_name:'20er-Kasten'})}]};
+}
+async function inventoryClick(app,button,dialog=false) {
+  button.hasAttribute??=()=>false;
+  await app.element(dialog?'#inventory-dialog':'#app').dispatch('click',{target:{closest:()=>button}});
+}
+async function inventoryFilter(app,key,value) {
+  await app.element('#app').dispatch(key==='name'?'input':'change',{target:{dataset:{inventoryFilter:key},value}});
+  return app.element('#inventory-stock-rows').innerHTML;
+}
+test('Lager: Tabelle ist die zentrale Ansicht; acht Spaltenfilter und sichere Klartextausgabe',async()=>{
+  const app=await frontend('/#lager',{inventory:inventoryFixtures()});
+  const markup=app.element('#app').innerHTML;
+  assert.match(markup,/<h2 id="inventory-stock-title">Lagerbestand<\/h2>/);
+  assert.match(markup,/3 aktive Getränke · <strong>47 Flaschen insgesamt<\/strong> · 3 unter Mindestbestand/);
+  assert.match(markup,/data-inventory-open="water"/);assert.match(markup,/Wasser &lt;b&gt;/);
+  assert.equal([...markup.matchAll(/data-inventory-filter=/g)].length,8);
+  assert.match(markup,/Unter Mindestbestand/);assert.match(markup,/Unbekannt/);assert.match(markup,/330 ml/);
+  assert.doesNotMatch(markup,/<form|inventory-reverse|Historisches Wasser|<script>/);
+  assert.ok(app.gets.includes('/api/inventory'));assert.equal(app.posts.length,0);
+});
+test('Lager: alle Spaltenfilter wirken kombiniert und bleiben über Aktualisierung und Untermenü erhalten',async()=>{
+  const app=await frontend('/#lager',{inventory:inventoryFixtures()});
+  let rows=await inventoryFilter(app,'name','TEST');assert.match(rows,/TEST Cola/);assert.doesNotMatch(rows,/Wasser|Saft/);
+  rows=await inventoryFilter(app,'size','500');assert.match(rows,/Keine Getränke/);
+  await inventoryFilter(app,'name','');rows=await inventoryFilter(app,'purchase','unknown');assert.match(rows,/Wasser/);assert.doesNotMatch(rows,/Saft/);
+  rows=await inventoryFilter(app,'sale','over-250');assert.match(rows,/Keine Getränke/);
+  await inventoryClick(app,{id:'inventory-filter-reset',dataset:{}});
+  rows=await inventoryFilter(app,'stock','zero');assert.match(rows,/Saft/);assert.match(rows,/Alt/);assert.doesNotMatch(rows,/TEST Cola/);
+  rows=await inventoryFilter(app,'status','active');assert.match(rows,/Saft/);assert.doesNotMatch(rows,/>Alt</);
+  rows=await inventoryFilter(app,'minimum','positive');assert.match(rows,/Saft/);
+  rows=await inventoryFilter(app,'missing','7+');assert.match(rows,/Keine Getränke/);
+  rows=await inventoryFilter(app,'missing','1-6');assert.match(rows,/Saft/);
+  assert.equal(app.element('#inventory-filter-count').textContent,'1 von 4 Getränken');
+  await app.refresh(true);assert.match(app.element('#app').innerHTML,/value="1-6" selected/);
+  await inventoryClick(app,{dataset:{inventorySection:'movements'}});await inventoryClick(app,{dataset:{inventorySection:'stock'}});
+  assert.match(app.element('#app').innerHTML,/value="1-6" selected/);
+  await inventoryClick(app,{id:'inventory-filter-reset',dataset:{}});assert.match(app.element('#app').innerHTML,/4 von 4 Getränken/);
+});
+test('Lager: Zeilen öffnen Bestands-, Stammdaten- und Gebindebearbeitung im Overlay',async()=>{
+  const app=await frontend('/#lager',{inventory:inventoryFixtures()});
+  await inventoryClick(app,{dataset:{inventoryOpen:'water'}});
+  assert.equal(app.element('#inventory-dialog').open,true);
+  assert.equal(app.element('#inventory-dialog-title').textContent,'Wasser <b> · 500 ml');
+  const content=app.element('#inventory-dialog-content').innerHTML;
+  assert.match(content,/inventory-drink-water/);assert.match(content,/inventory-move-water/);assert.match(content,/inventory-pack-case/);
+  assert.match(content,/20er-Kasten \(20 Flaschen\)/);assert.match(content,/4 Flaschen fehlen/);
+  assert.match(content,/name="version" value="3"/);assert.match(content,/name="operation_id"/);
+  for(const input of content.match(/<input[^>]*name="purchase_euros"[^>]*>/g))assert.doesNotMatch(input,/\brequired\b/);
+  assert.doesNotMatch(content.match(/<input[^>]*name="reason"[^>]*>/)[0],/\brequired\b/);
+  assert.match(content,/aria-label="Gebinde"/);
+  const panels=['stock','drink','packages'].map(name=>({dataset:{inventoryEditorPanel:name}}));
+  app.element('#inventory-dialog').querySelectorAll=selector=>selector==='[data-inventory-editor-panel]'?panels:[];
+  await inventoryClick(app,{dataset:{inventoryEditor:'drink'}},true);
+  assert.deepEqual(panels.map(p=>p.hidden),[true,false,true]);
+  await inventoryClick(app,{id:'inventory-dialog-close',dataset:{}},true);assert.equal(app.element('#inventory-dialog').open,false);
+  await inventoryClick(app,{dataset:{inventoryOpen:'old'}});
+  assert.doesNotMatch(app.element('#inventory-dialog-content').innerHTML,/inventory-move-old|inventory-pack-old/);
+  assert.match(app.element('#inventory-dialog-content').innerHTML,/inventory-drink-old/);
+});
+test('Lager: Bewegungshistorie und Gegenbuchung erscheinen ausschließlich im Untermenü',async()=>{
+  const app=await frontend('/#lager',{inventory:inventoryFixtures()});
+  await inventoryClick(app,{dataset:{inventorySection:'movements'}});
+  const markup=app.element('#app').innerHTML;
+  assert.match(markup,/Historisches Wasser/);assert.match(markup,/inventory-reverse/);assert.match(markup,/&lt;script&gt;/);assert.doesNotMatch(markup,/<script>/);
+  assert.doesNotMatch(markup,/inventory-stock-title/);
+  await app.refresh(true);assert.match(app.element('#app').innerHTML,/Historisches Wasser/);
+  await inventoryClick(app,{dataset:{inventorySection:'stock'}});assert.doesNotMatch(app.element('#app').innerHTML,/Historisches Wasser|inventory-reverse/);
+});
+test('Lager: leeres Lager, Neuanlage im Overlay und Anmeldeschutz',async()=>{
+  const empty=await frontend('/#lager');assert.match(empty.element('#app').innerHTML,/Getränk anlegen/);
+  assert.match(empty.element('#app').innerHTML,/0 Flaschen insgesamt/);assert.match(empty.element('#app').innerHTML,/den Anfangsbestand erfassen/);
+  await inventoryClick(empty,{id:'inventory-new-button',dataset:{}});assert.equal(empty.element('#inventory-dialog').open,true);
+  assert.match(empty.element('#inventory-dialog-content').innerHTML,/id="inventory-new"/);
+  const loggedOut=await frontend('/#lager',{admin:false});assert.match(loggedOut.element('#app').innerHTML,/Anmelden/);assert.ok(!loggedOut.gets.includes('/api/inventory'));
+});
+
+test('FR-014.1: Stammdatenformular übermittelt Centwerte, unbekannten EK und ursprüngliche Version',async()=>{
+  const app=await frontend('/#lager',{inventory:inventoryFixtures()});
+  await inventoryClick(app,{dataset:{inventoryOpen:'water'}});
+  const key='operation-browser-1234';let removed=false;
+  const form={id:{value:'water'},getAttribute:()=> 'inventory-drink-water',entries:Object.entries({operation_id:key,action:'drink',id:'water',version:'7',name:'Wasser',size_ml:'500',sale_euros:'0.00',purchase_euros:'',minimum:'4',active:'1'}),querySelector:()=>({}),elements:{operation_id:{value:key}},remove(){removed=true;}};
+  await app.element('#inventory-dialog').dispatch('submit',{preventDefault(){},target:form});
+  await app.refresh(true);
+  const post=app.posts.find(p=>p.path==='/api/inventory');assert.ok(post);
+  assert.equal(post.data.version,7);assert.equal(post.data.sale_cents,0);assert.equal(post.data.purchase_cents,null);
+  assert.equal(post.data.operation_id,key);assert.equal(post.data.id,'water');assert.equal(removed,true);assert.equal(app.element('#inventory-dialog').open,false);
+});
+
+test('Lager: fehlgeschlagenes Speichern erhält Overlay, Eingaben und Vorgangskennung zur Wiederholung',async()=>{
+  let requests=0,removed=false;
+  const app=await frontend('/#lager',{inventory:inventoryFixtures(),responseHook:async path=>{if(path==='/api/inventory'&&++requests===2)throw Error('Daten wurden zwischenzeitlich geändert.');}});
+  await inventoryClick(app,{dataset:{inventoryOpen:'water'}});
+  const key='browser-retry-operation-1234';
+  const form={getAttribute:()=> 'inventory-drink-water',entries:Object.entries({operation_id:key,action:'drink',id:'water',version:'3',name:'Wasser',size_ml:'500',sale_euros:'2.50',purchase_euros:'',minimum:'45',active:'1'}),remove(){removed=true;}};
+  await app.element('#inventory-dialog').dispatch('submit',{preventDefault(){},target:form});await app.refresh(true);
+  assert.equal(removed,false);assert.equal(app.element('#inventory-dialog').open,true);assert.match(app.element('#inventory-dialog-error').textContent,/zwischenzeitlich/);
+  await app.element('#inventory-dialog').dispatch('submit',{preventDefault(){},target:form});await app.refresh(true);
+  const posts=app.posts.filter(p=>p.path==='/api/inventory');assert.equal(posts.length,2);assert.equal(posts[0].data.operation_id,key);assert.deepEqual(posts[0].data,posts[1].data);
+  assert.equal(removed,true);assert.equal(app.element('#inventory-dialog').open,false);
+});
+
+test('Lager: Leer hat Vorrang vor Mindestbestand; Statusfilter entsprechen den farbigen Kennzeichnungen',async()=>{
+  const inventory=inventoryFixtures();inventory.drinks.find(d=>d.id==='water').minimum=20;inventory.drinks.find(d=>d.id==='juice').minimum=0;
+  const app=await frontend('/#lager',{inventory});
+  const markup=app.element('#app').innerHTML;
+  assert.match(markup,/inventory-status-sufficient">Ausreichend/);
+  assert.match(markup,/inventory-status-low">Nachbestellen/);
+  assert.match(markup,/inventory-status-empty">Leer/);
+  assert.match(markup,/inventory-status-archived">Archiviert/);
+  assert.match(markup,/<option value="empty"[^>]*>Leer/);
+  let rows=await inventoryFilter(app,'status','empty');assert.match(rows,/Saft/);assert.doesNotMatch(rows,/TEST Cola|Wasser|>Alt</);
+  rows=await inventoryFilter(app,'status','low');assert.match(rows,/TEST Cola/);assert.doesNotMatch(rows,/Saft|Wasser|>Alt</);
+  rows=await inventoryFilter(app,'status','sufficient');assert.match(rows,/Wasser/);assert.doesNotMatch(rows,/Saft|TEST Cola|>Alt</);
+  rows=await inventoryFilter(app,'status','empty-low');assert.match(rows,/Saft/);assert.match(rows,/TEST Cola/);assert.doesNotMatch(rows,/Wasser|>Alt</);
+  await app.refresh(true);assert.match(app.element('#app').innerHTML,/<option value="empty-low" selected>Leer \+ Nachbestellen/);
+  rows=await inventoryFilter(app,'status','archived');assert.match(rows,/>Alt</);assert.doesNotMatch(rows,/inventory-status-empty/);
 });

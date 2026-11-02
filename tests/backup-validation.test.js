@@ -63,7 +63,7 @@ test('AP3: semantic import validation rejects each inconsistent field atomically
   const imported=(await ok('/api/backups/export')).data;
   for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(imported[table],backup.data[table]);
   assert.equal((await call('/api/tables/1/login',{pin:'123456'})).status,200,'valid imported PIN still authenticates');
-  const legacy=resign(structuredClone(backup));legacy.schema=6;legacy.data.matches[0].pin_hash=null;
+  const legacy=resign(structuredClone(backup));legacy.schema=6;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];legacy.data.matches[0].pin_hash=null;
   for(const table of ['branding','table_settings','players','teams','team_players','event_players','event_teams','nuliga_entities','nuliga_sync','event_planning','nuliga_schedule_sync','event_match_slots'])delete legacy.data[table];
   for(const m of legacy.data.matches)for(const key of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[key];
   resign(legacy);

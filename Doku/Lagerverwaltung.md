@@ -1,12 +1,12 @@
 # Lagerverwaltung und Getränketracking
 
-Planungsstand: 2026-11-01, FR-014. Dieses Fachkonzept beschreibt das geplante Verhalten; die Funktionen sind noch nicht implementiert. Verbindliche Umsetzungsetappen und Abnahmekriterien stehen in [FEATURE_REQUESTS.md](FEATURE_REQUESTS.md#fr-014-lagerverwaltung-und-getränketracking).
+Stand: 2026-11-02, FR-014. FR-014.1 (Getränke, Gebinde und einzelne Lagerbewegungen) ist implementiert; die folgenden Etappen bleiben geplant. Verbindliche Umsetzungsetappen und Abnahmekriterien stehen in [FEATURE_REQUESTS.md](FEATURE_REQUESTS.md#fr-014-lagerverwaltung-und-getränketracking).
 
 ## Bestandsanalyse und Einbindung
 
 Die Vermietung ist bereits in `src/rentals.js` mit Start, zeitabhängigem Preis, Abschluss, Korrektur und Löschung vorhanden. `public/rental-pricing.js` berechnet die auf Minuten aufgerundete Miete. `public/app.js` zeigt Vermietungen und belegte Tische; `src/server.js` schützt schreibende Vermietungsaktionen mit Admin-Anmeldung. Versionsprüfungen und Datenbanktransaktionen sichern Änderungen gegen veraltete Eingaben ab. Diese Mechanismen sind um den gemeinsamen Versionsstand von Vermietung und Getränkepositionen zu erweitern.
 
-Getränkestammdaten, Bestandsbewegungen und Mietkommentare fehlen bisher. Der bestehende Mietgesamtbetrag umfasst ausschließlich die Tischmiete. Diese Bedeutung bei der Erweiterung erhalten: Getränkesumme und gemeinsame Gesamtsumme ausdrücklich getrennt führen, damit Altbestände, Preisanzeige und Importprüfung nicht umgedeutet werden. Bestehende Mietpreisberechnung einschließlich Rabatten bleibt Grundlage der Tischmiete.
+Getränkestammdaten und Bestandsbewegungen liegen in `src/inventory.js` mit Schema in `src/inventory-schema.js` vor. Mietkommentare und die Zuordnung von Getränken zu Vermietungen folgen in FR-014.3. Der bestehende Mietgesamtbetrag umfasst ausschließlich die Tischmiete. Diese Bedeutung bei der Erweiterung erhalten: Getränkesumme und gemeinsame Gesamtsumme ausdrücklich getrennt führen, damit Altbestände, Preisanzeige und Importprüfung nicht umgedeutet werden. Bestehende Mietpreisberechnung einschließlich Rabatten bleibt Grundlage der Tischmiete.
 
 `src/backup.js` entdeckt Anwendungstabellen automatisch, prüft jedoch zusätzlich Format, Schema und fachliche Beziehungen. Neue Tabellen allein reichen deshalb nicht: Schemaversion, Altbackup-Migration und semantische Prüfungen müssen gemeinsam erweitert werden. Bisherige Sicherungen müssen weiterhin ohne erfundene Getränkebewegungen importierbar bleiben. Prüfungen finden insbesondere in `tests/rentals.test.js`, `tests/navigation.test.js`, `tests/backup.test.js`, `tests/backup-validation.test.js` und dem isolierten PostgreSQL-/HTTPS-Test statt.
 
