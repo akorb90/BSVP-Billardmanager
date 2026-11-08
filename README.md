@@ -27,7 +27,15 @@ Danach [https://localhost](https://localhost) öffnen und anmelden. Für Tablets
 
 ## Aktualisieren
 
-Zuerst unter **Einstellungen → Datensicherung** eine Sicherung herunterladen. Im **bisherigen Installationsordner**:
+Unter Windows im **bisherigen Projekt-/Installationsordner** **Updater.cmd** doppelklicken. Alternativ in PowerShell:
+
+```powershell
+.\Updater.ps1
+```
+
+Der Updater sichert PostgreSQL, aktualisiert im Git-Checkout main per Fast-forward und baut lokal; im Installationspaket zieht er die aktuelle Version des konfigurierten Images (standardmäßig latest). Er behält Projektzuordnung, .env, Secrets und Volumes bei und prüft abschließend Container und HTTPS. Docker Desktop muss laufen. Lokale Änderungen oder ein abweichender Branch führen zum Abbruch. Bei einem eigenen Compose-Projektnamen: `.\Updater.ps1 -ProjectName meinprojekt`. Logs: data/updater-*/update.log; Datenbanksicherung: backups/updater-*/billard.dump. Details und Grenzen: [Updater](Doku/Deployment.md#automatischer-updater).
+
+Die zusätzliche [Betriebssicherung](Doku/Datensicherung.md) bleibt erforderlich. Alternativ das Image manuell aktualisieren; vorher unter **Einstellungen → Datensicherung** eine Sicherung herunterladen:
 
 ```powershell
 docker compose -f compose.yaml pull

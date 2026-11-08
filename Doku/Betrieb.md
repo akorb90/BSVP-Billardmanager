@@ -39,6 +39,8 @@ Nach fünf erfolglosen PIN-Versuchen innerhalb von 15 Minuten ist die Anmeldung 
 
 Für den Image-Betrieb die Befehle mit `-f compose.yaml` ausführen; beim lokalen Quellcode-Build gelten die Befehle unter [Entwicklung](Entwicklung.md).
 
+Für wiederholte Updates steht im Projektordner `Updater.cmd` beziehungsweise `Updater.ps1` bereit; Ablauf, Sicherung und Parameter stehen unter [Automatischer Updater](Deployment.md#automatischer-updater).
+
 Der Stack wird mit `docker compose -f compose.yaml up -d --wait` gestartet und bleibt anschließend aktiv. Nach Änderungen denselben Befehl im Checkout ausführen: Compose ersetzt die betroffenen Container und erhält die Datenvolumes. Docker Desktop muss laufen; `restart: unless-stopped` startet die Dienste nach einem Neustart der Engine erneut, sofern sie nicht ausdrücklich gestoppt wurden. Während einer Aktualisierung kann die Anwendung kurz nicht erreichbar sein; Admin-Sitzungen werden beim App-Neustart ungültig.
 
 Die lokale Standardeinstellung ist `https://localhost` (nur auf dem Laptop erreichbar). Setup zeigt das initiale Admin-Passwort einmal an; es wird nicht automatisch als Klartextdatei gespeichert. Den Zugang im Passwortmanager sichern. Falls aus einer früheren betreuten Ersteinrichtung eine Datei `secrets/admin-zugang.txt` vorhanden ist, diese vertraulich behandeln und nicht in Git oder unverschlüsselte Backups übernehmen.

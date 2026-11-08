@@ -16,6 +16,9 @@ jobs:
       - run: npm ci
       - run: node --check src/server.js
       - run: node --check public/app.js
+      - name: Verify updater safety and failure handling
+        shell: pwsh
+        run: ./tests/updater.test.ps1
       - run: npm test
       - run: docker compose --env-file .env.example config --quiet
       - run: docker compose --env-file .env.example -f compose.yaml config --quiet
@@ -85,6 +88,8 @@ jobs:
             Caddyfile
             .env.example
             README.md
+            Updater.ps1
+            Updater.cmd
             Doku/
   verify-published:
     needs: publish
