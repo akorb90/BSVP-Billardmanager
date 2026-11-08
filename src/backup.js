@@ -1,3 +1,4 @@
+import {validateRentalDrinks} from './rental-drinks.js';
 import {validateInventoryBatchBackup} from './inventory-batches.js';
 import { validateInventoryBackup } from './inventory.js';
 import {validateTournamentBackup} from './tournaments.js';
@@ -31,7 +32,7 @@ export async function backupService({ db, transaction, fail, log }) {
     }
   };
   const upgrade = backup => {
-    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11,12,13,14].includes(backup.schema) || version!==15 || backup.checksum!==digest(backup.data)) return backup;
+    if (!backup?.data || typeof backup.data!=='object' || ![6,7,8,9,10,11,12,13,14,15].includes(backup.schema) || version!==16 || backup.checksum!==digest(backup.data)) return backup;
     let data={...backup.data};
     if (backup.schema===6) {
       if (Object.hasOwn(data,'branding')) return backup;
@@ -56,8 +57,11 @@ export async function backupService({ db, transaction, fail, log }) {
     if(!Array.isArray(data.players))return backup;
     data.players=data.players.map(p=>({...p,event_id:p.event_id??null}));
     if(backup.schema<14)for(const name of ['inventory_drinks','inventory_packages','inventory_movements','inventory_operations']) {if(Object.hasOwn(data,name))return backup;data[name]=[];}
-    for(const name of ['inventory_templates','inventory_batches']){if(Object.hasOwn(data,name))return backup;data[name]=[];}
-    return {...backup,schema:15,data,checksum:digest(data)};
+    if(backup.schema<15)for(const name of ['inventory_templates','inventory_batches']){if(Object.hasOwn(data,name))return backup;data[name]=[];}
+    for(const name of ['rental_drinks','rental_checks','rental_operations']){if(Object.hasOwn(data,name))return backup;data[name]=[];}
+    if(!Array.isArray(data.rentals)||data.rentals.some(r=>Object.hasOwn(r,'comment')))return backup;
+    data.rentals=data.rentals.map(r=>({...r,comment:null}));
+    return {...backup,schema:16,data,checksum:digest(data)};
   };
   const validate = async backup => {
     backup=upgrade(backup);
@@ -111,6 +115,7 @@ export async function backupService({ db, transaction, fail, log }) {
         validateTournamentBackup(data);
         validateInventoryBackup(data);
         validateInventoryBatchBackup(data);
+        validateRentalDrinks(data);
         await replace(backup.data);
         await db.exec('SET CONSTRAINTS ALL IMMEDIATE');
         const tableSettings=await check.prepare('SELECT * FROM table_settings').all();

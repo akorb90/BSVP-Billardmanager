@@ -1,7 +1,7 @@
 import {standings,swissStandings} from './tournaments.js';
 
 // Archive reads are explicitly requested and bounded; the live poll never reads them.
-export function adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule}) {
+export function adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule,rentals}) {
   const all=(sql,args=[])=>db.prepare(sql).all(...args);
   const one=(sql,args=[])=>db.prepare(sql).get(...args);
   const readNumber=(params,key,fallback)=>{
@@ -29,7 +29,7 @@ export function adminStateService({db,fail,publicMatch,players,tables,nuliga,sch
     });
   }
   async function live() {
-    return {matches:(await all("SELECT m.*,e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.status='live' ORDER BY m.id DESC")).map(publicMatch),events:await all("SELECT * FROM events e WHERE EXISTS(SELECT 1 FROM matches m WHERE m.event_id=e.id AND m.status='live')"),rentals:await all("SELECT * FROM rentals WHERE status='active' ORDER BY id DESC"),table_settings:await tables.get(),rental_settings:await one('SELECT * FROM rental_settings WHERE id=1'),server_now:Date.now()};
+    return {matches:(await all("SELECT m.*,e.name AS event_name FROM matches m JOIN events e ON e.id=m.event_id WHERE m.status='live' ORDER BY m.id DESC")).map(publicMatch),events:await all("SELECT * FROM events e WHERE EXISTS(SELECT 1 FROM matches m WHERE m.event_id=e.id AND m.status='live')"),rentals:await rentals.enrich(await all("SELECT * FROM rentals WHERE status='active' ORDER BY id DESC")),table_settings:await tables.get(),rental_settings:await one('SELECT * FROM rental_settings WHERE id=1'),server_now:Date.now()};
   }
   async function view(params) {
     const name=params.get('view');
@@ -43,7 +43,7 @@ export function adminStateService({db,fail,publicMatch,players,tables,nuliga,sch
       if(name==='spieler'||name==='mannschaften')Object.assign(result,await players.state([]));
     }
     if(name==='vermietung') {
-      const p=await addPage('rentals','rentals');result.rentals=p.items;
+      const p=await addPage('rentals','rentals');p.items=await rentals.enrich(p.items);result.rentals=p.items;
     }
     if(name==='planung'||name==='spieltage') {
       const id=Number(params.get('event'))||0;

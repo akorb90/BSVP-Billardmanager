@@ -39,7 +39,7 @@ export function inventoryService({db,transaction,fail,log}) {
   const get=async id=>{const d=await db.prepare('SELECT * FROM inventory_drinks WHERE id=?').get(id);if(!d)throw fail(404,'Getränk nicht gefunden.');return d;};
   const check=(body,d)=>{if(body.version!==d.version)throw fail(409,'Das Getränk oder sein Bestand wurde geändert. Bitte neu laden und erneut prüfen.');};
   let batches;
-  const handle=async body=>{
+  const handle=async (body, linked=false)=>{
     const operation=text(body.operation_id,80);
     if(!/^[\w-]{16,80}$/.test(operation))throw fail(400,'Ungültiger Vorgangsbezug.');
     const request=createHash('sha256').update(JSON.stringify(canonical(body))).digest('hex');
@@ -73,6 +73,7 @@ export function inventoryService({db,transaction,fail,log}) {
         let quantity,snapshot,reverses=null;
         if(body.kind==='reversal') {
           const original=await db.prepare('SELECT * FROM inventory_movements WHERE id=? AND drink_id=?').get(number(body.reverses,1),d.id);
+          if(!linked&&await db.prepare('SELECT 1 FROM rental_drinks WHERE movement_id=?').get(original?.id??0))throw fail(409,'Zugeordnete Getränke bitte über die Vermietung stornieren.');
           if(!original||original.kind==='reversal'||await db.prepare('SELECT 1 FROM inventory_movements WHERE reverses=?').get(original.id))throw fail(409,'Diese Bewegung kann nicht erneut gegengebucht werden.');
           quantity=-original.quantity;reverses=original.id;snapshot=original.snapshot;
         } else {
@@ -99,5 +100,5 @@ export function inventoryService({db,transaction,fail,log}) {
     return result;
   };
   batches=inventoryBatchService({db,fail,log,number,text,get,check,balance,apply:handle});
-  return {state:()=>transaction(state),handle:body=>transaction(()=>handle(body)),preview:body=>transaction(()=>batches.preview(body))};
+  return {apply:handle,state:()=>transaction(state),handle:body=>transaction(()=>handle(body)),preview:body=>transaction(()=>batches.preview(body))};
 }

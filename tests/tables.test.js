@@ -23,7 +23,7 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     await call('/api/events',{name:'Bestand',kind:'Liga',date:'2026-10-28'});await call('/api/events/1/start',{version:0});
     await call('/api/matches',{event_id:1,player_a:'Anna',player_b:'Ben',discipline:'9-Ball',target:1,pin:'012345'});
     await call('/api/matches/1/start',{table_no:8,version:0,lag_winner:'a',first:'a'});
-    await call('/api/rentals',{table_no:7,settings_version:0});
+    await call('/api/rentals',{comment:'Testvermietung',table_no:7,settings_version:0});
     const original=(await call('/api/backups/export')).body;
     // Restart the populated PostgreSQL database without changing its contents.
     await stop();
@@ -40,15 +40,15 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     assert.equal((await save(6,0)).status,409); // active rental on table 7
     assert.equal((await save(20,0)).status,200);
     assert.equal((await save(1,0)).status,409); // stale form
-    assert.equal((await call('/api/rentals',{table_no:20,settings_version:0})).status,201);
-    assert.equal((await call('/api/rentals',{table_no:21,settings_version:0})).status,400);
+    assert.equal((await call('/api/rentals',{comment:'Testvermietung',table_no:20,settings_version:0})).status,201);
+    assert.equal((await call('/api/rentals',{comment:'Testvermietung',table_no:21,settings_version:0})).status,400);
     await call('/api/matches',{event_id:1,player_a:'C',player_b:'D',discipline:'8-Ball',target:1,pin:'123456'});
     assert.equal((await call('/api/matches/2/start',{table_no:19,version:0,lag_winner:'b',first:'a'})).status,200);
     assert.equal((await call('/tisch/19')).status,200);assert.equal((await call('/tisch/20')).status,200);assert.equal((await call('/tisch/21')).status,404);
     const tablet=await call('/api/tables/19/login',{pin:'123456'},{Cookie:''});assert.equal(tablet.status,200);
     assert.equal((await call('/api/tables/19',undefined,{Cookie:'',Authorization:'Bearer '+tablet.body.token})).body.match.table_no,19);
     const backup=(await call('/api/backups/export')).body;
-    assert.equal(backup.schema,15);assert.equal(backup.data.table_settings[0].table_count,20);
+    assert.equal(backup.schema,16);assert.equal(backup.data.table_settings[0].table_count,20);
     assert.equal(backup.data.audit.at(-1).action,'start');assert.ok(backup.data.audit.some(a=>a.action==='settings:tables'));
     await stop();await start('target');await login();
     for(const change of [b=>b.data.table_settings=[],b=>b.data.table_settings[0].table_count=21,b=>b.data.table_settings[0].table_count=1,b=>delete b.data.table_settings]) {
@@ -71,10 +71,10 @@ test('FR-011: PostgreSQL-Neustart, 1–20 Tische, Belegungsschutz, Tablet, Histo
     const edited=(await call('/api/admin')).body;
     assert.equal(edited.matches[0].table_no,8);
     assert.equal((await call('/api/matches/1/edit',{...edit,version:edited.matches[0].version,event_version:edited.events[0].version,status:'live'})).status,400);
-    assert.equal((await call('/api/rentals',{table_no:2,settings_version:0})).status,400);
+    assert.equal((await call('/api/rentals',{comment:'Testvermietung',table_no:2,settings_version:0})).status,400);
     assert.equal((await call('/api/tables/2')).status,400);assert.equal((await call('/tisch/2')).status,400);
     assert.equal((await call('/api/tables/2/login',{pin:'123456'})).status,400);
-    const legacy=structuredClone(original);delete legacy.data.event_match_slots;delete legacy.data.event_planning;delete legacy.data.nuliga_schedule_sync;delete legacy.data.nuliga_entities;delete legacy.data.nuliga_sync;legacy.schema=7;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];for(const t of ['players','teams','team_players','event_players','event_teams'])delete legacy.data[t];for(const m of legacy.data.matches)for(const k of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[k];delete legacy.data.table_settings;resign(legacy);
+    const legacy=structuredClone(original);delete legacy.data.event_match_slots;delete legacy.data.event_planning;delete legacy.data.nuliga_schedule_sync;delete legacy.data.nuliga_entities;delete legacy.data.nuliga_sync;legacy.schema=7;delete legacy.data.rental_drinks;delete legacy.data.rental_checks;delete legacy.data.rental_operations;for(const r of legacy.data.rentals)delete r.comment;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];for(const t of ['players','teams','team_players','event_players','event_teams'])delete legacy.data[t];for(const m of legacy.data.matches)for(const k of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[k];delete legacy.data.table_settings;resign(legacy);
     assert.equal((await call('/api/backups/preview',{backup:legacy})).status,200);assert.equal((await restore(legacy)).status,200);await login();
     assert.equal((await call('/api/admin')).body.table_settings.table_count,8);
   } finally {if(server?.listening)await stop();rmSync(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

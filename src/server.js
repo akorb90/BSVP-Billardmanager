@@ -1,3 +1,4 @@
+import {inventoryReport} from './inventory-report.js';
 import { inventoryService } from './inventory.js';
 import {tournamentService,standings,swissStandings} from './tournaments.js';
 import {leagueService} from './league.js';
@@ -38,9 +39,9 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
   const log = async (actor, action, id, detail) => await db.prepare('INSERT INTO audit(actor,action,match_id,detail) VALUES(?,?,?,?)').run(actor, action, id, JSON.stringify(detail, (key,value) => ['pin','pin_hash'].includes(key) ? undefined : value));
   const transaction = fn => db.transaction(fn);
   const tables = tableService({db, transaction, fail, integer, log});
-  const rentals = await rentalService({db, transaction, fail, integer, log, activeTable:tables.activeNumber});
-  const branding = brandingService({db, transaction, fail, log});
   const inventory=inventoryService({db,transaction,fail,log});
+  const rentals = await rentalService({db, transaction, fail, integer, log, inventory, activeTable:tables.activeNumber});
+  const branding = brandingService({db, transaction, fail, log});
   const backups = await backupService({db, transaction, fail, log});
   const nextId = async name => (await db.prepare('UPDATE entity_ids SET value=value+1 WHERE name=? RETURNING value').get(name)).value;
   const getEvent = async id => {
@@ -70,7 +71,7 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
     return {name,kind,date};
   };
   const publicMatch = m => { if (!m) return m; const {pin_hash,auth_version,...safe}=m; return {...safe,pin_set:!!pin_hash,breaker:breaker(m),server_now:Date.now()}; };
-  const adminState=adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule});
+  const adminState=adminStateService({db,fail,publicMatch,players,tables,nuliga,schedule,rentals});
   const encodePin = pin => {
     if (typeof pin !== 'string' || !/^[0-9]{6}$/.test(pin)) throw fail(400,'Die PIN muss genau sechs Ziffern enthalten.');
     const salt=randomBytes(16).toString('hex');
@@ -119,16 +120,18 @@ export async function createApp({ databaseUrl, config, origin = 'http://localhos
         const backupUpload = ['/api/backups/preview', '/api/backups/restore'].includes(url.pathname);
         const participantUpload=/^\/api\/events\/\d+\/participants$/.test(url.pathname);
         const inventoryUpload=['/api/inventory','/api/inventory/preview'].includes(url.pathname);
+        const rentalUpload=url.pathname.startsWith('/api/rentals/');
         const brandingUpload = url.pathname === '/api/settings/branding';
-        if (backupUpload || brandingUpload || inventoryUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
+        if (backupUpload || brandingUpload || inventoryUpload || rentalUpload) { admin(); if (req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.'); }
         const chunks = []; let size = 0;
-        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : participantUpload || inventoryUpload ? 128*1024 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
+        for await (const chunk of req) { size += chunk.length; if (size > (backupUpload ? BACKUP_LIMIT : brandingUpload ? Math.ceil(LOGO_LIMIT/3)*4+8192 : rentalUpload ? 1024*1024 : participantUpload || inventoryUpload ? 128*1024 : 8192)) throw fail(413, 'Anfrage zu groß.'); chunks.push(chunk); }
         const raw = Buffer.concat(chunks).toString('utf8');
         try { body = JSON.parse(raw); } catch { throw fail(400, 'Ungültiges JSON.'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw fail(400, 'Ungültige Anfrage.');
         if (session && url.pathname !== '/api/login' && req.headers['x-csrf-token'] !== session.csrf) throw fail(403, 'Ungültiger CSRF-Schutz.');
       }
       if(req.method==='POST'&&url.pathname==='/api/inventory/preview'){admin();return json(res,200,await inventory.preview(body));}
+      if(req.method==='GET'&&url.pathname==='/api/inventory/report'){admin();try{return json(res,200,await transaction(()=>inventoryReport(db,url.searchParams.get('from'),url.searchParams.get('to'))));}catch(e){if(e.status)throw e;throw fail(400,e.message);}}
       if (url.pathname === '/api/inventory') {admin();if(req.method==='GET')return json(res,200,await inventory.state());if(req.method==='POST')return json(res,200,await inventory.handle(body));}
       if (req.method === 'GET' && url.pathname === '/health') { await db.prepare('SELECT 1').get(); return json(res, 200, { ok: true }); }
       if (req.method === 'POST' && url.pathname === '/api/settings/nuliga-schedule') {admin();return json(res,200,await schedule.sync());}

@@ -29,7 +29,7 @@ test('FR-005: vollständiger Export/Import, Prüfung, Konflikte, Sitzungssperre 
     await call('/api/matches/1/start',{lag_winner:'a',first:'a',table_no:1,version:0});
     await call('/api/matches/1/score',{side:'a',delta:1,version:1});
     await call('/api/rentals/settings',{base_euros:12,version:0,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'});
-    await call('/api/rentals',{table_no:2,settings_version:1,discount:20});
+    await call('/api/rentals',{comment:'Testvermietung',table_no:2,settings_version:1,discount:20});
     await call('/api/settings/password',{current_password:'original-password',new_password:'backup-password-2026',repeat_password:'backup-password-2026'});
     await login('backup-password-2026');
     const exported=await call('/api/backups/export'), backup=exported.body;

@@ -86,7 +86,7 @@ const r=await fetch(base+path,{method:data?'POST':'GET',headers:{Origin:'http://
     assert.equal((await event(eid)).status,'closed');
     assert.equal((await match(mid)).b,1);
     const db=await openTestDatabase(path);
-    assert.equal((await db.prepare('SELECT version FROM _schema WHERE id=1').get()).version,15);
+    assert.equal((await db.prepare('SELECT version FROM _schema WHERE id=1').get()).version,16);
     const deleted=(await db.prepare("SELECT detail FROM audit WHERE action='event:delete'").get());
     assert.equal(JSON.parse(deleted.detail).matches[0].id,movable);
     await db.close();

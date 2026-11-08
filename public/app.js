@@ -247,7 +247,7 @@ async function mutate(fn) {
   finally { busy = false; await refresh(true); }
 }
 root.addEventListener('submit', e => {
-  e.preventDefault(); if(handleInventoryBulkSubmit(e.target,e.submitter))return; if(handleInventorySubmit(e.target))return; const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
+  e.preventDefault(); if(handleInventoryReportSubmit(e.target))return; if(handleInventoryBulkSubmit(e.target,e.submitter))return; if(handleInventorySubmit(e.target))return; const handled=handlePlayersSubmit(e.target);if(handled)return handled; if(handleBrandingSubmit(e.target)) return; if(handlePasswordSubmit(e.target)) return; if(handleRentalSubmit(e.target)) return; const form = e.target, data = Object.fromEntries(new FormData(form));
   return mutate(async () => {
     if(form.id.startsWith('tournament-player-')) {
       const result=await api('/api/players',data);
@@ -470,7 +470,7 @@ document.querySelector('#admin-edit-form').addEventListener('submit',async e=>{
 const euro = cents => (cents/100).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
 const rentalDate = value => value === null ? 'Läuft' : new Date(value).toLocaleString('de-DE');
 function rentalRunning(r) {
-  return '<p class="rental-clock" data-rental-start="'+r.started_at+'" data-rental-rate="'+r.hourly_cents+'"></p><p>'+euro(r.hourly_cents)+'/h</p>';
+  return '<p>'+esc(r.comment||'Altvermietung: Kommentar fehlt')+'</p><p>Getränke: '+euro(r.drink_cents||0)+'</p><p class="rental-clock" data-rental-start="'+r.started_at+'" data-rental-rate="'+r.hourly_cents+'"></p><p>'+euro(r.hourly_cents)+'/h</p>';
 }
 function tickRentals() {
   for(const el of document.querySelectorAll('[data-rental-start]')) {
@@ -560,11 +560,11 @@ function rentalDashboard() {
   root.innerHTML='<div class="page-title"><div><p class="eyebrow">TISCHVERMIETUNG</p><h1>Tischvermietung</h1><p>Angefangene Minuten werden aufgerundet. Vereinbarte Preise bleiben gespeichert.</p></div><span class="pill">'+free.length+' / '+tableCount()+' Tische frei</span></div>'+
     '<section class="tables">'+Array.from({length:tableCount()},(_,i)=>{
       const n=i+1,r=rentals.find(r=>r.table_no===n&&r.status==='active'), m=state.matches.find(m=>m.table_no===n&&m.status==='live');
-      return '<article class="table-card '+(r||m?'occupied':'')+'"><strong>TISCH '+n+'</strong><h3>'+(r?'Vermietet':m?'Partie am Tisch':'Frei')+'</h3>'+(r?rentalRunning(r)+'<button data-rental-finish="'+r.id+'" data-version="'+r.version+'">Vermietung abschließen</button>':m?'<p>'+esc(m.player_a)+' / '+esc(m.player_b)+'</p>':'<p>Für eine neue Vermietung verfügbar</p>')+'</article>';
+      return '<article class="table-card '+(r||m?'occupied':'')+'"><strong>TISCH '+n+'</strong><h3>'+(r?'Vermietet':m?'Partie am Tisch':'Frei')+'</h3>'+(r?rentalRunning(r)+'<button data-rental-open="'+r.id+'">Getränke / Kommentar</button><button data-rental-finish="'+r.id+'" data-version="'+r.version+'">Vermietung abschließen</button>':m?'<p>'+esc(m.player_a)+' / '+esc(m.player_b)+'</p>':'<p>Für eine neue Vermietung verfügbar</p>')+'</article>';
     }).join('')+'</section><section class="planning"><div class="panel"><h2>Vermietung starten</h2><form id="rental-start" data-version="'+settings.version+'" data-base="'+settings.base_cents+'">'+
-    selectField('Tisch','table_no',free[0]??'',free.map(n=>[n,'Tisch '+n]))+field('Rabatt in %','discount',0,'number','min="0" max="100" step="0.01"')+'<p>Grundpreis: '+euro(settings.base_cents)+'/h</p><p id="rental-preview" aria-live="polite"></p><button class="primary" '+(free.length?'':'disabled')+'>Vermietung starten</button></form></div>'+
+    selectField('Tisch','table_no',free[0]??'',free.map(n=>[n,'Tisch '+n]))+field('Mietkommentar (Name)','comment','','text','required maxlength="200"')+field('Rabatt in %','discount',0,'number','min="0" max="100" step="0.01"')+'<p>Grundpreis: '+euro(settings.base_cents)+'/h</p><p id="rental-preview" aria-live="polite"></p><button class="primary" '+(free.length?'':'disabled')+'>Vermietung starten</button></form></div>'+
     '</section>'+
-    '<h2>Buchungshistorie</h2>'+rentalPage.controls+'<div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Aktionen</th></tr></thead><tbody>'+rentalPage.items.map(r=>'<tr><td>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+quantity(r.billed_minutes,'Minute','Minuten'))+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':euro(r.total_cents)+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'<button data-rental-delete="'+r.id+'">Buchung löschen</button></td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
+    '<h2>Buchungshistorie</h2>'+rentalPage.controls+'<div class="rental-history"><table><thead><tr><th>Buchung / Tisch</th><th>Start / Ende</th><th>Dauer / Abrechnung</th><th>Preisvereinbarung</th><th>Gesamt / Status</th><th>Aktionen</th></tr></thead><tbody>'+rentalPage.items.map(r=>'<tr><td><button class="inventory-drink-link" data-rental-open="'+r.id+'">'+esc(r.comment||'Altvermietung: Kommentar fehlt')+'</button><br>#'+r.id+' · Tisch '+r.table_no+'</td><td>'+rentalDate(r.started_at)+'<br>'+rentalDate(r.ended_at)+'</td><td>'+(r.status==='active'?rentalRunning(r):duration(r.duration_ms)+'<br>'+quantity(r.billed_minutes,'Minute','Minuten'))+'</td><td>'+euro(r.hourly_cents)+'/h<br>Grundpreis '+euro(r.base_cents)+'/h<br>'+(r.adjustment_percent===null?'Direktpreis':esc(r.adjustment_percent)+' %')+'</td><td>'+(r.status==='active'?'Laufend':'Tischmiete '+euro(r.total_cents)+'<br>Getränke '+euro(r.drink_cents||0)+'<br>Gesamt '+euro(r.total_cents+(r.drink_cents||0))+'<br>Abgeschlossen')+'</td><td>'+(r.status==='finished'?'<button data-rental-edit="'+r.id+'">Buchung korrigieren</button>':'')+'<button data-rental-delete="'+r.id+'">Buchung löschen</button></td></tr>').join('')+'</tbody></table>'+(rentals.length?'':'<p>Noch keine Buchungen vorhanden.</p>')+'</div>';
   tickRentals(); updateRentalPreview();
 }
 function updateRentalPreview() {
@@ -583,7 +583,7 @@ function handleRentalSubmit(form) {
       showWarning({phrase:'GRUNDPREIS ÄNDERN',label:'Grundpreis speichern',summary:'<p>Grundpreis für neue Vermietungen: '+euro(before.base_cents)+' → <strong>'+euro(rate)+'/h</strong></p><p>Bestehende Buchungen behalten ihren vereinbarten Preis.</p>',valid:()=>state.rental_settings.version===version,run:async()=>{await api('/api/rentals/settings',{base_euros,version,action:'rental:settings',confirmation:'GRUNDPREIS ÄNDERN'});drafts.delete(form.id);form.reset();}});
     } catch(error) {message(error.message);}
   } else mutate(async()=>{
-    await api('/api/rentals',{table_no:Number(data.table_no),discount:Number(data.discount),settings_version:Number(form.dataset.version)});
+    await api('/api/rentals',{comment:data.comment,table_no:Number(data.table_no),discount:Number(data.discount),settings_version:Number(form.dataset.version)});
     drafts.delete(form.id); form.reset();
   });
   return true;
@@ -593,7 +593,7 @@ let pendingRental, rentalCorrection;
 function localDateInput(time) {
   const date=new Date(time); return new Date(time-date.getTimezoneOffset()*60000).toISOString().slice(0,23);
 }
-root.addEventListener('click',e=>{
+root.addEventListener('click',async e=>{
   const button=e.target.closest('button'); if(!button || busy || table)return;
   if(button.dataset.rentalFinish || button.dataset.rentalDelete) {
     const r=state.rentals.find(r=>r.id===Number(button.dataset.rentalFinish || button.dataset.rentalDelete));if(!r)return;
@@ -602,8 +602,7 @@ root.addEventListener('click',e=>{
     if(button.dataset.rentalDelete) {
       showWarning({phrase:'BUCHUNG LÖSCHEN',label:'Buchung löschen',summary:identity+'<p>Diese Buchung einschließlich ihrer Abrechnungsdaten wird aus der Historie gelöscht. '+(r.status==='active'?'Die laufende Vermietung wird entfernt und der Tisch freigegeben.':'Gespeicherter Gesamtbetrag: '+euro(r.total_cents)+'.')+' Die Löschung kann in der Oberfläche nicht rückgängig gemacht werden.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/delete',{version:r.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})});
     } else {
-      const ended_at=Math.max(r.started_at,Date.now()+clockOffset), price=rentalPrice(r.started_at,ended_at,r.hourly_cents);
-      showWarning({phrase:null,label:'Vermietung abschließen',summary:identity+'<p>Endzeitpunkt: '+rentalDate(ended_at)+'<br>Dauer: '+duration(price.duration_ms)+'<br>Abrechnung: '+quantity(price.billed_minutes,'Minute','Minuten')+'<br>Gesamtbetrag: <strong>'+euro(price.total_cents)+'</strong></p><p>Dieser Endzeitpunkt und Betrag werden gespeichert; der Tisch wird freigegeben. Abbrechen lässt die Vermietung weiterlaufen.</p>',valid,run:()=>api('/api/rentals/'+r.id+'/finish',{version:r.version,ended_at,action:'rental:finish'})});
+      try{const preview=await api('/api/rentals/'+r.id+'/preview',{});rentalShowCheck(r,preview,{version:r.version,action:'rental:finish'},'finish');}catch(error){message(error.message);}
     }
   }
   if(button.dataset.rentalEdit) {
@@ -622,7 +621,7 @@ rentalEdit.addEventListener('input',e=>{
     try {form.elements.value.value=(hourlyRate(pendingRental.base_cents,'percent',-Number(e.target.value))/100).toFixed(2);} catch {}
   }
 });
-rentalEdit.addEventListener('submit',e=>{
+rentalEdit.addEventListener('submit',async e=>{
   e.preventDefault(); if(!pendingRental || busy)return;
   try {
     const values=Object.fromEntries(new FormData(rentalEdit)), r=pendingRental;
@@ -632,6 +631,7 @@ rentalEdit.addEventListener('submit',e=>{
     values.value=values.discount===''?Number(values.value):-Number(values.discount);
     const rate=hourlyRate(r.base_cents,values.mode,Number(values.value)), price=rentalPrice(started_at,ended_at,rate);
     rentalCorrection={started_at,ended_at,mode:values.mode,value:Number(values.value),version:r.version,action:'rental:edit'};
+    if(r.drink_positions?.length){const preview=await api('/api/rentals/'+r.id+'/preview',{edit:{started_at,ended_at,hourly_cents:rate}});const request={...rentalCorrection,confirmation:'BUCHUNG ÄNDERN'};rentalDialog.close();rentalShowCheck(r,preview,request,'edit');return;}
     document.querySelector('#rental-summary').innerHTML='<p><strong>Buchung #'+r.id+' · Tisch '+r.table_no+'</strong></p><p>Start: '+rentalDate(r.started_at)+' → '+rentalDate(started_at)+'<br>Ende: '+rentalDate(r.ended_at)+' → '+rentalDate(ended_at)+'<br>Stundenpreis: '+euro(r.hourly_cents)+' → '+euro(rate)+'<br>Anpassung: '+(r.adjustment_percent===null?'Direktpreis':r.adjustment_percent+' %')+' → '+(values.mode==='percent'?esc(values.value)+' %':'Direktpreis')+'<br>Dauer: '+duration(r.duration_ms)+' → '+duration(price.duration_ms)+'<br>Abgerechnete Minuten: '+r.billed_minutes+' → '+price.billed_minutes+'<br>Gesamtpreis: '+euro(r.total_cents)+' → <strong>'+euro(price.total_cents)+'</strong></p>';
     rentalEdit.hidden=true; rentalWarning.hidden=false; rentalConfirmation.value=''; rentalSave.disabled=true;
     document.querySelector('#rental-error').textContent=''; rentalConfirmation.focus();
@@ -776,7 +776,7 @@ function stopWarningTimer() {
 }
 function updateWarningButton() {
   const remaining=pendingWarning?.readyAt?Math.max(0,pendingWarning.readyAt-Date.now()):0;
-  warningSave.disabled=busy||!pendingWarning||remaining>0||!!(pendingWarning.phrase&&warningInput.value!==pendingWarning.phrase);
+  warningSave.disabled=busy||!pendingWarning||!!(pendingWarning?.checkReady&&!pendingWarning.checkReady())||remaining>0||!!(pendingWarning.phrase&&warningInput.value!==pendingWarning.phrase);
   if(pendingWarning)warningSave.textContent=pendingWarning.label+(remaining>0?' ('+Math.ceil(remaining/1000)+' s)':'');
   if(!remaining)stopWarningTimer();
 }
@@ -934,8 +934,9 @@ function updateInventoryStockRows() {
 function inventoryDashboard() {
   const inv=state.inventory||{drinks:[],packages:[],movements:[]};
   let html='<div class="page-title inventory-title"><div><h1>Lagerverwaltung</h1><p>Getränk in der Bestandstabelle anklicken, um Bestand, Stammdaten oder Gebinde zu bearbeiten.</p></div><button type="button" class="primary" id="inventory-new-button">Getränk anlegen</button></div><nav class="inventory-menu" aria-label="Lagerverwaltung"><button type="button" data-inventory-section="stock" '+(inventorySection==='stock'?'aria-current="page"':'')+'>Lagerbestand</button><button type="button" data-inventory-section="movements" '+(inventorySection==='movements'?'aria-current="page"':'')+'>Lagerbewegungen</button></nav>';
-  html+='<nav class="inventory-menu" aria-label="Lageraktionen">'+[['receipt','Wareneingang'],['inventory','Inventur'],['templates','Vorlagen'],['restock','Nachbestellliste']].map(([key,label])=>'<button type="button" data-inventory-section="'+key+'" '+(inventorySection===key?'aria-current="page"':'')+'>'+label+'</button>').join('')+'</nav>';
-  if(['receipt','inventory'].includes(inventorySection))html+=inventoryBulkForm(inventorySection);
+  html+='<nav class="inventory-menu" aria-label="Lageraktionen">'+[['report','Monatsdashboard'],['receipt','Wareneingang'],['inventory','Inventur'],['templates','Vorlagen'],['restock','Nachbestellliste']].map(([key,label])=>'<button type="button" data-inventory-section="'+key+'" '+(inventorySection===key?'aria-current="page"':'')+'>'+label+'</button>').join('')+'</nav>';
+  if(inventorySection==='report')html+=inventoryReportView();
+  else if(['receipt','inventory'].includes(inventorySection))html+=inventoryBulkForm(inventorySection);
   else if(inventorySection==='templates')html+=inventoryTemplatesView(inv);
   else if(inventorySection==='movements')html+=inventoryMovementHistory(inv);
   else {
@@ -1193,3 +1194,70 @@ function inventoryBulkAddLine(event) {
  if(mode==='template')document.querySelector('#inventory-dialog-content').innerHTML=inventoryBulkForm(mode);else inventoryDashboard();
 }
 root.addEventListener('change',inventoryBulkAddLine);inventoryDialog.addEventListener('change',inventoryBulkAddLine);
+
+function rentalShowCheck(r,preview,request,action) {
+  const s=preview.summary,valid=()=>state.rentals.find(x=>x.id===r.id)?.version===r.version;
+  const lines=s.lines.filter(p=>p.cancelled_at===null);
+  const summary='<p><strong>'+esc(r.comment)+' · Tisch '+r.table_no+'</strong></p><p>Ende: '+rentalDate(s.ended_at)+' · Dauer: '+duration(s.duration_ms)+' · '+s.billed_minutes+' abgerechnete Minuten</p><p>Jede Position einzeln prüfen. Die Bestätigung ist keine Zahlungsbestätigung.</p><label><input type="checkbox" data-rental-check="rent"> Tischmiete: '+euro(s.rent_cents)+'</label>'+lines.map(p=>'<label><input type="checkbox" data-rental-check="'+esc(p.id)+'"> '+esc(p.name)+' · '+p.quantity+' × '+euro(p.sale_cents)+' = '+euro(p.total_cents)+'</label>').join('')+'<p>Getränke: '+euro(s.drink_cents)+' · <strong>Gesamt: '+euro(s.total_cents)+'</strong></p>'+(request.change?.kind==='cancel'?'<p>Storno: '+esc(request.change.reason)+' · '+(request.change.returned?'Mit Lagerrückgabe':'Ohne Lagerrückgabe')+'</p>':'');
+  showWarning({checkReady:()=>!document.querySelector('#warning-summary input[data-rental-check]:not(:checked)'),phrase:null,label:action==='finish'?'Vermietung abschließen':'Korrektur speichern',summary,valid,run:()=>api('/api/rentals/'+r.id+'/'+action,{...request,preview,checked:[...document.querySelectorAll('[data-rental-check]:checked')].map(el=>el.dataset.rentalCheck)})});
+}
+document.querySelector('#warning-summary').addEventListener('change',updateWarningButton);
+
+const rentalDrinksDialog=document.querySelector('#rental-drinks-dialog');
+let rentalDrinksCurrent=null;
+document.querySelector('#rental-drinks-close').addEventListener('click',()=>rentalDrinksDialog.close());
+async function rentalOpenDrinks(id) {
+  const r=state.rentals.find(r=>r.id===id);if(!r)return;
+  const inv=await api('/api/inventory');rentalDrinksCurrent={...r,inventory:inv};
+  const lines=r.drink_positions||[];
+  document.querySelector('#rental-drinks-title').textContent='Tisch '+r.table_no+' · '+(r.comment||'Altvermietung: Kommentar fehlt');
+  document.querySelector('#rental-drinks-error').textContent='';
+  document.querySelector('#rental-drinks-content').innerHTML='<section><h3>Mietkommentar</h3>'+'<form id="rental-comment-form">'+field('Name / Kommentar','comment',r.comment||'','text','required maxlength="200"')+'<button>Kommentar speichern</button></form>'+'</section><section><h3>Getränke buchen</h3><form id="rental-drink-form">'+selectField('Getränk','drink_id','', [['','Bitte auswählen'],...inv.drinks.filter(d=>d.active).map(d=>[d.id,d.name+' · '+euro(d.sale_cents)+' · '+d.stock+' Flaschen'])])+field('Anzahl Flaschen','quantity',1,'number','min="1" max="1000000" required')+'<button '+(!r.comment?'disabled':'')+'>'+(r.status==='finished'?'Korrektur prüfen':'Getränke buchen')+'</button></form></section><section><h3>Getränkepositionen</h3><div class="rental-history"><table><thead><tr><th>Getränk</th><th>Menge</th><th>Einzelpreis</th><th>Summe</th><th>Status / Storno</th></tr></thead><tbody>'+lines.map(p=>'<tr><th scope="row">'+esc(p.name)+'</th><td>'+p.quantity+'</td><td>'+euro(p.sale_cents)+'</td><td>'+euro(p.total_cents)+'</td><td>'+(p.cancelled_at===null?'<button type="button" data-rental-cancel-position="'+esc(p.id)+'">Stornieren</button>':'Storniert: '+esc(p.reason)+' · '+(p.returned?'Mit':'Ohne')+' Lagerrückgabe')+'</td></tr>').join('')+'</tbody></table></div><div id="rental-cancel-fields"></div></section>';
+  rentalDrinksDialog.showModal();
+}
+root.addEventListener('click',async event=>{
+  const b=event.target.closest('button[data-rental-open]');if(!b||busy)return;
+  try{await rentalOpenDrinks(Number(b.dataset.rentalOpen));}catch(error){message(error.message);}
+});
+rentalDrinksDialog.addEventListener('click',event=>{
+  const b=event.target.closest('button[data-rental-cancel-position]');if(!b)return;
+  document.querySelector('#rental-cancel-fields').innerHTML='<form id="rental-drink-cancel" data-position="'+esc(b.dataset.rentalCancelPosition)+'"><h4>Position stornieren</h4>'+field('Stornogrund','reason','','text','required maxlength="500"')+selectField('Tatsächliche Rückgabe ins Lager?','returned','',[['','Bitte ausdrücklich entscheiden'],['yes','Ja, zurück ins Lager'],['no','Nein, keine Lagerrückgabe']])+'<button>Storno '+(rentalDrinksCurrent.status==='finished'?'prüfen':'speichern')+'</button></form>';
+});
+rentalDrinksDialog.addEventListener('submit',async event=>{
+  event.preventDefault();if(busy||!rentalDrinksCurrent)return;
+  const r=rentalDrinksCurrent,form=event.target,values=Object.fromEntries(new FormData(form));busy=true;
+  try {
+    if(form.id==='rental-comment-form'){const request={version:r.version,comment:values.comment};if(r.status==='finished'&&r.drink_positions?.length){const preview=await api('/api/rentals/'+r.id+'/preview',{comment:values.comment});rentalDrinksDialog.close();rentalShowCheck({...r,comment:values.comment},preview,request,'comment');return;}await api('/api/rentals/'+r.id+'/comment',request);}
+    else {
+      let change;
+      if(form.id==='rental-drink-form') {
+        const d=r.inventory.drinks.find(d=>d.id===values.drink_id);if(!d)throw Error('Bitte ein Getränk auswählen.');
+        change={kind:'drink',operation_id:crypto.randomUUID(),drink_id:d.id,drink_version:d.version,quantity:Number(values.quantity)};
+      } else {
+        if(!['yes','no'].includes(values.returned))throw Error('Bitte über die Lagerrückgabe entscheiden.');
+        change={kind:'cancel',operation_id:crypto.randomUUID(),position_id:form.dataset.position,reason:values.reason,returned:values.returned==='yes'};
+      }
+      const request={version:r.version,change};
+      if(r.status==='finished') {
+        const preview=await api('/api/rentals/'+r.id+'/preview',{change});rentalDrinksDialog.close();rentalShowCheck(r,preview,request,'drink');return;
+      }
+      await api('/api/rentals/'+r.id+'/drink',request);
+    }
+    rentalDrinksDialog.close();await refresh(true);await rentalOpenDrinks(r.id);
+  } catch(error){document.querySelector('#rental-drinks-error').textContent=error.message+' Bei einem Konflikt bitte schließen und neu öffnen.';}
+  finally{busy=false;updateWarningButton();}
+});
+
+let inventoryReportData=null,inventoryReportDates=null;
+function inventoryReportView() {
+  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Berlin'}).format(new Date());
+  const dates=inventoryReportDates||{from:today.slice(0,7)+'-01',to:today};
+  const r=inventoryReportData;
+  return '<section class="panel"><h2>Monatsdashboard</h2><form id="inventory-report-form">'+field('Von (einschließlich)','from',dates.from,'date','required')+field('Bis (einschließlich)','to',dates.to,'date','required')+'<button>Zeitraum auswerten</button><button type="button" id="inventory-report-reset">Aktueller Monat</button></form><p>Zeitzone: Europe/Berlin. Bestände gelten jetzt; Verbrauch und Wareneingänge nach Buchungszeit, Abschlusswerte nach Mietende. Stornos zählen am Tag der Gegenbewegung. Keine Zahlungs- oder Margenauswertung.</p>'+(r?'<p>Zeitraum: '+esc(r.from)+' bis '+esc(r.to)+' · '+r.finished_count+' abgeschlossene Vermietungen</p><p>Tischmiete: <strong>'+euro(r.rent_cents)+'</strong> · Getränkewerte: <strong>'+euro(r.drink_cents)+'</strong></p><div class="rental-history"><table><thead><tr><th>Getränk</th><th>Verbrauch netto</th><th>Wareneingang netto</th><th>Bestand jetzt</th><th>Mindestbestand</th><th>Bekannter EK gesamt</th><th>Flaschen mit / ohne EK</th></tr></thead><tbody>'+r.rows.map(d=>'<tr><th scope="row"><button class="inventory-drink-link" data-inventory-open="'+esc(d.id)+'">'+esc(d.name)+'</button></th><td>'+d.consumption+'</td><td>'+d.receipts+'</td><td>'+d.stock+'</td><td>'+d.minimum+'</td><td>'+euro(d.purchase_cents)+'</td><td>'+d.known_purchase+' / '+d.unknown_purchase+'</td></tr>').join('')+'</tbody></table></div><h3>Offene Vermietungen (separat, alle Zeiträume)</h3><div class="rental-history"><table><thead><tr><th>Kommentar / Tisch</th><th>Start</th><th>Getränkewert</th></tr></thead><tbody>'+r.open.map(x=>'<tr><th scope="row">'+esc(x.comment||'Altkommentar fehlt')+' · Tisch '+x.table_no+'</th><td>'+rentalDate(x.started_at)+'</td><td>'+euro(x.drink_cents)+'</td></tr>').join('')+'</tbody></table></div><h3>Neuberechnungen abgeschlossener Vermietungen</h3><p>Nachträgliche Korrekturen ändern die ursprüngliche Abschlussperiode.</p>'+r.corrections.map(c=>'<p><a href="#report-audit-'+c.id+'">Buchung #'+c.rental_id+' · Protokoll #'+c.id+'</a><span id="report-audit-'+c.id+'"> · '+esc(c.at)+' UTC · '+esc(c.action)+'</span></p>').join(''):'<p>Zeitraum wählen und auswerten.</p>')+'</section>';
+}
+function handleInventoryReportSubmit(form) {
+  if(form.id!=='inventory-report-form')return false;
+  const values=Object.fromEntries(new FormData(form));
+  mutate(async()=>{inventoryReportData=await api('/api/inventory/report?'+new URLSearchParams(values));inventoryReportDates=values;drafts.delete(form.id);inventoryDashboard();});return true;
+}
+root.addEventListener('click',event=>{if(event.target.id==='inventory-report-reset'){inventoryReportData=null;inventoryReportDates=null;drafts.delete('inventory-report-form');inventoryDashboard();}});

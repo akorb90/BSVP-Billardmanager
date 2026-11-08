@@ -38,6 +38,6 @@ test('FR-007-Fix: atomic start, event-only guests, lineup, restart and complete 
     await new Promise(r=>server.close(r));await start('restore');
     await ok('/api/backups/preview',{backup});await ok('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'});await login();
     const restored=await ok('/api/backups/export');for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(restored.data[table],backup.data[table]);
-    const old=structuredClone(backup);old.schema=12;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];old.data.players.forEach(p=>delete p.event_id);old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
+    const old=structuredClone(backup);old.schema=12;delete old.data.rental_drinks;delete old.data.rental_checks;delete old.data.rental_operations;for(const r of old.data.rentals)delete r.comment;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];old.data.players.forEach(p=>delete p.event_id);old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');await ok('/api/backups/preview',{backup:old});
   }finally{if(server?.listening)await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true,maxRetries:5});}
 });

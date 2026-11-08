@@ -29,8 +29,8 @@ try {
     UPDATE table_settings SET table_count=20,version=2;
     UPDATE entity_ids SET value=CASE name WHEN 'events' THEN 7 WHEN 'matches' THEN 9 ELSE 3 END;
     UPDATE rental_settings SET base_cents=1234,version=3;
-    INSERT INTO rentals VALUES(3,20,1793000000000,NULL,987,1234,-20,NULL,NULL,NULL,'active',2);
-    INSERT INTO rentals VALUES(4,19,1793000000000,1793000060001,1234,1234,NULL,60001,2,41,'finished',1);
+    INSERT INTO rentals VALUES(3,20,1793000000000,NULL,987,1234,-20,NULL,NULL,NULL,'active',2,NULL);
+    INSERT INTO rentals VALUES(4,19,1793000000000,1793000060001,1234,1234,NULL,60001,2,41,'finished',1,NULL);
     UPDATE entity_ids SET value=4 WHERE name='rentals';
     INSERT INTO pin_attempts VALUES(12,4,1793999999999);
     INSERT INTO audit VALUES(45,'2026-10-28 12:34:56','admin','fixture',9,'{"preserved":true}');
@@ -107,17 +107,17 @@ try {
     SET CONSTRAINTS ALL IMMEDIATE;
     DROP TABLE event_match_slots;DROP TABLE event_planning;DROP TABLE nuliga_schedule_sync;DROP TABLE nuliga_entities;DROP TABLE nuliga_sync;DROP TABLE players,teams,team_players,event_players,event_teams;
     ALTER TABLE matches DROP COLUMN player_a_id,DROP COLUMN player_b_id,DROP COLUMN team_a_id,DROP COLUMN team_b_id,DROP COLUMN team_a_name,DROP COLUMN team_b_name;
-    DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;
+    DROP TABLE rental_operations,rental_checks,rental_drinks;ALTER TABLE rentals DROP COLUMN comment;DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;
     UPDATE _schema SET version=8;`);
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a,'Alt A');
   assert.equal((await upgrade.prepare('SELECT * FROM matches WHERE id=1').get()).player_a_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,15);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,16);
   assert.deepEqual(await upgrade.prepare('SELECT * FROM players').all(),[]);
-  await upgrade.exec("INSERT INTO players(id,first_name,last_name) VALUES('existing','Alt','Spieler');ALTER TABLE players DROP COLUMN event_id;DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=12;");
+  await upgrade.exec("INSERT INTO players(id,first_name,last_name) VALUES('existing','Alt','Spieler');ALTER TABLE players DROP COLUMN event_id;DROP TABLE rental_operations,rental_checks,rental_drinks;ALTER TABLE rentals DROP COLUMN comment;DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=12;");
   await close(upgrade);upgrade=await open({databaseUrl:url(names[3])});
   assert.equal((await upgrade.prepare("SELECT * FROM players WHERE id='existing'").get()).event_id,null);
-  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,15);
+  assert.equal((await upgrade.prepare('SELECT version FROM _schema WHERE id=1').get()).version,16);
   await close(upgrade);
   // Unknown tables must prevent initialization without leaving a partial schema.
   const invalidUrl = new URL(url(names[2])); invalidUrl.password = password;

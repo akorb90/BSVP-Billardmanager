@@ -19,11 +19,12 @@ test('AP3: semantic import validation rejects each inconsistent field atomically
   await ok('/api/matches',{event_id:1,player_a:'A',player_b:'B',discipline:'9-Ball',target:3,pin:'123456'});
   await ok('/api/matches/1/start',{version:0,table_no:1});
   for(const [table,mode,value] of [[2,'percent',12.34],[3,'direct',12.34],[4,'percent',-100]]) {
-    const rental=await ok('/api/rentals',{table_no:table,settings_version:0,mode,value});
-    const ended=await ok(`/api/rentals/${rental.id}/finish`,{version:0,ended_at:rental.started_at,action:'rental:finish'});
+    const rental=await ok('/api/rentals',{comment:'Testvermietung',table_no:table,settings_version:0,mode,value});
+    const preview=await ok(`/api/rentals/${rental.id}/preview`,{ended_at:rental.started_at});
+    const ended=await ok(`/api/rentals/${rental.id}/finish`,{version:0,ended_at:rental.started_at,action:'rental:finish',preview,checked:['rent']});
     if(table!==4)await ok(`/api/rentals/${rental.id}/edit`,{version:ended.version,started_at:rental.started_at-60001,ended_at:rental.started_at,mode,value,action:'rental:edit',confirmation:'BUCHUNG ÄNDERN'});
   }
-  await ok('/api/rentals',{table_no:5,settings_version:0,discount:20});
+  await ok('/api/rentals',{comment:'Testvermietung',table_no:5,settings_version:0,discount:20});
   const backup=await ok('/api/backups/export');
   await stop();await start();
   await ok('/api/events',{name:'Target must remain',kind:'Liga',date:'2026-11-01'});
@@ -63,7 +64,7 @@ test('AP3: semantic import validation rejects each inconsistent field atomically
   const imported=(await ok('/api/backups/export')).data;
   for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(imported[table],backup.data[table]);
   assert.equal((await call('/api/tables/1/login',{pin:'123456'})).status,200,'valid imported PIN still authenticates');
-  const legacy=resign(structuredClone(backup));legacy.schema=6;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];legacy.data.matches[0].pin_hash=null;
+  const legacy=resign(structuredClone(backup));legacy.schema=6;delete legacy.data.rental_drinks;delete legacy.data.rental_checks;delete legacy.data.rental_operations;for(const r of legacy.data.rentals)delete r.comment;for(const key of Object.keys(legacy.data))if(key.startsWith("inventory_"))delete legacy.data[key];legacy.data.matches[0].pin_hash=null;
   for(const table of ['branding','table_settings','players','teams','team_players','event_players','event_teams','nuliga_entities','nuliga_sync','event_planning','nuliga_schedule_sync','event_match_slots'])delete legacy.data[table];
   for(const m of legacy.data.matches)for(const key of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[key];
   resign(legacy);
@@ -71,6 +72,6 @@ test('AP3: semantic import validation rejects each inconsistent field atomically
   assert.equal((await restore(legacy)).status,200);await login();
   const legacyImported=(await ok('/api/backups/export')).data;
   assert.equal(legacyImported.matches[0].pin_hash,null);
-  assert.deepEqual(legacyImported.rentals,backup.data.rentals);
+  assert.deepEqual(legacyImported.rentals,backup.data.rentals.map(r=>({...r,comment:null})));
   assert.equal((await call('/api/tables/1/login',{pin:'123456'})).status,401,'legacy null means no PIN instead of a server error');
 });

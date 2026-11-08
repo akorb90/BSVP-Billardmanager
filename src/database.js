@@ -1,3 +1,4 @@
+import {rentalDrinkSchema} from './rental-drink-schema.js';
 import {inventoryBatchSchema} from './inventory-batch-schema.js';
 import { inventorySchema } from './inventory-schema.js';
 import { playerSchema } from './players.js';
@@ -10,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { DEFAULT_BRANDING } from './branding.js';
 
-export const SCHEMA_VERSION = 15; // Logical JSON schema is shared with versioned backups.
+export const SCHEMA_VERSION = 16; // Logical JSON schema is shared with versioned backups.
 export const quote = name => '"' + name.replaceAll('"', '""') + '"';
 const lock = 12012026;
 const numeric = value => {
@@ -74,12 +75,13 @@ export async function openDatabase({ databaseUrl, config }) {
         if([8,9,10,11,12].includes(installedVersion))await db.exec('ALTER TABLE players ADD COLUMN event_id BIGINT;UPDATE _schema SET version=13 WHERE id=1');
         if([8,9,10,11,12,13].includes(installedVersion))await db.exec(inventorySchema+'UPDATE _schema SET version=14 WHERE id=1');
         if([8,9,10,11,12,13,14].includes(installedVersion))await db.exec(inventoryBatchSchema+'UPDATE _schema SET version=15 WHERE id=1');
+        if([8,9,10,11,12,13,14,15].includes(installedVersion))await db.exec(rentalDrinkSchema+'UPDATE _schema SET version=16 WHERE id=1');
         else if (installedVersion !== SCHEMA_VERSION) throw new Error('Die Datenbank benötigt eine passende App-Version.');
         return;
       }
       if ((await db.tables()).length) throw new Error('PostgreSQL enthält unbekannte Tabellen; Initialisierung abgebrochen.');
       await db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
-      await db.exec(inventorySchema+inventoryBatchSchema);
+      await db.exec(inventorySchema+inventoryBatchSchema+rentalDrinkSchema);
       await db.prepare('INSERT INTO admin_credentials VALUES(1,?)').run(config.adminHash);
       const b = DEFAULT_BRANDING;
       await db.prepare('INSERT INTO branding VALUES(1,?,?,?,?,?,?,0)').run(b.club_name,b.primary,b.background,b.surface,b.text,b.logo);

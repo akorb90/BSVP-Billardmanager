@@ -1,3 +1,4 @@
+import {rentalDrinksService} from './rental-drinks.js';
 import { rentalPrice, hourlyRate } from '../public/rental-pricing.js';
 
 export function validateRentalRecord(rental) {
@@ -14,8 +15,9 @@ export function validateRentalRecord(rental) {
   } else throw new Error('Ungültiger Buchungsstatus.');
 }
 
-export async function rentalService({db, transaction, fail, integer, log, activeTable}) {
+export async function rentalService({db, transaction, fail, integer, log, inventory, activeTable}) {
   await db.prepare("INSERT INTO entity_ids(name,value) VALUES('rentals',(SELECT COALESCE(MAX(id),0) FROM rentals)) ON CONFLICT(name) DO NOTHING").run();
+  const drinks=rentalDrinksService({db,fail,log,inventory});
   const confirm = (body, action, phrase) => {
     if(body.action !== action || (phrase && body.confirmation !== phrase)) throw fail(400,'Bitte die angezeigte Aktion bestätigen.');
   };
@@ -29,7 +31,8 @@ export async function rentalService({db, transaction, fail, integer, log, active
   const calculate = fn => { try { return fn(); } catch(e) { throw fail(400, e.message); } };
   return {
     occupied,
-    state: async () => ({rentals:await db.prepare('SELECT * FROM rentals ORDER BY id DESC').all(), rental_settings:await settings(), server_now:Date.now()}),
+    enrich:async rows=>Promise.all(rows.map(async r=>({...r,drink_positions:await drinks.positions(r.id),drink_cents:(await drinks.summary(r)).drink_cents}))),
+    state: async () => ({rentals:await Promise.all((await db.prepare('SELECT * FROM rentals ORDER BY id DESC').all()).map(async r=>({...r,drink_positions:await drinks.positions(r.id),drink_cents:(await drinks.summary(r)).drink_cents}))), rental_settings:await settings(), server_now:Date.now()}),
     async handle(path, body) {
       return await transaction(async () => {
         if (path === '/api/rentals/settings') {
@@ -49,28 +52,31 @@ export async function rentalService({db, transaction, fail, integer, log, active
           const mode=body.discount!==undefined?'percent':body.mode ?? 'direct', value=body.discount!==undefined?-body.discount:body.value ?? base.base_cents/100;
           const rate=calculate(()=>hourlyRate(base.base_cents,mode,value));
           const id=(await db.prepare("UPDATE entity_ids SET value=value+1 WHERE name='rentals' RETURNING value").get()).value;
-          await db.prepare('INSERT INTO rentals(id,table_no,started_at,hourly_cents,base_cents,adjustment_percent) VALUES(?,?,?,?,?,?)').run(id,number,Date.now(),rate,base.base_cents,mode==='percent'?value:null);
+          await db.prepare('INSERT INTO rentals(id,table_no,started_at,hourly_cents,base_cents,adjustment_percent,comment) VALUES(?,?,?,?,?,?,?)').run(id,number,Date.now(),rate,base.base_cents,mode==='percent'?value:null,drinks.comment(body.comment));
           const item=await get(id);
           calculate(()=>validateRentalRecord(item));
           await log('admin','rental:start',null,{after:item});
           return item;
         }
-        const route=/^\/api\/rentals\/(\d+)\/(finish|edit|delete)$/.exec(path);
+        const route=/^\/api\/rentals\/(\d+)\/(finish|edit|delete|comment|drink|preview)$/.exec(path);
         if (!route) throw fail(404,'Nicht gefunden.');
         const id=Number(route[1]), action=route[2], before=await get(id);
-        // Retry only the exact same completion; corrections invalidate old requests.
-        if(action==='finish' && before.status==='finished' && body.version===before.version-1 && body.ended_at===before.ended_at) {
-          confirm(body,'rental:finish'); return before;
-        }
+        if(['finish','drink','edit','comment'].includes(action)&&await drinks.retry(id,body))return before;
+        if(['comment','drink','preview'].includes(action))return drinks.handle(before,action,body);
         if (body.version !== before.version) throw fail(409,'Die Buchung wurde zwischenzeitlich geändert. Bitte neu öffnen und erneut bestätigen.');
         if(action==='delete') {
           confirm(body,'rental:delete','BUCHUNG LÖSCHEN');
+          if((await drinks.positions(id)).length)throw fail(409,'Vermietungen mit Getränkebewegungen bleiben erhalten.');
+          await db.prepare('DELETE FROM rental_checks WHERE rental_id=?').run(id);
           await db.prepare('DELETE FROM rentals WHERE id=?').run(id);
           await log('admin','rental:delete',null,{before}); return {ok:true};
         } else if(action==='finish') {
           if(before.status!=='active') throw fail(409,'Die Buchung ist bereits abgeschlossen.');
           confirm(body,'rental:finish');
-          const end=integer(body.ended_at,before.started_at,Date.now()), price=rentalPrice(before.started_at,end,before.hourly_cents);
+          drinks.comment(before.comment);
+          const end=integer(body.preview?.summary?.ended_at,before.started_at,Date.now()), price=rentalPrice(before.started_at,end,before.hourly_cents);
+          if(body.ended_at!==undefined&&body.ended_at!==end)throw fail(400,'Endzeit und Vorschau stimmen nicht überein.');
+          drinks.verify(body,await drinks.summary(before,end));
           await db.prepare("UPDATE rentals SET ended_at=?,duration_ms=?,billed_minutes=?,total_cents=?,status='finished',version=version+1 WHERE id=?").run(end,price.duration_ms,price.billed_minutes,price.total_cents,id);
         } else {
           if(before.status!=='finished') throw fail(409,'Nur abgeschlossene Buchungen können korrigiert werden.');
@@ -78,9 +84,12 @@ export async function rentalService({db, transaction, fail, integer, log, active
           const start=integer(body.started_at,0,Date.now()), end=integer(body.ended_at,start,Date.now());
           const rate=calculate(()=>hourlyRate(before.base_cents,body.mode,body.value));
           const price=calculate(()=>rentalPrice(start,end,rate));
+          if((await drinks.positions(id)).length)drinks.verify(body,await drinks.summary({...before,started_at:start,hourly_cents:rate},end));
           await db.prepare('UPDATE rentals SET started_at=?,ended_at=?,hourly_cents=?,adjustment_percent=?,duration_ms=?,billed_minutes=?,total_cents=?,version=version+1 WHERE id=?').run(start,end,rate,body.mode==='percent'?body.value:null,price.duration_ms,price.billed_minutes,price.total_cents,id);
         }
-        const after=await get(id); calculate(()=>validateRentalRecord(after)); await log('admin','rental:'+action,null,{before,after}); return after;
+        const after=await get(id);
+        if(action==='finish'||action==='edit'&&(await drinks.positions(id)).length)await drinks.record(after,await drinks.summary(after),body);
+        calculate(()=>validateRentalRecord(after)); await log('admin','rental:'+action,null,{before,after}); return after;
       });
     }
   };

@@ -55,7 +55,7 @@ test('FR-007: identities, explicit participants, history, archive, restart and s
     assert.equal((await call('/api/backups/restore',{backup,action:'backup:restore',confirmation:'DATEN WIEDERHERSTELLEN'})).status,200);await login();
     const restored=(await call('/api/backups/export')).body;
     for(const name of Object.keys(backup.data))if(name!=='audit')assert.deepEqual(restored.data[name],backup.data[name]);
-    const old=structuredClone(backup);delete old.data.event_match_slots;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;delete old.data.nuliga_entities;delete old.data.nuliga_sync;old.schema=8;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];
+    const old=structuredClone(backup);delete old.data.event_match_slots;delete old.data.event_planning;delete old.data.nuliga_schedule_sync;delete old.data.nuliga_entities;delete old.data.nuliga_sync;old.schema=8;delete old.data.rental_drinks;delete old.data.rental_checks;delete old.data.rental_operations;for(const r of old.data.rentals)delete r.comment;for(const key of Object.keys(old.data))if(key.startsWith("inventory_"))delete old.data[key];
     for(const name of ['players','teams','team_players','event_players','event_teams'])delete old.data[name];
     for(const m of old.data.matches)for(const key of ['player_a_id','player_b_id','team_a_id','team_b_id','team_a_name','team_b_name'])delete m[key];
     old.checksum=createHash('sha256').update(JSON.stringify(old.data)).digest('hex');

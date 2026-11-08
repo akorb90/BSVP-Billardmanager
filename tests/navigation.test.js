@@ -11,6 +11,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 // Run the actual frontend with a small DOM/API fixture; no production data is used.
 async function frontend(path, { admin = true, match = null, tablet = false, events = [], matches = [], rentals = [], players=[],teams=[],team_players=[],event_players=[],event_teams=[],event_match_slots=[], serverPages=false, responseHook, inventory={drinks:[],packages:[],movements:[]}, table_settings = {table_count:8,version:0}, rental_settings = {base_cents:900,version:0} } = {}) {
   const posts=[],gets=[];
+  let rentalChecks=[];
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
@@ -32,7 +33,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
   const window = element('window');
   const context = vm.createContext({
     rentalPrice, hourlyRate, crypto:{randomUUID},
-    document: { querySelector:selector=>selector==='dialog[open]'?[...elements.values()].find(e=>e.open)||null:element(selector), getElementById:id=>elements.get('#'+id), querySelectorAll: () => [], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
+    document: { querySelector:selector=>selector==='#warning-summary input[data-rental-check]:not(:checked)'?rentalChecks.find(c=>!c.checked)||null:selector==='dialog[open]'?[...elements.values()].find(e=>e.open)||null:element(selector), getElementById:id=>elements.get('#'+id), querySelectorAll: selector=>selector==='[data-rental-check]:checked'?rentalChecks.filter(c=>c.checked):[], createElement(){const dialog=element('#registry-dialog');dialog.querySelector=element;return dialog;}, body: { append(){}, classList: { add() {} } } },
     window, location, history: { replaceState(_, __, path) { location.href = new URL(path, location).href; } },
     sessionStorage: { getItem: () => tablet ? 'tablet-token' : null, removeItem() {}, setItem() {} },
     FormData: class { constructor(form) { this.entries=form?.entries || [['password', 'test']]; } [Symbol.iterator](){return this.entries[Symbol.iterator]();} getAll(name){return this.entries.filter(e=>e[0]===name).map(e=>e[1]);} },
@@ -42,9 +43,11 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
       if(options?.body)posts.push({path,data:JSON.parse(options.body)});
       let status = 200, body;
       if (path === '/api/branding') { body={club_name:'BSV Pfaffenhofen',primary:'#147eb7',background:'#080c12',surface:'#121e2b',text:'#f1f6fc',version:0}; }
+      else if(/^\/api\/rentals\/\d+\/preview$/.test(path)){const r=rentals.find(r=>r.id===Number(path.split('/')[3])),ended_at=Date.now(),price=rentalPrice(r.started_at,ended_at,r.hourly_cents);body={signature:'test',summary:{...price,rental_id:r.id,version:r.version,ended_at,rent_cents:price.total_cents,drink_cents:0,total_cents:price.total_cents,positions:['rent'],lines:[]}};rentalChecks=[{checked:false,dataset:{rentalCheck:'rent'}}];}
       else if(path==='/api/inventory/preview'){
         const request=JSON.parse(options.body);body={kind:request.kind,token:'ui-preview-token',lines:request.lines.map(line=>{const d=inventory.drinks.find(d=>d.id===line.drink_id),p=inventory.packages.find(p=>p.id===line.package_id),quantity=request.kind==='inventory'?line.counted-d.stock:line.packages*(p?.bottles||1)+line.singles;return {...line,name:d.name,stock:d.stock,quantity,after:d.stock+quantity};})};
       }
+      else if(path.startsWith('/api/inventory/report?'))body={from:'2026-11-01',to:'2026-11-30',finished_count:1,rent_cents:450,drink_cents:500,rows:[{id:'d',name:'Wasser',consumption:2,receipts:20,stock:18,minimum:5,purchase_cents:1000,known_purchase:10,unknown_purchase:10}],open:[],corrections:[]};
       else if (path === '/api/inventory') {status=admin?200:401;body=admin?inventory:{error:'Bitte anmelden.'};if(options?.body){const request=JSON.parse(options.body);if(request.action==='template')body={id:request.id||'new-template',name:request.name,version:0,lines:JSON.stringify(request.lines)};}}
 
       else if (path === '/api/login') { admin = true; body = { csrf: 'csrf' }; }
@@ -64,7 +67,7 @@ async function frontend(path, { admin = true, match = null, tablet = false, even
     },
   });
   const app = await vm.runInContext(`(async () => { ${source}\n return { refresh, updateTournamentSelection, saveDrafts, restoreDrafts, updateMatchLimits, captureFocus, restoreFocus, quantity, drafts }; })()`, context);
-  return { ...app, document:context.document, element, links, location, window, posts, gets, setAdmin(value) { admin = value; } };
+  return { ...app, checkRental(){for(const c of rentalChecks)c.checked=true;element('#warning-summary').listeners.change();}, document:context.document, element, links, location, window, posts, gets, setAdmin(value) { admin = value; } };
 }
 
 async function pageClick(app, key, step) {
@@ -136,32 +139,31 @@ test('FR-004: Veranstaltungen und Begegnungen behalten unabhängige Seiten beim 
   assert.match(app.element('#app').innerHTML, /1–1 von 1 · Seite 1 von 1/);
 });
 
-test('Mietabschluss ohne Texteingabe; Löschung und Grundpreis mit exakter Bestätigung',async()=>{
-  const rentals=[{id:1,table_no:2,status:'active',version:0,started_at:Date.now()-61000,hourly_cents:900}];
+test('FR-014.4 UI: Mietabschluss verlangt einzelne Prüfung; Löschung und Grundpreis bleiben geschützt',async()=>{
+  const rentals=[{id:1,comment:'Anna',table_no:2,status:'active',version:0,started_at:Date.now()-61000,hourly_cents:900}];
   const app=await frontend('/#vermietung',{rentals});
   const click=async dataset=>app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button[data-entity]'?null:{dataset,hasAttribute:()=>false}}});
+  const mutations=()=>app.posts.filter(p=>!p.path.endsWith('/preview'));
   await click({rentalFinish:'1'});
   assert.equal(app.element('#warning-entry').hidden,true);
-  assert.equal(app.element('#warning-save').disabled,false);
-  assert.equal(app.element('#warning-save').textContent,'Vermietung abschließen');
-  assert.match(app.element('#warning-summary').innerHTML,/Gesamtbetrag/);
-  assert.equal(app.posts.length,0);
-  app.element('#warning-cancel').listeners.click();assert.equal(app.posts.length,0);
-  await click({rentalFinish:'1'});await app.element('#warning-save').listeners.click();
-  assert.equal(app.posts.length,1);assert.equal(app.posts[0].data.action,'rental:finish');
-  assert.equal(app.posts[0].data.confirmation,undefined);assert.ok(app.posts[0].data.ended_at>=rentals[0].started_at);
+  assert.equal(app.element('#warning-save').disabled,true);
+  assert.match(app.element('#warning-summary').innerHTML,/data-rental-check="rent"/);
+  assert.match(app.element('#warning-summary').innerHTML,/keine Zahlungsbestätigung/);
+  await app.element('#warning-save').listeners.click();assert.equal(mutations().length,0);
+  app.checkRental();assert.equal(app.element('#warning-save').disabled,false);
+  app.element('#warning-cancel').listeners.click();assert.equal(mutations().length,0);
+  await click({rentalFinish:'1'});assert.equal(app.element('#warning-save').disabled,true);
+  app.checkRental();await app.element('#warning-save').listeners.click();
+  assert.equal(mutations().length,1);assert.equal(mutations()[0].data.action,'rental:finish');
+  assert.deepEqual(mutations()[0].data.checked,['rent']);assert.ok(mutations()[0].data.preview.summary.ended_at>=rentals[0].started_at);
   await click({rentalDelete:'1'});
-  assert.equal(app.element('#warning-entry').hidden,false);assert.equal(app.element('#warning-save').disabled,true);
-  assert.match(app.element('#warning-summary').innerHTML,/Tisch 2/);
-  const input=app.element('#warning-input');input.value='BUCHUNG LÖSCHEN';input.listeners.input();
-  await app.element('#warning-save').listeners.click();assert.equal(app.posts[1].data.action,'rental:delete');
+  app.element('#warning-input').value='BUCHUNG LÖSCHEN';app.element('#warning-input').listeners.input();
+  await app.element('#warning-save').listeners.click();assert.equal(mutations()[1].data.action,'rental:delete');
   await app.element('#app').listeners.submit({preventDefault(){},target:{id:'rental-settings',dataset:{version:'0'},entries:[['base_euros','12']],reset(){}}});
-  assert.equal(app.element('#warning-phrase').textContent,'GRUNDPREIS ÄNDERN');assert.equal(input.value,'');
-  assert.match(app.element('#warning-summary').innerHTML,/12,00/);
-  input.value='GRUNDPREIS ÄNDERN';input.listeners.input();await app.element('#warning-save').listeners.click();
-  assert.equal(app.posts[2].data.base_euros,12);assert.equal(app.posts[2].data.action,'rental:settings');
-  await click({rentalFinish:'1'});rentals[0]={...rentals[0],version:1};await app.refresh(true);
-  assert.equal(app.element('#warning-save').disabled,true);await app.element('#warning-save').listeners.click();assert.equal(app.posts.length,3);
+  app.element('#warning-input').value='GRUNDPREIS ÄNDERN';app.element('#warning-input').listeners.input();
+  await app.element('#warning-save').listeners.click();assert.equal(mutations()[2].data.base_euros,12);
+  await click({rentalFinish:'1'});app.checkRental();rentals[0]={...rentals[0],version:1};await app.refresh(true);
+  assert.equal(app.element('#warning-save').disabled,true);await app.element('#warning-save').listeners.click();assert.equal(mutations().length,3);
 });
 
 test('Admin-Formulare zeigen Änderungen und binden Warnungen an die konkrete Aktion',async()=>{
@@ -278,7 +280,7 @@ test('Rabattfeld und Einstellungen ersetzen Preisauswahl und Grundpreis im Vermi
   const rental=await frontend('/#vermietung');
   const rentalHtml=rental.element('#app').innerHTML;
   assert.match(rentalHtml,/Rabatt in %/);assert.doesNotMatch(rentalHtml,/Preis festlegen|id="rental-settings"/);
-  await rental.element('#app').listeners.submit({preventDefault(){},target:{id:'rental-start',dataset:{version:'0'},entries:[['table_no','1'],['discount','20']],reset(){}}});
+  await rental.element('#app').listeners.submit({preventDefault(){},target:{id:'rental-start',dataset:{version:'0'},entries:[['comment','Anna'],['table_no','1'],['discount','20']],reset(){}}});
   await new Promise(r=>setImmediate(r));
   assert.equal(rental.posts[0].data.discount,20);
   const settings=await frontend('/#einstellungen');
@@ -931,4 +933,32 @@ test('FR-014.2 UI: bestehende Vorlage um ein weiteres Getränk ergänzen',async(
  await app.element('#inventory-dialog').dispatch('change',{target:{dataset:{inventoryBulkAdd:'template'},value:'cola'}});
  await inventoryBulkSet(app,'template',1,'singles','5',true);await inventoryBulkSubmit(app,'template','template',true);
  const saved=app.posts.find(p=>p.path==='/api/inventory');assert.equal(saved.data.lines.length,2);assert.equal(saved.data.lines[1].drink_id,'cola');assert.equal(saved.data.lines[1].singles,5);assert.equal(saved.data.version,2);
+});
+
+
+test('FR-014.3 UI: Mietname öffnet Overlay, Buchung behält Version und Storno verlangt Rückgabeentscheidung',async()=>{
+  const rentals=[{id:1,comment:'Anna',table_no:1,status:'active',version:2,started_at:Date.now()-60000,hourly_cents:900,drink_cents:500,drink_positions:[{id:'position',name:'Wasser',quantity:2,sale_cents:250,total_cents:500,cancelled_at:null}]}];
+  const inventory={drinks:[{id:'d',name:'Wasser',stock:10,sale_cents:250,active:1,version:4}],packages:[],movements:[]};
+  const app=await frontend('/#vermietung',{rentals,inventory});
+  const click=dataset=>app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button[data-rental-open]'?{dataset}:null}});
+  assert.match(app.element('#app').innerHTML,/data-rental-open="1"/);
+  await click({rentalOpen:'1'});assert.equal(app.element('#rental-drinks-dialog').open,true);
+  assert.match(app.element('#rental-drinks-content').innerHTML,/Mietkommentar/);assert.match(app.element('#rental-drinks-content').innerHTML,/Getränkepositionen/);
+  rentals[0].version=9;
+  await app.element('#rental-drinks-dialog').listeners.submit({preventDefault(){},target:{id:'rental-drink-form',entries:[['drink_id','d'],['quantity','2']]}});
+  const booking=app.posts.find(p=>p.path==='/api/rentals/1/drink');assert.equal(booking.data.version,2);assert.equal(booking.data.change.quantity,2);assert.equal(booking.data.change.drink_version,4);assert.match(booking.data.change.operation_id,/^[a-f0-9-]{36}$/);
+  app.posts.splice(0);
+  await app.element('#rental-drinks-dialog').listeners.submit({preventDefault(){},target:{id:'rental-drink-cancel',dataset:{position:'position'},entries:[['reason','Falsch gebucht'],['returned','']]}});
+  assert.equal(app.posts.length,0);assert.match(app.element('#rental-drinks-error').textContent,/Lagerrückgabe/);
+});
+
+test('FR-014.5 UI: Monatsdashboard zeigt Zeitraum, getrennte Werte und EK-Lücken mit gemeinsamem Reset',async()=>{
+  const app=await frontend('/#lager');
+  await app.element('#app').dispatch('click',{target:{closest:selector=>selector==='button'?{dataset:{inventorySection:'report'},hasAttribute:()=>false}:null}});
+  assert.match(app.element('#app').innerHTML,/Monatsdashboard/);
+  await app.element('#app').listeners.submit({preventDefault(){},target:{id:'inventory-report-form',entries:[['from','2026-11-01'],['to','2026-11-30']]}});await new Promise(setImmediate);
+  assert.ok(app.gets.includes('/api/inventory/report?from=2026-11-01&to=2026-11-30'));
+  const html=app.element('#app').innerHTML;assert.match(html,/Tischmiete/);assert.match(html,/Getränkewerte/);assert.match(html,/10 \/ 10/);assert.match(html,/Offene Vermietungen/);assert.match(html,/Europe\/Berlin/);
+  await app.element('#app').dispatch('click',{target:{id:'inventory-report-reset',closest:()=>null}});
+  assert.match(app.element('#app').innerHTML,/Zeitraum wählen und auswerten/);
 });

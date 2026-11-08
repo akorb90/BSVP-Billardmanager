@@ -76,7 +76,7 @@ test('FR-014.1: Lager, Parallelzugriff, Historie, Rechte und vollständiger Rest
     for(const table of Object.keys(backup.data))if(table!=='audit')assert.deepEqual(actual[table],backup.data[table]);
     assert.deepEqual(actual.audit.slice(0,-1),backup.data.audit);
     assert.deepEqual((await post(initial)).body,first.body); // Idempotency survives restore.
-    const legacy=structuredClone(backup);legacy.schema=13;
+    const legacy=structuredClone(backup);legacy.schema=13;delete legacy.data.rental_drinks;delete legacy.data.rental_checks;delete legacy.data.rental_operations;for(const r of legacy.data.rentals)delete r.comment;
     for(const key of Object.keys(legacy.data))if(key.startsWith('inventory_'))delete legacy.data[key];resign(legacy);
     assert.equal((await call('/api/backups/preview',{backup:legacy})).status,200);assert.equal((await restore(legacy)).status,200);await login();
     assert.deepEqual((await state()).drinks,[]);assert.deepEqual((await state()).movements,[]);
@@ -86,7 +86,7 @@ test('FR-014.1: Lager, Parallelzugriff, Historie, Rechte und vollständiger Rest
 test('FR-014.1: Schema-13-Upgrade erhält Vereinsdaten und startet mit leerem Lager',async()=>{
   const key='inventory-migration',config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex')};
   let db=await openDatabase({dbKey:key,config});
-  await db.exec("UPDATE branding SET club_name='Bestandsverein';DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=13;");
+  await db.exec("UPDATE branding SET club_name='Bestandsverein';DROP TABLE rental_operations,rental_checks,rental_drinks;ALTER TABLE rentals DROP COLUMN comment;DROP TABLE inventory_batches,inventory_templates,inventory_movements,inventory_packages,inventory_operations,inventory_drinks;UPDATE _schema SET version=13;");
   await db.close();db=await openDatabase({dbKey:key,config});
-  try {assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,15);assert.equal((await db.prepare('SELECT club_name FROM branding').get()).club_name,'Bestandsverein');assert.deepEqual(await db.prepare('SELECT * FROM inventory_drinks').all(),[]);}finally{await db.close();}
+  try {assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,16);assert.equal((await db.prepare('SELECT club_name FROM branding').get()).club_name,'Bestandsverein');assert.deepEqual(await db.prepare('SELECT * FROM inventory_drinks').all(),[]);}finally{await db.close();}
 });

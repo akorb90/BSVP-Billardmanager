@@ -23,7 +23,7 @@ test('FR-014.2: atomare Sammelbuchungen, Vorlagen, Inventur und vollständiger R
   const packs=[];for(const [i,d] of drinks.entries())packs.push(await post({action:'package',drink_id:d.id,version:0,name:i?'24er':'20er',bottles:i?24:20}));
   const current=async id=>(await state()).drinks.find(d=>d.id===id);
   await post({action:'movement',kind:'receipt',drink_id:drinks[1].id,version:(await current(drinks[1].id)).version,packages:0,singles:1});
-  const legacy=await exportBackup();legacy.schema=14;delete legacy.data.inventory_templates;delete legacy.data.inventory_batches;resign(legacy);
+  const legacy=await exportBackup();legacy.schema=14;delete legacy.data.rental_drinks;delete legacy.data.rental_checks;delete legacy.data.rental_operations;for(const r of legacy.data.rentals)delete r.comment;delete legacy.data.inventory_templates;delete legacy.data.inventory_batches;resign(legacy);
   const receiptLines=async()=>Promise.all(drinks.map(async(d,i)=>({drink_id:d.id,version:(await current(d.id)).version,package_id:packs[i].id,packages:i?1:2,singles:i?0:3,purchase_cents:i?null:60})));
   let lines=await receiptLines();const before=(await state()).drinks;
   const preview=await ok('/api/inventory/preview',{kind:'receipt',lines});assert.equal(preview.lines[0].quantity,43);assert.equal(preview.lines[1].quantity,24);
@@ -78,7 +78,7 @@ test('FR-014.2: atomare Sammelbuchungen, Vorlagen, Inventur und vollständiger R
 
 test('FR-014.2: PostgreSQL 14 migriert auf 15 ohne bestehende Lagerdaten zu ändern',async()=>{
  const config={adminHash:'salt:'+scryptSync('password','salt',64).toString('hex')};let db=await openDatabase({dbKey:'batch-upgrade',config});
- await db.exec("INSERT INTO inventory_drinks VALUES('existing','Bestand',500,250,NULL,10,1,0);DROP TABLE inventory_batches,inventory_templates;UPDATE _schema SET version=14;");
+ await db.exec("INSERT INTO inventory_drinks VALUES('existing','Bestand',500,250,NULL,10,1,0);DROP TABLE rental_operations,rental_checks,rental_drinks;ALTER TABLE rentals DROP COLUMN comment;DROP TABLE inventory_batches,inventory_templates;UPDATE _schema SET version=14;");
  await db.close();db=await openDatabase({dbKey:'batch-upgrade',config});
- try{assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,15);assert.equal((await db.prepare('SELECT name FROM inventory_drinks').get()).name,'Bestand');assert.deepEqual(await db.prepare('SELECT * FROM inventory_templates').all(),[]);}finally{await db.close();}
+ try{assert.equal((await db.prepare('SELECT version FROM _schema').get()).version,16);assert.equal((await db.prepare('SELECT name FROM inventory_drinks').get()).name,'Bestand');assert.deepEqual(await db.prepare('SELECT * FROM inventory_templates').all(),[]);}finally{await db.close();}
 });

@@ -174,9 +174,9 @@ try {
   assert.equal((await request('/api/matches/1/score', { side: 'a', delta: 1, version: 1 }, kiosk)).status, 409);
   console.log('PASS: verified TLS chain, frontend, secure login, CSRF/origin, table isolation, scoring and break');
 
-  const rental=await request('/api/rentals',{table_no:2,settings_version:0,mode:'percent',value:-20});
+  const rental=await request('/api/rentals',{comment:'Testvermietung',table_no:2,settings_version:0,mode:'percent',value:-20});
   assert.equal(rental.status,201); assert.equal(rental.body.hourly_cents,720);
-  assert.equal((await request('/api/rentals',{table_no:2,settings_version:0})).status,409);
+  assert.equal((await request('/api/rentals',{comment:'Testvermietung',table_no:2,settings_version:0})).status,409);
   assert.equal((await request('/api/rentals/1/finish',{version:0},kiosk)).status,401);
   const container = await compose(['ps', '-q', 'app'], true);
   const [inspection] = JSON.parse(await docker(['inspect', container], true));
@@ -207,7 +207,8 @@ try {
   await login();
   const restored=(await request('/api/admin')).body.rentals.find(r=>r.id===rental.body.id);
   assert.equal(restored.started_at,rental.body.started_at); assert.equal(restored.hourly_cents,720);
-  const rentalFinish={version:0,ended_at:Date.now(),action:'rental:finish'};
+  const rentalPreview=(await request('/api/rentals/1/preview',{})).body;
+  const rentalFinish={version:0,ended_at:rentalPreview.summary.ended_at,action:'rental:finish',preview:rentalPreview,checked:['rent']};
   const finished=(await request('/api/rentals/1/finish',rentalFinish)).body;
   assert.equal(finished.status,'finished');
   assert.deepEqual((await request('/api/rentals/1/finish',rentalFinish)).body,finished);
@@ -249,7 +250,7 @@ try {
   console.log('PASS: volume survives container replacement; match finishes and table becomes available');
   assert.equal((await request('/api/settings/tables',{table_count:20,version:0})).status,200);
   assert.equal((await request('/tisch/20')).status,200);
-  assert.equal((await request('/api/rentals',{table_no:20,settings_version:0})).status,201);
+  assert.equal((await request('/api/rentals',{comment:'Testvermietung',table_no:20,settings_version:0})).status,201);
   assert.equal((await request('/api/settings/tables',{table_count:1,version:1})).status,409);
   console.log('PASS: configurable table count, table 20 over HTTPS and occupied-table reduction guard');
   // FR-006 runs only in this disposable PostgreSQL project.
@@ -279,6 +280,18 @@ try {
   assert.ok(tournamentState.events.find(e=>e.id===tournament).tournament.rounds[1][0].match);
   assert.equal((await request('/api/events/'+tournament+'/tournament/preview',{version:tournamentState.events.find(e=>e.id===tournament).version,mode:'ko',discipline:'9-Ball',target:1,groupCount:1,qualifiers:1,rules:'difference',player_ids:tournamentPlayers})).status,409);
   console.log('PASS: PostgreSQL tournament preview, confirmation, bye, table scoring and automatic final');
+  const drinksRental=await request('/api/rentals',{comment:'Docker Getränkemiete',table_no:4,settings_version:0});assert.equal(drinksRental.status,201);
+  const rd=drinksRental.body,rdPath='/api/rentals/'+rd.id,stockBefore=(await request('/api/inventory')).body.drinks.find(d=>d.id===drink.body.id);
+  const booking={version:0,change:{kind:'drink',operation_id:randomUUID(),drink_id:stockBefore.id,drink_version:stockBefore.version,quantity:2}};
+  assert.equal((await request(rdPath+'/drink',booking)).status,200);assert.equal((await request(rdPath+'/drink',booking)).status,200);
+  assert.equal((await request('/api/inventory')).body.drinks.find(d=>d.id===stockBefore.id).stock,stockBefore.stock-2);
+  const drinkPreview=(await request(rdPath+'/preview',{})).body;assert.equal(drinkPreview.summary.drink_cents,500);
+  const finishDrinks={version:1,action:'rental:finish',preview:drinkPreview,checked:drinkPreview.summary.positions};
+  assert.equal((await request(rdPath+'/finish',{...finishDrinks,checked:['rent']})).status,400);
+  assert.equal((await request(rdPath+'/finish',finishDrinks)).status,200);assert.equal((await request(rdPath+'/finish',finishDrinks)).status,200);
+  assert.equal((await request(rdPath+'/delete',{version:2,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})).status,409);
+  const rdReport=await request('/api/inventory/report?from=2020-01-01&to=2030-12-31');assert.equal(rdReport.status,200);assert.equal(rdReport.body.drink_cents,500);
+  console.log('PASS: HTTPS rental drinks, exact retries, per-position checks, protected history and reporting');
   const backup = await request('/api/backups/export');
   assert.equal(backup.status,200); assert.match(backup.headers['content-disposition'],/attachment/);
   assert.equal(backup.body.data.events.length,1);
@@ -293,10 +306,11 @@ try {
   for(const name of Object.keys(backup.body.data)) if(name!=='audit') assert.deepEqual(imported.body.data[name],backup.body.data[name]);
   assert.equal(imported.body.data.audit.at(-1).action,'backup:restore');
   console.log('PASS: HTTPS backup download, upload preview, confirmed atomic restore and session revocation');
-  const competingRentals = await Promise.all([1, 2].map(() => request('/api/rentals', {table_no:3,settings_version:0})));
+  const competingRentals = await Promise.all([1, 2].map(() => request('/api/rentals', {comment:'Testvermietung',table_no:3,settings_version:0})));
   assert.deepEqual(competingRentals.map(r => r.status).sort(), [201, 409]);
   const competingRental = competingRentals.find(r => r.status === 201).body;
-  const endedRental = (await request(`/api/rentals/${competingRental.id}/finish`, {version:0,ended_at:Date.now(),action:'rental:finish'})).body;
+  const competingPreview=(await request(`/api/rentals/${competingRental.id}/preview`,{})).body;
+  const endedRental = (await request(`/api/rentals/${competingRental.id}/finish`, {version:0,action:'rental:finish',preview:competingPreview,checked:['rent']})).body;
   assert.equal((await request(`/api/rentals/${competingRental.id}/delete`, {version:endedRental.version,action:'rental:delete',confirmation:'BUCHUNG LÖSCHEN'})).status,200);
   console.log('PASS: concurrent PostgreSQL bookings admit exactly one winner');  const persistedData = (await request('/api/backups/export')).body.data;
   await compose(['restart', 'db']);
