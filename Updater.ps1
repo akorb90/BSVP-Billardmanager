@@ -12,7 +12,7 @@ function Invoke-UpdaterCommand {
     $description = $Program + ' ' + ($Arguments -join ' ')
     Write-Host "> $description"
     Add-Content -LiteralPath $script:UpdaterLog -Value "> $description" -Encoding UTF8
-    $command = Get-Command $Program -CommandType Application -ErrorAction Stop
+    $command = Get-Command $Program -CommandType Application -ErrorAction Stop | Select-Object -First 1
     $previousPreference = $ErrorActionPreference
     try {
         # Native Docker progress on stderr is not a PowerShell exception in 5.1.

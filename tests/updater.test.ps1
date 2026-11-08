@@ -11,6 +11,8 @@ try { & $nativeCommand $hostProgram @('-NoProfile', '-Command', 'exit 7') | Out-
 catch { $nativeFailed = $_.Exception.Message -match 'Exitcode 7' }
 if (-not $nativeFailed) { throw 'Native exit code was lost.' }
 & $nativeCommand $hostProgram @('-NoProfile', '-Command', "[Console]::Error.WriteLine('progress'); exit 0") | Out-Null
+$gitVersion = & $nativeCommand git @('--version')
+if ($gitVersion -notmatch '^git version ') { throw 'PATH command discovery did not select one Git executable.' }
 
 function Assert-Test {
     param([bool]$Condition, [string]$Message)
