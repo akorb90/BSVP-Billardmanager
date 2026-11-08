@@ -46,6 +46,7 @@ function Invoke-UpdaterCommand {
     }
     if ($Arguments -contains 'config' -and $Arguments -notcontains '--quiet') { return '{"name":"existing-project","services":{"proxy":{"environment":{"BILLARD_HOST":"localhost"}}}}' }
     if ($Arguments -contains 'ps') {
+        if ($Arguments -contains '--quiet') { return 'aaaaaaaaaaaa' }
         if ($script:MissingService) { return '[]' }
         return (@('app', 'db', 'proxy') | ForEach-Object { @{Service = $_; State = 'running'; Health = 'healthy'} } | ConvertTo-Json -Compress)
     }
@@ -70,6 +71,7 @@ Assert-Test ($all.IndexOf(' cp db:') -lt $all.IndexOf('git merge --ff-only FETCH
 Assert-Test ($all.IndexOf('git merge --ff-only FETCH_HEAD') -lt $all.IndexOf(' build --pull app')) 'Build must follow the fast-forward.'
 Assert-Test ($all.Contains(' up -d --build --wait')) 'Source mode must build and wait.'
 Assert-Test ($all.Contains('--cacert') -and $all.Contains('https://localhost/health') -and -not $all.Contains('--insecure')) 'HTTPS must verify the CA and host.'
+Assert-Test ($all.Contains('docker inspect --format') -and -not $all.Contains(' images ')) 'Image metadata must work even when the old image was removed.'
 Assert-Test (-not ($all -match '\b(reset|stash|down|prune|setup)\b')) 'No reset, stash, deletion or setup allowed.'
 Assert-Test ((Get-Content -LiteralPath (Join-Path $script:Fixture '.env') -Raw).Trim() -eq 'preserve me') 'Environment changed.'
 Assert-Test ((Get-Content -LiteralPath (Join-Path $script:Fixture 'secrets/config.json') -Raw).Trim() -eq 'preserve me') 'Secrets changed.'

@@ -78,7 +78,11 @@ function Invoke-StackUpdate {
         $compose += @('--project-name', $ProjectName)
         $before = Invoke-UpdaterCommand docker ($compose + @('ps', '--format', 'json'))
         Assert-UpdaterServices $before
-        $images = Invoke-UpdaterCommand docker ($compose + @('images', '--format', 'json'))
+        # Containers may still run an image whose local tag/storage was removed.
+        # Inspect their image IDs directly; do not require the old image to exist.
+        $containerIds = @((Invoke-UpdaterCommand docker ($compose + @('ps', '--quiet'))) -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object { $_.Trim() })
+        if (-not $containerIds.Count -or @($containerIds | Where-Object { $_ -notmatch '^[a-f0-9]{12,64}$' }).Count) { throw 'Container-IDs konnten nicht sicher ermittelt werden.' }
+        $images = Invoke-UpdaterCommand docker (@('inspect', '--format', '{{.Id}} {{.Name}} {{.Image}}') + $containerIds)
         if ($selectedMode -eq 'Source') {
             $gitRoot = (Invoke-UpdaterCommand git @('rev-parse', '--show-toplevel')).Trim()
             if ((Resolve-Path -LiteralPath $gitRoot).Path -ne $Root) { throw 'Updater muss im Wurzelordner dieses Repositorys liegen.' }
@@ -104,7 +108,7 @@ function Invoke-StackUpdate {
         }
         Set-Content -LiteralPath (Join-Path $backup 'project.txt') -Value $ProjectName -Encoding UTF8
         Set-Content -LiteralPath (Join-Path $backup 'containers-before.json') -Value $before -Encoding UTF8
-        Set-Content -LiteralPath (Join-Path $backup 'images-before.json') -Value $images -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $backup 'images-before.txt') -Value $images -Encoding UTF8
         Write-Host "Datenbanksicherung: $backup"
 
         if ($selectedMode -eq 'Source') {
