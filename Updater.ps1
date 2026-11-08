@@ -129,7 +129,13 @@ function Invoke-StackUpdate {
         $ca = Join-Path $logDirectory 'root.crt'
         Invoke-UpdaterCommand docker ($compose + @('cp', 'proxy:/data/caddy/pki/authorities/local/root.crt', $ca)) | Out-Null
         $curl = if (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue) { 'curl.exe' } else { 'curl' }
-        Invoke-UpdaterCommand $curl @('--fail', '--silent', '--show-error', '--noproxy', '*', '--connect-timeout', '10', '--max-time', '30', '--cacert', $ca, '--resolve', "${hostName}:443:127.0.0.1", "https://${hostName}/health") | Out-Null
+        $tlsOptions = @()
+        if ((Invoke-UpdaterCommand $curl @('--version')) -match 'Schannel') {
+            # Caddy's private CA has no public revocation distribution point.
+            # Keep CA/hostname validation; tolerate only unavailable CRL checks.
+            $tlsOptions += '--ssl-revoke-best-effort'
+        }
+        Invoke-UpdaterCommand $curl ($tlsOptions + @('--fail', '--silent', '--show-error', '--noproxy', '*', '--connect-timeout', '10', '--max-time', '30', '--cacert', $ca, '--resolve', "${hostName}:443:127.0.0.1", "https://${hostName}/health")) | Out-Null
         Write-Host "Update erfolgreich ($selectedMode, Projekt $ProjectName). HTTPS geprueft; Stack bleibt aktiv."
         Write-Host "Protokoll: $script:UpdaterLog"
     } catch {

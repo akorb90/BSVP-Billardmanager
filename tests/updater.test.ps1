@@ -30,12 +30,14 @@ function New-Fixture {
     $script:Dirty = $false
     $script:Branch = 'main'
     $script:MissingService = $false
+    $script:TestCurlBackend = 'Schannel'
 }
 function Invoke-UpdaterCommand {
     param([string]$Program, [string[]]$Arguments, [switch]$CaptureOnly)
     $call = $Program + ' ' + ($Arguments -join ' ')
     $script:Calls += $call
     if ($script:Failure -and $call.Contains($script:Failure)) { throw 'Simulated command failure' }
+    if ($Program -like 'curl*' -and $Arguments -contains '--version') { return "curl mock $script:TestCurlBackend" }
     if ($Program -eq 'git') {
         switch ($Arguments[0]) {
             'branch' { return $script:Branch }
@@ -71,6 +73,7 @@ Assert-Test ($all.IndexOf(' cp db:') -lt $all.IndexOf('git merge --ff-only FETCH
 Assert-Test ($all.IndexOf('git merge --ff-only FETCH_HEAD') -lt $all.IndexOf(' build --pull app')) 'Build must follow the fast-forward.'
 Assert-Test ($all.Contains(' up -d --build --wait')) 'Source mode must build and wait.'
 Assert-Test ($all.Contains('--cacert') -and $all.Contains('https://localhost/health') -and -not $all.Contains('--insecure')) 'HTTPS must verify the CA and host.'
+Assert-Test ($all.Contains('--ssl-revoke-best-effort') -and -not $all.Contains('--ssl-no-revoke')) 'Schannel must tolerate unavailable CRLs without disabling certificate validation.'
 Assert-Test ($all.Contains('docker inspect --format') -and -not $all.Contains(' images ')) 'Image metadata must work even when the old image was removed.'
 Assert-Test (-not ($all -match '\b(reset|stash|down|prune|setup)\b')) 'No reset, stash, deletion or setup allowed.'
 Assert-Test ((Get-Content -LiteralPath (Join-Path $script:Fixture '.env') -Raw).Trim() -eq 'preserve me') 'Environment changed.'
@@ -78,10 +81,12 @@ Assert-Test ((Get-Content -LiteralPath (Join-Path $script:Fixture 'secrets/confi
 Write-Host 'PASS: source update order, project, backup, HTTPS and preserved configuration'
 
 New-Fixture -Source $false
+$script:TestCurlBackend = 'OpenSSL'
 Run-Fixture
 $all = $script:Calls -join "`n"
 Assert-Test (-not $all.Contains('git ') -and -not $all.Contains('compose.override.yaml')) 'Image installation must not use Git or the source override.'
 Assert-Test ($all.Contains(' pull app db proxy') -and $all.Contains(' up -d --no-build --wait')) 'Image installation must pull and recreate.'
+Assert-Test (-not $all.Contains('--ssl-revoke-best-effort')) 'Non-Schannel curl does not need a CRL exception.'
 Write-Host 'PASS: image-only installation'
 
 New-Fixture
