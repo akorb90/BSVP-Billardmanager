@@ -673,10 +673,10 @@ root.addEventListener('change',e=>{
     const p=state.players.find(p=>p.id===e.target.value),nameField=form.elements[e.target.name.replace('_id','')];if(nameField)nameField.value=fullName(p);
   }
 });
-let playerSearch='',statsFilter={kind:'players',id:'',from:'',to:'',discipline:''};
-function playersDashboard() {
-  const players=(state.players||[]).filter(p=>!p.event_id), teams=state.teams||[], q=playerSearch.toLocaleLowerCase('de');
-  const page=paginate(players.filter(p=>(fullName(p)+' '+p.id+' '+state.team_players.filter(tp=>tp.player_id===p.id).map(tp=>teams.find(t=>t.id===tp.team_id)?.name||'').join(' ')).toLocaleLowerCase('de').includes(q)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')),'players','Spieler');
+let playerSearch='',playerTeamSearch='',statsFilter={kind:'players',id:'',from:'',to:'',discipline:''};
+function playersDashboard(listOnly=false) {
+  const players=(state.players||[]).filter(p=>!p.event_id), teams=state.teams||[], q=playerSearch.trim().toLocaleLowerCase('de'), teamQuery=playerTeamSearch.trim().toLocaleLowerCase('de');
+  const page=paginate(players.filter(p=>(fullName(p)+' '+p.id).toLocaleLowerCase('de').includes(q)&&state.team_players.filter(tp=>tp.player_id===p.id).map(tp=>teams.find(t=>t.id===tp.team_id)?.name||'').join(' ').toLocaleLowerCase('de').includes(teamQuery)).sort((a,b)=>fullName(a).localeCompare(fullName(b),'de')),'players','Spieler');
   const teamPage=paginate([...teams].sort((a,b)=>a.name.localeCompare(b.name,'de')),'teams','Mannschaften');
   const f=statsFilter, entity=(f.kind==='players'?players:teams).find(x=>x.id===f.id);
   const belongs=(m,side)=>f.kind==='players'?[m['player_'+side+'_id'],(state.event_match_slots||[]).find(s=>s.match_id===m.id)?.['player_'+side+'2_id']].includes(f.id):m['team_'+side+'_id']===f.id;
@@ -693,7 +693,9 @@ function playersDashboard() {
     return '<tr><th scope="row">'+esc(fullName(p))+'</th><td>'+memberships.map(esc).join(', ')+'</td><td>'+(p.active?'Aktiv':'Archiviert')+'</td><td class="registry-actions"><button data-registry="player" data-id="'+esc(p.id)+'">Bearbeiten</button> '+(p.is_bsv?'<button data-stat="players" data-id="'+esc(p.id)+'">Partien &amp; Statistik</button> ':'')+profile+'</td></tr>';
   }).join('');
   const teamRows=teamPage.items.map(t=>'<tr><th scope="row">'+esc(t.name)+'</th><td>'+state.team_players.filter(tp=>tp.team_id===t.id).map(tp=>esc(fullName(players.find(p=>p.id===tp.player_id)))).join(', ')+'</td><td>'+(t.active?'Aktiv':'Archiviert')+'</td><td class="registry-actions"><button data-registry="team" data-id="'+esc(t.id)+'">Bearbeiten</button> '+(t.nuliga_profile?'<a class="button" href="'+esc(t.nuliga_profile)+'" target="_blank" rel="noopener noreferrer">nuLiga-Mannschaft ↗</a>':'<span class="muted">Kein nuLiga-Profil zugeordnet</span>')+'</td></tr>').join('');
-  root.innerHTML='<div class="page-title"><h1>'+(teamView?'Mannschaften':'Spieler')+'</h1></div><section class="panel"><button data-registry="'+(teamView?'team':'player')+'">'+(teamView?'Mannschaft':'Spieler')+' anlegen</button>'+(teamView?'':'<form id="player-search"><label>Spieler suchen (Name, Mannschaft oder ID)<input name="q" value="'+esc(playerSearch)+'"></label><button>Suchen</button></form>')+(teamView?teamPage.controls:page.controls)+'<div class="registry-list"><table><thead><tr><th>'+(teamView?'Mannschaft':'Spieler')+'</th><th>'+(teamView?'Spieler':'Mannschaft')+'</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>'+(teamView?teamRows:playerRows)+'</tbody></table></div></section>';
+  const registryList=(teamView?teamPage.controls:page.controls)+'<div class="registry-list"><table><thead><tr><th>'+(teamView?'Mannschaft':'Spieler')+'</th><th>'+(teamView?'Spieler':'Mannschaft')+'</th><th>Status</th><th>Aktionen</th></tr></thead><tbody>'+(teamView?teamRows:playerRows||'<tr><td colspan="4">Keine Spieler passen zu den Filtern.</td></tr>')+'</tbody></table></div>';
+  if(listOnly){root.querySelector('#player-results').innerHTML=registryList;return;}
+  root.innerHTML='<div class="page-title"><h1>'+(teamView?'Mannschaften':'Spieler')+'</h1></div><section class="panel"><button data-registry="'+(teamView?'team':'player')+'">'+(teamView?'Mannschaft':'Spieler')+' anlegen</button>'+(teamView?'':'<form id="player-search" class="registry-filters" role="search" aria-label="Spieler filtern"><label>Name (oder ID)<input type="search" name="q" value="'+esc(playerSearch)+'" autocomplete="off"></label><label>Mannschaft<input type="search" name="team" value="'+esc(playerTeamSearch)+'" autocomplete="off"></label><button type="submit">Filtern</button><button type="button" data-player-filter-reset>Filter zurücksetzen</button></form>')+'<div id="player-results">'+registryList+'</div></section>';
   if(!teamView)root.innerHTML += '<section class="panel"><h2>Partien &amp; Statistik'+(entity?' · '+esc(entity.name||fullName(entity)):'')+'</h2><p>Zeitraum nach Spieltagsdatum. Nur abgeschlossene Partien zählen als Ergebnisse. Mannschaftswerte zählen die zugeordneten Spielerseiten der Einzelpartien.</p><form id="stats-filter">'+selectField('Übersicht','kind',f.kind,[['players','Spieler'],['teams','Mannschaften']])+selectField('Eintrag','id',f.id,[['','Bitte auswählen'],...(f.kind==='players'?players:teams).map(p=>[p.id,(p.name||fullName(p))+' · ID '+p.id])])+'<div class="form-row"><label>Von<input type="date" name="from" value="'+esc(f.from)+'"></label><label>Bis<input type="date" name="to" value="'+esc(f.to)+'"></label></div>'+selectField('Disziplin','discipline',f.discipline,[['','Alle'],...['8-Ball','9-Ball','10-Ball','14/1'].map(d=>[d,d])])+'<button>Auswerten</button></form><p><strong>'+quantity(count,'Ergebnis','Ergebnisse')+' · '+quantity(wins,'Sieg','Siege')+' · '+quantity(losses,'Niederlage','Niederlagen')+' · Racks '+won+' : '+lost+'</strong></p><p>14/1: Je 10 gelochte Kugeln zählen als 1 Rack; Restpunkte werden je Partie abgerundet.</p>'+mp.controls+matchRows(mp.items,true)+'</section>';
 }
 let registryDialog;
@@ -752,7 +754,7 @@ function openParticipants(event,start=false) {
 }
 function handlePlayersSubmit(form) {
   const formId=form.getAttribute?.('id')??form.id;
-  if(formId==='player-search'){playerSearch=form.elements.q.value;listPages.delete('players');playersDashboard();return true;}
+  if(formId==='player-search'){applyPlayerFilters(form);return true;}
   if(formId==='stats-filter'){statsFilter=Object.fromEntries(new FormData(form));resetStatsDraft=true;listPages.delete('player-matches');return refresh(true);}
   if(!formId.startsWith('registry-'))return false;
   if(busy)return true;
@@ -766,6 +768,20 @@ function handlePlayersSubmit(form) {
   api(formId==='registry-participants'?'/api/events/'+data.event_id+'/participants':formId==='registry-player'?'/api/players':'/api/teams',data).then(()=>{registryDialog.close();if(formId==='registry-participants'){selectedEventId=Number(data.event_id);view='spieltage';history.replaceState(null,'','/#spieltage/'+data.event_id);message('Teilnehmer bestätigt. Jetzt Spieler und Tische für die erste Runde zuweisen.');}else message('Gespeichert.');}).catch(error=>{registryDialog.querySelector('#registry-error').textContent=error.message;}).finally(async()=>{busy=false;await refresh(true);});
   return true;
 }
+function applyPlayerFilters(form) {
+  playerSearch=form.elements.q.value;playerTeamSearch=form.elements.team.value;
+  const paging=listPages.get('players');if(paging)listPages.set('players',{...paging,page:1});
+  drafts.delete('player-search');playersDashboard(true);
+}
+for(const type of ['input','search'])root.addEventListener(type,event=>{
+  const form=event.target.form;
+  if(view==='spieler'&&(form?.getAttribute?.('id')??form?.id)==='player-search')applyPlayerFilters(form);
+});
+root.addEventListener('click',event=>{
+  const button=event.target.closest('button[data-player-filter-reset]');
+  if(!button?.hasAttribute('data-player-filter-reset'))return;
+  const form=button.closest('form');form.elements.q.value='';form.elements.team.value='';applyPlayerFilters(form);
+});
 root.addEventListener('change',e=>{if((e.target.form?.getAttribute?.('id')??e.target.form?.id)==='stats-filter' && e.target.name==='kind'){statsFilter={...statsFilter,kind:e.target.value,id:''};resetStatsDraft=true;drafts.delete('stats-filter');listPages.delete('player-matches');return refresh(true);}});
 
 // One immutable action snapshot per warning. Enter never executes an action.

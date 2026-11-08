@@ -267,3 +267,5 @@ button.primary,button.primary:hover:not(:disabled){color:var(--on-primary)}
 .event-sections [aria-pressed="true"] { background: var(--primary); color: var(--accent-text); }
 [data-event-creation] > summary { cursor: pointer; font-weight: 700; padding: .5rem 0; }
 [data-event-creation] > form { margin-top: 1rem; }
+
+.registry-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin-top:20px}.registry-filters>label{flex:1 1 220px;min-width:0}.registry-filters>button{flex:0 0 auto}

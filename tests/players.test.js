@@ -65,14 +65,14 @@ test('FR-007: identities, explicit participants, history, archive, restart and s
 
 test('FR-007: statistics count only finished results and filter historical team, date and discipline',()=>{
   const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-  const block=source.slice(source.indexOf('const quantity ='),source.indexOf('function captureFocus'))+source.slice(source.indexOf('const racks ='),source.indexOf('function matchRows'))+source.slice(source.indexOf('function playersDashboard()'),source.indexOf('let registryDialog;'));
+  const block=source.slice(source.indexOf('const quantity ='),source.indexOf('function captureFocus'))+source.slice(source.indexOf('const racks ='),source.indexOf('function matchRows'))+source.slice(source.indexOf('function playersDashboard('),source.indexOf('let registryDialog;'));
   const state={players:[{id:'p',first_name:'Anna',last_name:'Neu',active:1}],teams:[{id:'old',name:'Altes Team'}],team_players:[],events:[{id:1,date:'2026-10-28'},{id:2,date:'2025-01-01'}],matches:[
     {event_id:1,player_a_id:'p',team_a_id:'old',status:'finished',a:5,b:2,discipline:'9-Ball'},
     {event_id:1,player_a_id:'p',team_a_id:'old',status:'live',a:5,b:0,discipline:'9-Ball'},
     {event_id:1,player_a_id:'p',team_a_id:'old',status:'planned',a:0,b:0,discipline:'9-Ball'},
     {event_id:2,player_b_id:'p',team_b_id:'old',status:'finished',a:5,b:1,discipline:'8-Ball'}]};
   const root={innerHTML:''},filter={kind:'players',id:'p',from:'',to:'',discipline:''};
-  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',statsFilter:filter,esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
+  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',playerTeamSearch:'',statsFilter:filter,esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
   vm.runInContext(block+';playersDashboard();',ctx);
   assert.match(root.innerHTML,/2 Ergebnisse · 1 Sieg · 1 Niederlage · Racks 6 : 7/);
   filter.from='2026-01-01';filter.discipline='9-Ball';vm.runInContext('playersDashboard()',ctx);
@@ -86,10 +86,10 @@ test('FR-007: statistics count only finished results and filter historical team,
 
 test('Separate registry lists show teams beside players and choose BSV statistics or nuLiga profiles',()=>{
   const source=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-  const block=source.slice(source.indexOf('const quantity ='),source.indexOf('function captureFocus'))+source.slice(source.indexOf('const racks ='),source.indexOf('function matchRows'))+source.slice(source.indexOf('function playersDashboard()'),source.indexOf('let registryDialog;'));
+  const block=source.slice(source.indexOf('const quantity ='),source.indexOf('function captureFocus'))+source.slice(source.indexOf('const racks ='),source.indexOf('function matchRows'))+source.slice(source.indexOf('function playersDashboard('),source.indexOf('let registryDialog;'));
   const state={players:[{id:'own',first_name:'Anna',last_name:'BSV',active:1,is_bsv:true,nuliga_profile:'https://bbv-billard.liga.nu/profile?person=1'},{id:'away',first_name:'Ben',last_name:'Gast',active:1,is_bsv:false,nuliga_profile:'https://bbv-billard.liga.nu/profile?person=2'},{id:'manual',first_name:'Neu',last_name:'Manuell',active:1,is_bsv:false,nuliga_profile:null}],teams:[{id:'t1',name:'BSV Pfaffenhofen II',nuliga_profile:'https://bbv-billard.liga.nu/teamPortrait?teamtable=11'},{id:'t2',name:'Gegner I'}],team_players:[{team_id:'t1',player_id:'own'},{team_id:'t2',player_id:'away'}],events:[],matches:[]};
   const root={innerHTML:''};
-  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',statsFilter:{kind:'players',id:'',from:'',to:'',discipline:''},esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
+  const ctx=vm.createContext({root,state,view:'spieler',playerSearch:'',playerTeamSearch:'',statsFilter:{kind:'players',id:'',from:'',to:'',discipline:''},esc:String,fullName:p=>p.first_name+' '+p.last_name,paginate:items=>({items,controls:''}),selectField:()=>'',matchRows:()=>''});
   vm.runInContext(block+';playersDashboard();',ctx);
   assert.match(root.innerHTML,/<h1>Spieler<\/h1>/);
   assert.doesNotMatch(root.innerHTML,/Mannschaft anlegen/);
@@ -99,7 +99,7 @@ test('Separate registry lists show teams beside players and choose BSV statistic
   assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/profile\?person=1" target="_blank"/);
   assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/profile\?person=2" target="_blank"/);
   assert.match(root.innerHTML,/Kein nuLiga-Profil zugeordnet/);
-  ctx.playerSearch='Gegner I';vm.runInContext('playersDashboard()',ctx);
+  ctx.playerTeamSearch='Gegner I';vm.runInContext('playersDashboard()',ctx);
   assert.match(root.innerHTML,/<th scope="row">Ben Gast/);assert.doesNotMatch(root.innerHTML,/<th scope="row">Anna BSV/);
   ctx.view='mannschaften';vm.runInContext('playersDashboard()',ctx);
   assert.match(root.innerHTML,/href="https:\/\/bbv-billard.liga.nu\/teamPortrait\?teamtable=11"/);assert.doesNotMatch(root.innerHTML,/data-stat="teams"|Partien &amp; Statistik|id="stats-filter"/);

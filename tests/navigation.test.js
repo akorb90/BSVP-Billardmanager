@@ -962,3 +962,44 @@ test('FR-014.5 UI: Monatsdashboard zeigt Zeitraum, getrennte Werte und EK-Lücke
   await app.element('#app').dispatch('click',{target:{id:'inventory-report-reset',closest:()=>null}});
   assert.match(app.element('#app').innerHTML,/Zeitraum wählen und auswerten/);
 });
+
+test('Spielerfilter: Name und Mannschaft reagieren sofort, kombinierbar, ohne Fokusverlust und mit gemeinsamem Reset',async()=>{
+  const players=[{id:'anna',first_name:'Anna',second_name:'Maria',last_name:'Müller',active:1},{id:'ben',first_name:'Ben',last_name:'Müller',active:1},{id:'carla',first_name:'Carla',last_name:'Gast',active:1},{id:'guest',first_name:'Anna',last_name:'Spieltag',active:1,event_id:1}];
+  const app=await frontend('/#spieler',{players,teams:[{id:'home',name:'BSV Pfaffenhofen II'},{id:'away',name:'Gegner I'}],team_players:[{player_id:'anna',team_id:'home'},{player_id:'ben',team_id:'away'}]});
+  const root=app.element('#app'),results=app.element('#player-results'),form={id:'player-search',elements:{q:{value:''},team:{value:''}}};
+  root.querySelector=selector=>selector==='#player-results'?results:null;
+  const original=root.innerHTML;
+  assert.match(original,/name="q"/);assert.match(original,/name="team"/);assert.match(original,/>Filtern<\/button>/);
+  await pageSize(app,'players',50);
+  const input=async(name,value,type='input')=>{const field=form.elements[name];field.value=value;field.name=name;field.form=form;field.dataset={};field.selectionStart=2;field.selectionEnd=2;app.document.activeElement=field;await root.dispatch(type,{target:field});assert.equal(app.document.activeElement,field);assert.equal(field.selectionStart,2);assert.equal(field.selectionEnd,2);};
+  const beforeInput=root.innerHTML;await input('q','  mÜLLER  ');assert.equal(root.innerHTML,beforeInput,'Input must only replace the results, not the form or statistics.');
+  assert.match(results.innerHTML,/Anna Maria Müller/);assert.match(results.innerHTML,/Ben Müller/);assert.doesNotMatch(results.innerHTML,/Carla Gast|Anna Spieltag/);
+  assert.match(results.innerHTML,/value="50" selected/);
+  await input('team','PFAFFEN');
+  assert.match(results.innerHTML,/Anna Maria Müller/);assert.doesNotMatch(results.innerHTML,/Ben Müller/);
+  await input('q','');assert.match(results.innerHTML,/Anna Maria Müller/);assert.doesNotMatch(results.innerHTML,/Ben Müller/);
+  await input('team','gegner');assert.match(results.innerHTML,/Ben Müller/);assert.doesNotMatch(results.innerHTML,/Anna Maria Müller/);
+  await input('q','Anna');assert.match(results.innerHTML,/Keine Spieler passen/);
+  await input('team','', 'search');assert.match(results.innerHTML,/Anna Maria Müller/);
+  await input('q','');assert.match(results.innerHTML,/Carla Gast/);assert.doesNotMatch(results.innerHTML,/Anna Spieltag/);
+  form.elements.q.value='Carla';form.elements.team.value='';
+  await root.listeners.submit({preventDefault(){},target:form}); // Enter and Filtern use the same native form submission.
+  assert.match(results.innerHTML,/Carla Gast/);assert.doesNotMatch(results.innerHTML,/Anna Maria Müller|Ben Müller/);
+  const reset={hasAttribute:name=>name==='data-player-filter-reset',closest:()=>form};
+  await root.dispatch('click',{target:{closest:selector=>selector==='button[data-player-filter-reset]'?reset:null}});
+  assert.equal(form.elements.q.value,'');assert.equal(form.elements.team.value,'');assert.match(results.innerHTML,/Anna Maria Müller/);assert.match(results.innerHTML,/Carla Gast/);
+  assert.equal(app.posts.length,0,'Filtering must not write application data.');
+});
+
+test('Spielerfilter: Suche gilt vor der Seitenauswahl und bleibt nach Aktualisierung erhalten',async()=>{
+  const players=Array.from({length:45},(_,i)=>({id:'p'+i,first_name:'Spieler',last_name:String(i).padStart(2,'0'),active:1}));
+  const app=await frontend('/#spieler',{players,teams:[{id:'team',name:'Finale'}],team_players:[{player_id:'p44',team_id:'team'}]});
+  const root=app.element('#app'),results=app.element('#player-results');
+  const form={id:'player-search',elements:{q:{value:''},team:{value:'Finale'}}};
+  root.querySelector=selector=>selector==='#player-results'?results:null;
+  await pageClick(app,'players',1);
+  const field={form,name:'team',value:'Finale',dataset:{}};await root.dispatch('input',{target:field});
+  assert.match(results.innerHTML,/Spieler 44/);assert.match(results.innerHTML,/1–1 von 1 · Seite 1 von 1/);
+  root.querySelector=()=>null;await app.refresh(true);
+  assert.match(root.innerHTML,/name="team" value="Finale"/);assert.match(root.innerHTML,/Spieler 44/);assert.doesNotMatch(root.innerHTML,/<th scope="row">Spieler 00/);
+});
